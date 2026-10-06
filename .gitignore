@@ -1,0 +1,16 @@
+downloads/
+browser_profile/
+cookies.json
+.env
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+# Edge debug profile contains login sessions — never commit it
+edge_debug_profile/
+
+# dashboard logs and task artifacts
+*.log
+School/
+.freebuff/
+.unlazy/

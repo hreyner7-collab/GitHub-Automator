@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Creality Pipeline</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0f0f0f;
+    color: #e0e0e0;
+    min-height: 100vh;
+    padding: 32px 24px;
+  }
+
+  h1 { font-size: 1.5rem; font-weight: 700; color: #fff; margin-bottom: 32px; }
+  h1 span { color: #e53935; }
+
+  .card {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+
+  .card h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: .08em; color: #888; margin-bottom: 16px; }
+
+  .row { display: flex; gap: 12px; align-items: center; }
+
+  input[type="text"], textarea {
+    width: 100%;
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 8px;
+    color: #e0e0e0;
+    padding: 10px 14px;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color .2s;
+  }
+  input[type="text"]:focus, textarea:focus { border-color: #e53935; }
+  textarea { resize: vertical; min-height: 80px; }
+
+  button {
+    background: #e53935;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 22px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .2s, opacity .2s;
+  }
+  button:hover { background: #c62828; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+
+  .btn-outline {
+    background: transparent;
+    border: 1px solid #e53935;
+    color: #e53935;
+  }
+  .btn-outline:hover { background: #e5393520; }
+
+  .image-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+  }
+
+  .image-pair { display: flex; flex-direction: column; gap: 8px; }
+
+  .image-pair label {
+    font-size: 0.75rem;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+
+  .image-pair img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid #2a2a2a;
+  }
+
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .compare .col label { display: block; font-size: 0.75rem; color: #666; margin-bottom: 6px; }
+  .compare img { width: 100%; border-radius: 8px; border: 1px solid #2a2a2a; }
+
+  .status {
+    margin-top: 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    display: none;
+  }
+  .status.info  { background: #1565c020; border: 1px solid #1565c0; color: #90caf9; display: block; }
+  .status.ok    { background: #1b5e2020; border: 1px solid #2e7d32; color: #a5d6a7; display: block; }
+  .status.error { background: #b71c1c20; border: 1px solid #b71c1c; color: #ef9a9a; display: block; }
+  .status.warn  { background: #e6510020; border: 1px solid #e65100; color: #ffcc80; display: block; }
+
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #ffffff40; border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #upload-btn { margin-top: 16px; }
+  #upload-section { display: none; }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 6px; }
+
+  select {
+    background: #111; border: 1px solid #333; border-radius: 8px;
+    color: #e0e0e0; padding: 10px 14px; font-size: 0.95rem; outline: none;
+  }
+  select:focus { border-color: #e53935; }
+
+  .discover-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 16px; margin-top: 16px;
+  }
+  .dcard {
+    background: #111; border: 1px solid #2a2a2a; border-radius: 10px;
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  .dcard .thumb {
+    width: 100%; aspect-ratio: 4/3; object-fit: cover; background: #1d1d1d;
+    display: flex; align-items: center; justify-content: center; color: #444; font-size: .8rem;
+  }
+  .dcard .body { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .dcard .nm { font-size: .9rem; font-weight: 600; color: #eee; line-height: 1.3;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .dcard .meta { font-size: .75rem; color: #777; }
+  .dcard a.view {
+    margin-top: auto; font-size: .8rem; color: #e53935; text-decoration: none;
+    border: 1px solid #e53935; border-radius: 6px; padding: 6px 0; text-align: center;
+  }
+  .dcard a.view:hover { background: #e5393520; }
+  .note { font-size: .78rem; color: #777; margin-top: 10px; line-height: 1.5; }
+
+  .pickbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+  .pickbar button { padding: 6px 14px; font-size: .8rem; }
+  .pickbar .count { font-size: .8rem; color: #999; }
+
+  /* ── Analytics ── */
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+  .topbar h1 { margin-bottom: 0; }
+  #analytics-section { display: none; }
+  .an-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin: 16px 0; }
+  .an-card { background: #111; border: 1px solid #2a2a2a; border-radius: 10px; padding: 14px 16px; }
+  .an-card .lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: #888; }
+  .an-card .num { font-size: 1.7rem; font-weight: 700; color: #fff; margin-top: 4px; }
+  .an-card .sub { font-size: .78rem; color: #999; margin-top: 2px; }
+  .an-card .sub b { color: #a5d6a7; font-weight: 600; }
+  .an-card.points { border-color: #4d3a10; }
+  .an-card.points .num { color: #ffb300; }
+  .an-subhdr { margin: 18px 0 0; font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: #b8860b; font-weight: 700; }
+  .an-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .an-controls .spacer { flex: 1; }
+  .rangegen { display: flex; gap: 6px; }
+  .rangegen button { padding: 5px 12px; font-size: .78rem; background: #111; border: 1px solid #333; color: #bbb; }
+  .rangegen button.active { background: #e53935; border-color: #e53935; color: #fff; }
+  #an-chart { width: 100%; height: 260px; background: #111; border: 1px solid #2a2a2a; border-radius: 10px; }
+  #an-chart svg { display: block; }
+  .an-legend { display: flex; gap: 18px; font-size: .78rem; color: #999; margin: 8px 2px 14px; }
+  .an-legend .key { display: inline-block; width: 18px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .an-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  .an-table th { text-align: left; color: #888; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; padding: 8px 10px; border-bottom: 1px solid #2a2a2a; }
+  .an-table td { padding: 9px 10px; border-bottom: 1px solid #222; color: #ddd; }
+  .an-table td.num, .an-table th.num { text-align: right; }
+  .an-table td.delta { color: #a5d6a7; }
+  .an-table a { color: #e53935; text-decoration: none; }
+  .an-table a:hover { text-decoration: underline; }
+  .an-empty { color: #777; font-size: .9rem; padding: 22px 0 8px; line-height: 1.6; }
+
+  /* Click-to-select image tiles: click anywhere on the image to toggle it
+     for upload; a green tick marks the selection (no checkbox hunting). */
+  button.tilebtn { display: block; width: 100%; padding: 0; background: none;
+    border: none; cursor: pointer; text-align: left; position: relative; }
+  button.tilebtn:focus-visible { outline: 2px solid #e53935; outline-offset: 2px; border-radius: 8px; }
+  .tile-wrap { position: relative; display: block; }
+  .tile-wrap img {
+    width: 100%; display: block; border-radius: 8px; border: 1px solid #2a2a2a;
+    transition: opacity .15s, box-shadow .15s;
+  }
+  .tile-wrap:not(.selected) img { opacity: .40; }
+  .tile-wrap.selected img { box-shadow: 0 0 0 2px #2e7d32; border-color: #2e7d32; }
+  .tick {
+    position: absolute; top: 8px; right: 8px; width: 30px; height: 30px;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 17px; font-weight: 800; line-height: 1; pointer-events: none;
+    background: #00000066; border: 2px solid #ffffff90; color: transparent;
+  }
+  .tile-wrap.selected .tick { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+  .tile-hint { font-size: .72rem; color: #666; margin-top: 5px; text-transform: uppercase; letter-spacing: .05em; }
+
+  /* ── Make a file (STL generator) ── */
+  #gen-previews { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 14px; }
+  #gen-previews img { width: 100%; border-radius: 8px; border: 1px solid #2a2a2a; display: block; background: #111; }
+  .gen-facts { display: flex; gap: 18px; flex-wrap: wrap; font-size: .82rem; color: #999; margin-top: 10px; }
+  .gen-facts b { color: #eee; font-weight: 600; }
+  .gen-bar { display: flex; gap: 10px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
+  .gen-bar .btn-outline { text-decoration: none; display: inline-block; padding: 9px 18px; font-size: .85rem; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Creality <span>Pipeline</span></h1>
+  <button id="analytics-btn" onclick="toggleAnalytics()">&#128202; Analytics</button>
+</div>
+
+<!-- Analytics (downloads / likes over time) -->
+<div class="card" id="analytics-section">
+  <h2>Analytics · Creality Cloud</h2>
+  <div class="an-controls">
+    <button onclick="refreshAnalytics()">Refresh now</button>
+    <button class="btn-outline" id="signin-btn" onclick="signInCreality()">Sign in to Creality Cloud</button>
+    <div class="rangegen" id="an-range">
+      <button data-days="7" onclick="setRange(7)">7D</button>
+      <button data-days="30" class="active" onclick="setRange(30)">30D</button>
+      <button data-days="365" onclick="setRange(365)">Year</button>
+    </div>
+    <span class="spacer"></span>
+    <span class="count" id="an-login"></span>
+    <span class="count" id="an-updated"></span>
+  </div>
+  <div id="an-status" class="status"></div>
+  <div id="an-cards" class="an-cards"></div>
+  <div class="an-subhdr">Points · earned per period</div>
+  <div id="an-points" class="an-cards"></div>
+  <div id="an-chart"></div>
+  <div class="an-legend">
+    <span><span class="key" style="background:#e53935"></span>Downloads (cumulative)</span>
+    <span><span class="key" style="background:#42a5f5"></span>Likes (cumulative)</span>
+    <span><span class="key" style="background:#ffb300"></span>Points (balance)</span>
+  </div>
+  <div id="an-models"></div>
+</div>
+
+<!-- Find Top Models (research only) -->
+<div class="card">
+  <h2>Find Top Models · Research</h2>
+  <div class="row">
+    <select id="discover-site">
+      <option value="makerworld">MakerWorld</option>
+      <option value="printables">Printables</option>
+      <option value="thingiverse">Thingiverse</option>
+    </select>
+    <select id="discover-count">
+      <option value="12">Top 12</option>
+      <option value="20" selected>Top 20</option>
+      <option value="40">Top 40</option>
+    </select>
+    <button id="discover-btn" onclick="discoverModels()">Find</button>
+  </div>
+  <div id="discover-status" class="status"></div>
+  <div id="discover-grid" class="discover-grid"></div>
+  <p class="note">Research only — shows what's trending so you can decide what to design.
+    It does <strong>not</strong> download, edit, or upload anything. Use “View original” to open the
+    creator's page. Only repost models you have the rights to, with credit to the designer.</p>
+</div>
+
+<!-- Make a file (STL generator: describe → Kimi designs → forge → verify) -->
+<div class="card" id="generate-file">
+  <h2>Make a file · Generate an STL from a description</h2>
+  <div class="row">
+    <input type="text" id="generate-input" placeholder="Describe it… e.g. a cable organizer that retracts automatically">
+    <button id="generate-btn" onclick="generateFile()">Make a file</button>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <input type="text" id="generate-image" placeholder="Optional: image path under downloads/ to match the look (e.g. auto-locking_hanger_-_gravity_towel_hook_img_0.png)">
+    <button class="btn-outline" id="generate-image-btn" onclick="generateFile(true)">Make from image</button>
+  </div>
+  <div id="generate-status" class="status"></div>
+  <div id="gen-previews" style="display:none"></div>
+  <div id="gen-facts" class="gen-facts" style="display:none"></div>
+  <div id="gen-bar" class="gen-bar" style="display:none">
+    <a class="btn-outline" id="gen-download" href="#" download>Download STL</a>
+    <button class="btn-outline" onclick="acceptGenerated()">Accept &amp; load into Publish</button>
+  </div>
+  <p class="note">Kimi 2.7 designs it, the local forge compiles a real binary STL,
+    and the verifier must prove watertight + print-sane before anything is shown.
+    If Kimi is unavailable, an honest fallback template designs it instead.
+    "Accept" loads the name, description and STL into the Publish step below —
+    nothing is uploaded without you clicking Upload.</p>
+</div>
+
+<!-- Step 1: Fetch URL -->
+<div class="card">
+  <h2>1 · Model URL</h2>
+  <div class="row">
+    <input type="text" id="url-input" placeholder="Paste Thingiverse or Printables URL…">
+    <button id="fetch-btn" onclick="fetchModel()">Fetch &amp; Edit</button>
+  </div>
+  <div id="fetch-status" class="status"></div>
+</div>
+
+<!-- Step 2: Preview -->
+<div class="card" id="preview-section" style="display:none">
+  <h2>2 · Preview</h2>
+  <div id="image-container"></div>
+</div>
+
+<!-- Step 3: Publish -->
+<div class="card" id="upload-section">
+  <h2>3 · Publish to Creality Cloud</h2>
+  <div class="field">
+    <label>Model Name</label>
+    <input type="text" id="model-name">
+  </div>
+  <div class="field">
+    <label>Description</label>
+    <textarea id="model-desc"></textarea>
+  </div>
+  <button id="upload-btn" onclick="uploadModel()">Upload to Creality Cloud</button>
+  <div id="upload-status" class="status"></div>
+</div>
+
+<script>
+  let _stlPath = null;
+  let _imagePaths = [];   // the images that will actually be uploaded (selected ones)
+  let _editedRaw = [];    // all edited images returned by /fetch
+  let _selected = new Set();
+  let _sourceUrl = '';
+
+  function updatePickCount() {
+    const el = document.getElementById('pick-count');
+    if (el) el.textContent = `${_selected.size} of ${_editedRaw.length} image(s) will be uploaded`;
+  }
+
+  function syncPickUI() {
+    document.querySelectorAll('button.tilebtn[data-pick]').forEach(btn => {
+      const i = Number(btn.dataset.pick);
+      const on = _selected.has(i);
+      btn.querySelector('.tile-wrap').classList.toggle('selected', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    updatePickCount();
+  }
+
+  function togglePick(i) {
+    if (_selected.has(i)) _selected.delete(i); else _selected.add(i);
+    syncPickUI();
+  }
+
+  function selectAll(on) {
+    _selected = new Set(on ? _editedRaw.map((_, i) => i) : []);
+    syncPickUI();
+  }
+
+  // Escape scraped content before it touches innerHTML (model names, stats, etc.)
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>'"=]/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;', '=': '&#61;'
+    }[c]));
+  }
+
+  function setStatus(id, type, html) {
+    const el = document.getElementById(id);
+    el.className = 'status ' + type;
+    el.innerHTML = html;
+  }
+
+  async function fetchModel() {
+    const url = document.getElementById('url-input').value.trim();
+    if (!url) return;
+
+    const btn = document.getElementById('fetch-btn');
+    btn.disabled = true;
+    setStatus('fetch-status', 'info', '<span class="spinner"></span>Downloading and editing with Gemini…');
+
+    document.getElementById('preview-section').style.display = 'none';
+    document.getElementById('upload-section').style.display = 'none';
+
+    try {
+      const res = await fetch('/fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Unknown error');
+
+      // Store paths for upload
+      _stlPath = data._raw_stl;
+      _editedRaw = data._raw_images || [];
+      _selected = new Set(_editedRaw.map((_, i) => i));   // all selected by default
+      _imagePaths = _editedRaw.slice();
+      _sourceUrl = data.source_url || url;
+
+      // Populate form
+      document.getElementById('model-name').value = data.name || '';
+      document.getElementById('model-desc').value = data.description || '';
+
+      // Build image comparison grid
+      const container = document.getElementById('image-container');
+      container.innerHTML = '';
+
+      const originals = data.original_images || [];
+      const edited = data.edited_images || [];
+
+      if (originals.length === 0 && edited.length === 0) {
+        container.innerHTML = '<p style="color:#666">No preview images found for this model.</p>';
+      } else {
+        // Selection toolbar
+        const bar = document.createElement('div');
+        bar.className = 'pickbar';
+        bar.innerHTML = `<button class="btn-outline" onclick="selectAll(true)">Select all</button>
+                         <button class="btn-outline" onclick="selectAll(false)">Select none</button>
+                         <span class="count" id="pick-count"></span>`;
+        container.appendChild(bar);
+
+        const max = Math.max(originals.length, edited.length);
+        for (let i = 0; i < max; i++) {
+          const pair = document.createElement('div');
+          pair.className = 'compare';
+
+          const left = document.createElement('div');
+          left.className = 'col';
+          left.innerHTML = '<label>Original</label>';
+          if (originals[i]) {
+            const img = document.createElement('img');
+            img.src = originals[i];
+            img.alt = 'Original';
+            left.appendChild(img);
+          } else {
+            left.innerHTML += '<p style="color:#444;font-size:.8rem">N/A</p>';
+          }
+
+          const right = document.createElement('div');
+          right.className = 'col';
+          right.innerHTML = '<label>Edited (Original Colors · Wood Background)</label>';
+          if (edited[i]) {
+            // The WHOLE image is the toggle: click anywhere, tick marks it.
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'tilebtn';
+            btn.dataset.pick = String(i);
+            btn.setAttribute('aria-pressed', _selected.has(i) ? 'true' : 'false');
+            btn.title = 'Click to select / deselect this image for upload';
+            btn.innerHTML = `<span class="tile-wrap ${_selected.has(i) ? 'selected' : ''}">
+                               <img src="${edited[i]}" alt="Edited">
+                               <span class="tick">&#10003;</span>
+                             </span>
+                             <span class="tile-hint">Click image to select</span>`;
+            btn.addEventListener('click', () => togglePick(i));
+            right.appendChild(btn);
+          } else {
+            right.innerHTML += '<p style="color:#444;font-size:.8rem">Edit failed</p>';
+          }
+
+          pair.appendChild(left);
+          pair.appendChild(right);
+          container.appendChild(pair);
+        }
+      }
+
+      document.getElementById('preview-section').style.display = 'block';
+      document.getElementById('upload-section').style.display = 'block';
+
+      const warnMsg = data.edit_warning
+        ? `<br><small>Image editing warning: ${esc(data.edit_warning)}</small>` : '';
+      updatePickCount();
+      setStatus('fetch-status', 'ok', `Downloaded <strong>${esc(data.name || 'model')}</strong> · ${_selected.size} of ${_editedRaw.length} image(s) selected for upload.${warnMsg}`);
+
+    } catch (err) {
+      setStatus('fetch-status', 'error', '&#10005; ' + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function uploadModel() {
+    const btn = document.getElementById('upload-btn');
+    btn.disabled = true;
+    setStatus('upload-status', 'info', '<span class="spinner"></span>Opening Creality Cloud… (a browser window will appear)');
+
+    try {
+      const res = await fetch('/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: document.getElementById('model-name').value,
+          description: document.getElementById('model-desc').value,
+          stl_path: _stlPath || '',
+          image_paths: _editedRaw.filter((_, i) => _selected.has(i)),
+          source_url: _sourceUrl || ''
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Upload failed');
+
+      if (data.success) {
+        setStatus('upload-status', 'ok', `&#10003; Uploaded successfully! <a href="${data.url}" target="_blank" style="color:#a5d6a7">${data.url}</a>`);
+      } else {
+        setStatus('upload-status', 'error', '&#10005; ' + (data.error || 'Upload failed'));
+      }
+    } catch (err) {
+      setStatus('upload-status', 'error', '&#10005; ' + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function discoverModels() {
+    const site = document.getElementById('discover-site').value;
+    const count = parseInt(document.getElementById('discover-count').value, 10);
+    const btn = document.getElementById('discover-btn');
+    const grid = document.getElementById('discover-grid');
+    btn.disabled = true;
+    grid.innerHTML = '';
+    setStatus('discover-status', 'info', '<span class="spinner"></span>Scanning ' + site + ' for the most popular models…');
+
+    try {
+      const res = await fetch('/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ site, count })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Discovery failed');
+
+      const models = data.models || [];
+      if (!models.length) {
+        setStatus('discover-status', 'warn', 'No models found — the site layout may have changed.');
+      } else {
+        setStatus('discover-status', 'ok', `Found ${models.length} trending models on ${site}.`);
+        models.forEach((m, i) => {
+          const card = document.createElement('div');
+          card.className = 'dcard';
+          const thumb = (m.thumb && m.thumb.startsWith('http'))
+            ? `<img class="thumb" src="${esc(m.thumb)}" alt="" referrerpolicy="no-referrer">`
+            : `<div class="thumb">no preview</div>`;
+          card.innerHTML = thumb +
+            `<div class="body">
+               <div class="nm">${i + 1}. ${esc(m.name || 'Untitled')}</div>
+               <div class="meta">${esc(m.stats || '')}</div>
+               <a class="view" href="${esc(m.url)}" target="_blank" rel="noreferrer">View original →</a>
+             </div>`;
+          grid.appendChild(card);
+        });
+      }
+    } catch (err) {
+      setStatus('discover-status', 'error', '&#10005; ' + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ── Analytics ─────────────────────────────────────────────
+  let _anRange = 30;
+  let _anTimer = null;
+
+  function toggleAnalytics() {
+    const sec = document.getElementById('analytics-section');
+    const show = sec.style.display !== 'block';
+    sec.style.display = show ? 'block' : 'none';
+    if (show && !_anTimer) loadAnalytics();
+  }
+
+  function setRange(days) {
+    _anRange = days;
+    document.querySelectorAll('#an-range button').forEach(b =>
+      b.classList.toggle('active', Number(b.dataset.days) === days));
+    loadSeries();
+  }
+
+  function fmt(n) { return (n ?? 0).toLocaleString(); }
+
+  // ── Sign-in + auto-updates ─────────────────────────────────
+  let _signinPoll = null;
+
+  async function signInCreality() {
+    setStatus('an-status', 'info', '<span class="spinner"></span>Opening the official Creality sign-in page in Chrome…');
+    try {
+      const res = await fetch('/analytics/signin', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Could not open Chrome');
+      setStatus('an-status', 'info', 'Log in to Creality in the <strong>Chrome window that just opened</strong>. ' +
+        'I\'ll detect it automatically and start pulling updates — no need to do anything here.');
+      document.getElementById('signin-btn').disabled = true;
+      clearInterval(_signinPoll);
+      const t0 = Date.now();
+      _signinPoll = setInterval(async () => {
+        try {
+          const st = await fetch('/analytics/status').then(r => r.json());
+          if (st.logged_in) {
+            clearInterval(_signinPoll);
+            _signinPoll = null;
+            document.getElementById('signin-btn').disabled = false;
+            setStatus('an-status', 'ok', '&#10003; Signed in — updates will be read from your account automatically.');
+            await refreshAnalytics();
+          } else if (Date.now() - t0 > 300000) {   // stop polling after 5 min
+            clearInterval(_signinPoll);
+            _signinPoll = null;
+            document.getElementById('signin-btn').disabled = false;
+            setStatus('an-status', 'warn', 'Still waiting for the login — finish it in Chrome, then click Refresh now.');
+          }
+        } catch (err) { /* transient — keep polling */ }
+      }, 5000);
+    } catch (err) {
+      setStatus('an-status', 'error', '&#10005; ' + err.message);
+    }
+  }
+
+  async function updateLoginBadge() {
+    try {
+      const st = await fetch('/analytics/status').then(r => r.json());
+      const el = document.getElementById('an-login');
+      if (st.logged_in) {
+        el.innerHTML = '<span style="color:#a5d6a7">&#9679; signed in — auto-updates hourly</span>';
+      } else {
+        el.innerHTML = '<span style="color:#ffcc80">&#9679; not signed in — click Sign in</span>';
+      }
+    } catch (err) { /* badge is cosmetic */ }
+  }
+
+  async function refreshAnalytics() {
+    setStatus('an-status', 'info', '<span class="spinner"></span>Reading your Creality models in Chrome…');
+    try {
+      const res = await fetch('/analytics/refresh', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Refresh failed');
+      setStatus('an-status', 'ok', `&#10003; Read ${data.models} model(s) from your account.`);
+      loadAnalytics();
+    } catch (err) {
+      setStatus('an-status', 'error', '&#10005; ' + err.message);
+    }
+  }
+
+  async function loadAnalytics() {
+    await Promise.all([loadSummary(), loadSeries()]);
+    updateLoginBadge();   // fire-and-forget: drives a real browser check, can take a few seconds
+    clearInterval(_anTimer);
+    _anTimer = setInterval(() => {
+      if (document.getElementById('analytics-section').style.display === 'block') {
+        loadSeries();
+        updateLoginBadge();   // fire-and-forget
+      }
+    }, 60000);
+  }
+
+  async function loadSummary() {
+    try {
+      const sum = await fetch('/analytics/summary').then(r => r.json());
+      const cur = sum.current || { downloads: 0, likes: 0 };
+      const t = sum.totals || {};
+      const per = (d, l) => `<b>+${fmt(d)}</b> dl · <b>+${fmt(l)}</b> likes`;
+      const updated = sum.last_scrape
+        ? 'updated ' + new Date(sum.last_scrape * 1000).toLocaleString()
+        : 'no data yet — click Refresh now';
+      const card = (lbl, num, sub) =>
+        `<div class="an-card"><div class="lbl">${lbl}</div><div class="num">${num}</div><div class="sub">${sub}</div></div>`;
+      document.getElementById('an-cards').innerHTML =
+        card('Downloads · Today', fmt(t.today?.downloads), per(t.today?.downloads, t.today?.likes)) +
+        card('Downloads · 7 days', fmt(t['7d']?.downloads), per(t['7d']?.downloads, t['7d']?.likes)) +
+        card('Downloads · 30 days', fmt(t['30d']?.downloads), per(t['30d']?.downloads, t['30d']?.likes)) +
+        card('Downloads · This year', fmt(t.ytd?.downloads), per(t.ytd?.downloads, t.ytd?.likes)) +
+        card('Totals now', `${fmt(cur.downloads)} dl`, `${fmt(cur.likes)} likes · ${esc(updated)}`);
+      const p = sum.points || { current: 0, totals: {} };
+      const pt = p.totals || {};
+      const pcard = (lbl, val) =>
+        `<div class="an-card points"><div class="lbl">${lbl}</div><div class="num">${fmt(val)}</div><div class="sub">points earned</div></div>`;
+      document.getElementById('an-points').innerHTML =
+        pcard('Points · Today', pt.today) +
+        pcard('Points · 7 days', pt['7d']) +
+        pcard('Points · 30 days', pt['30d']) +
+        pcard('Points · This year', pt.ytd) +
+        pcard('Points · Total', p.current);
+      document.getElementById('an-updated').textContent = updated;
+      renderModels(sum);
+    } catch (err) {
+      setStatus('an-status', 'error', '&#10005; ' + err.message);
+    }
+  }
+
+  async function loadSeries() {
+    try {
+      const s = await fetch(`/analytics/series?days=${_anRange}`).then(r => r.json());
+      drawChart(s);
+    } catch (err) { /* keep last chart on transient errors */ }
+  }
+
+  function renderModels(sum) {
+    const el = document.getElementById('an-models');
+    const rows = Object.entries(sum.per_model || {});
+    if (!rows.length) {
+      el.innerHTML = `<p class="an-empty">No analytics history yet.<br>
+        Click <strong>Refresh now</strong> — the app reads your public models from
+        your logged-in Creality Cloud tab in Chrome and snapshots downloads + likes.
+        Refresh daily to build the trend lines.</p>`;
+      return;
+    }
+    el.innerHTML = `<table class="an-table">
+      <thead><tr><th>Model</th><th class="num">Downloads</th><th class="num">Likes</th>
+      <th class="num">+7d</th><th class="num">+30d</th><th class="num">+Year</th></tr></thead>
+      <tbody>` + rows.map(([name, r]) => {
+        const d = (k) => `+${fmt(r[k]?.downloads)} / +${fmt(r[k]?.likes)}`;
+        return `<tr><td><a href="${esc(r.url)}" target="_blank" rel="noreferrer">${esc(name)}</a></td>
+          <td class="num">${fmt(r.downloads)}</td><td class="num">${fmt(r.likes)}</td>
+          <td class="num delta">${d('7d')}</td><td class="num delta">${d('30d')}</td>
+          <td class="num delta">${d('ytd')}</td></tr>`;
+      }).join('') + '</tbody></table>';
+  }
+
+  function drawChart(s) {
+    const box = document.getElementById('an-chart');
+    if (!s || !s.t || s.t.length < 2) { box.innerHTML = ''; return; }
+    const W = 600, H = 260, PL = 46, PR = 12, PT = 14, PB = 26;
+    const dmin = Math.min(...s.downloads, ...s.likes, 0);
+    const dmax = Math.max(...s.downloads, ...s.likes, ...(s.points || [0]), 1);
+    const tmin = s.t[0], tmax = s.t[s.t.length - 1];
+    const X = t => PL + (t - tmin) / Math.max(tmax - tmin, 1) * (W - PL - PR);
+    const Y = v => PT + (1 - (v - dmin) / Math.max(dmax - dmin, 1)) * (H - PT - PB);
+    const pts = arr => arr.map((v, i) => `${X(s.t[i]).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+    const ticks = 4;
+    let grid = '';
+    for (let i = 0; i <= ticks; i++) {
+      const v = dmin + (dmax - dmin) * i / ticks;
+      const y = Y(v).toFixed(1);
+      grid += `<line x1="${PL}" y1="${y}" x2="${W - PR}" y2="${y}" stroke="#242424" stroke-width="1"/>` +
+              `<text x="${PL - 6}" y="${Number(y) + 3}" fill="#777" font-size="9" text-anchor="end">${fmt(Math.round(v))}</text>`;
+    }
+    const day = 86400000;
+    let xlabels = '';
+    for (let t = tmin; t <= tmax; t += day * Math.max(1, Math.round((tmax - tmin) / day / 6))) {
+      xlabels += `<text x="${X(t).toFixed(1)}" y="${H - 8}" fill="#777" font-size="9" text-anchor="middle">${new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</text>`;
+    }
+    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" width="100%" height="100%">
+      ${grid}${xlabels}
+      <polyline points="${pts(s.downloads)}" fill="none" stroke="#e53935" stroke-width="2.2" stroke-linejoin="round"/>
+      <polyline points="${pts(s.likes)}" fill="none" stroke="#42a5f5" stroke-width="2.2" stroke-linejoin="round"/>
+      <polyline points="${pts(s.points || [])}" fill="none" stroke="#ffb300" stroke-width="2.2" stroke-linejoin="round" stroke-dasharray="5 3"/>
+      <circle cx="${X(tmax).toFixed(1)}" cy="${Y(s.downloads[s.downloads.length - 1]).toFixed(1)}" r="3.2" fill="#e53935"/>
+      <circle cx="${X(tmax).toFixed(1)}" cy="${Y(s.likes[s.likes.length - 1]).toFixed(1)}" r="3.2" fill="#42a5f5"/>
+      ${s.points && s.points.length ? `<circle cx="${X(tmax).toFixed(1)}" cy="${Y(s.points[s.points.length - 1]).toFixed(1)}" r="3.2" fill="#ffb300"/>` : ''}
+    </svg>`;
+  }
+
+  // Allow Enter key in URL field
+  document.getElementById('url-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') fetchModel();
+  });
+
+  // ── Make a file (STL generator) ───────────────────────────
+  let _genStlPath = null;
+  let _genResp = null;
+
+  async function generateFile(withImage = false) {
+    const btn = document.getElementById(withImage ? 'generate-image-btn' : 'generate-btn');
+    const prompt = document.getElementById('generate-input').value.trim();
+    const imagePath = document.getElementById('generate-image').value.trim();
+    const status = 'generate-status';
+    if (!prompt && !withImage) { setStatus(status, 'warn', 'Describe what you want to make first.'); return; }
+    if (withImage && !imagePath) { setStatus(status, 'warn', 'Paste an image path under downloads/ first.'); return; }
+    btn.disabled = true;
+    setStatus(status, 'info', '<span class="spinner"></span>Designing → forging → verifying… (Kimi may think for a few seconds)');
+    try {
+      const res = await fetch('/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, image_path: withImage ? imagePath : '' })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Generation failed');
+      _genStlPath = data._raw_stl || data.stl_path;
+      _genResp = data;
+      const pv = document.getElementById('gen-previews');
+      pv.innerHTML = (data.preview_urls || []).map(u => `<img src="${u}" alt="geometry preview">`).join('');
+      pv.style.display = 'grid';
+      const v = data.verify || {};
+      const facts = document.getElementById('gen-facts');
+      facts.innerHTML =
+        `<span>Designed by <b>${data.used_fallback ? 'library fallback (Kimi unavailable: ' + esc((data.brain && data.brain.state) || 'offline') + ')' : 'Kimi 2.7'}</b></span>` +
+        `<span> watertight: <b>${v.watertight ? 'yes' : 'NO'}</b></span>` +
+        `<span> volume: <b>${fmtVol(v.volume_mm3)}</b></span>` +
+        `<span> size: <b>${(v.extents_mm || []).map(x => Math.round(x)).join(' × ')} mm</b></span>` +
+        `<span> triangles: <b>${v.tris}</b></span>`;
+      facts.style.display = 'flex';
+      const dl = document.getElementById('gen-download');
+      dl.href = data.stl_url || ('/file/' + (_genStlPath || '').split(/[\\/]/).pop());
+      dl.setAttribute('download', (_genStlPath || 'generated.stl').split(/[\\/]/).pop());
+      document.getElementById('gen-bar').style.display = 'flex';
+      setStatus(status, 'ok', '&#10003; <strong>' + esc(data.name || 'Model') + '</strong> forged and verified — preview above. Nothing is uploaded yet.');
+    } catch (err) {
+      document.getElementById('gen-previews').style.display = 'none';
+      document.getElementById('gen-facts').style.display = 'none';
+      document.getElementById('gen-bar').style.display = 'none';
+      setStatus(status, 'error', '&#10005; ' + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function fmtVol(v) {
+    if (v == null) return '?';
+    return v >= 1000 ? Math.round(v / 1000) + ' cm³' : Math.round(v) + ' mm³';
+  }
+
+  function acceptGenerated() {
+    if (!_genResp) return;
+    document.getElementById('model-name').value = _genResp.name || 'Generated model';
+    document.getElementById('model-desc').value =
+      (_genResp.description || '') +
+      (_genResp.design_notes ? '\n\nDesign notes: ' + _genResp.design_notes : '') +
+      '\n\nOriginal design: generated with Creality Pipeline (Kimi 2.7 designer).';
+    _stlPath = _genStlPath;
+    _sourceUrl = _genResp.source_url || '';
+    _imagePaths = data_preview_urls();
+    document.getElementById('upload-section').style.display = 'block';
+    document.getElementById('upload-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setStatus('upload-status', 'info', 'Loaded from the generator — check the fields, then click Upload to Creality Cloud.');
+  }
+
+  function data_preview_urls() { return (_genResp && _genResp.preview_urls) || []; }
+</script>
+</body>
+</html>

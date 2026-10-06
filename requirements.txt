@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+requests
+beautifulsoup4
+playwright
+python-multipart
+python-dotenv
+opencv-python
+numpy
+pillow
+rembg[cpu]
+trimesh
+manifold3d
