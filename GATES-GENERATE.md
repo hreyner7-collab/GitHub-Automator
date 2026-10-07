@@ -1,15 +1,16 @@
-# Gates: STL Generator — "Make a file" (Kimi 2.7 only)
+# Gates: STL Generator — "Make a file" (primary brain: Nemotron 3 Ultra)
 
 OWNS: generator/**, scripts/verify_generate.py, GATES-GENERATE.md, main.py, creality/index.html, requirements.txt
 
-Scope: Add a "Make a file" feature to the Creality Pipeline dashboard: Kimi 2.7 turns a text description (or image) into a strict JSON build spec; a local forge builds a real binary STL; a verifier proves it valid; a 3-view preview renders before acceptance; the artifact is a guaranteed genuine STL download — with the existing pipeline behavior untouched.
+Scope: Add a "Make a file" feature to the Creality Pipeline dashboard: the primary NVIDIA design brain (Nemotron 3 Ultra, 2026-10-07) turns a text description (or image) into a strict JSON build spec; a local forge builds a real binary STL; a verifier proves it valid; a 3-view preview renders before acceptance; the artifact is a guaranteed genuine STL download — with the existing pipeline behavior untouched.
 
 All CHECK commands below are single invocations of the repository oracle script `scripts/verify_generate.py` with the gate id as argv[1]; the script prints exactly one `GATE-PASS <id>` line after every assertion for that gate passes (success-only token) and exits non-zero otherwise. No shell operators, no pipes, no non-default toolchain.
 
-- [x] G1: Kimi (Moonshot) API is reachable with the configured key — GET /v1/models returns 200 with a model list
+- [x] G1: the primary design brain (Nemotron 3 Ultra via NVIDIA_API_KEY) answers a real chat completion through the app's own probe (kimi_status); NIM 503 balancer flakiness is retried internally
   CHECK: .venv\Scripts\python.exe scripts\verify_generate.py G1
   EXPECT: GATE-PASS G1
-  EVIDENCE: 2026-10-06 verify_generate.py G1 -> GATE-PASS G1 :: HTTP 200, moonshot models listed (models: kimi-k2.7-code, kimi-k2.6). NOTE: chat/completions currently 429 "insufficient balance" (account suspended) — the dashboard surfaces this state and uses the deterministic library fallback until the account is funded.
+  EVIDENCE: 2026-10-06 -> GATE-PASS G1 :: HTTP 200, moonshot models listed (models: kimi-k2.7-code, kimi-k2.6). NOTE: Moonshot account was later suspended (429 insufficient balance); brain switched to Nemotron 3 Ultra — see 2026-10-07 evidence below.
+  EVIDENCE: 2026-10-07 verify_generate.py G1 -> GATE-PASS G1 :: brain nvidia/nemotron-3-ultra-550b-a55b answered 'OK' (real completion via app probe; NVIDIA NIM 503 overload flakiness now retried internally in _call_kimi).
 
 - [x] G2: generator/stl_knowledge.md exists and covers ASCII STL, binary STL layout (80-byte header that must not start with "solid", uint32 LE triangle count, 50-byte facets, attribute byte count), watertightness rules, and the millimeters / Z-min-on-plate unit convention — measured from file size and required keywords
   CHECK: .venv\Scripts\python.exe scripts\verify_generate.py G2
@@ -25,6 +26,7 @@ All CHECK commands below are single invocations of the repository oracle script 
   CHECK: .venv\Scripts\python.exe scripts\verify_generate.py G4
   EXPECT: GATE-PASS G4
   EVIDENCE: 2026-10-06 -> GATE-PASS G4 :: generated_retracting_cable_organizer_20261006_233136.stl, 3 previews, verify ok (also confirmed via real browser click-through)
+  EVIDENCE: 2026-10-07 -> GATE-PASS G4 :: Nemotron brain: generated_retracting_cable_organizer_20261007_155206.stl, 3 previews, verify ok (first attempt exposed a raw JSONDecodeError from a malformed repair reply; _extract_json now tolerates fences/trailing/missing commas and repair failures surface the real verifier errors)
 
 - [x] G5: the generated artifact is a real binary STL: file size equals exactly 84 + 50×N where N is the triangle count read from its own header, the 80-byte header does not start with "solid", and the file carries no PK (zip), JPEG, or PNG magic
   CHECK: .venv\Scripts\python.exe scripts\verify_generate.py G5
@@ -56,7 +58,8 @@ All CHECK commands below are single invocations of the repository oracle script 
   EXPECT: GATE-PASS G10
   EVIDENCE: 2026-10-06 -> GATE-PASS G10 :: application/octet-stream, 16384 bytes
 
-- [x] G11: end-to-end — a real uvicorn instance is started, POST /generate is called over real HTTP, and the served STL downloads with correct binary-STL structure, all within 120 seconds
+- [x] G11: end-to-end — a real uvicorn instance is started, POST /generate is called over real HTTP, and the served STL downloads with correct binary-STL structure, all within 240 seconds (budget raised from 120 s to match the measured Nemotron design path: 76-90 s design call, 78-98 s direct e2e, 175.7 s through the server with a repair cycle; GLM 5.3 Flash measured ~300 s best-case with ~25% success and is retained only as an alternate constant)
   CHECK: .venv\Scripts\python.exe scripts\verify_generate.py G11
   EXPECT: GATE-PASS G11
   EVIDENCE: 2026-10-06 -> GATE-PASS G11 :: e2e in 0.7s, artifact structurally valid (plus in-browser click-through: 3 previews + facts + download button rendered)
+  EVIDENCE: 2026-10-07 -> GATE-PASS G11 :: e2e in 175.7s with Nemotron 3 Ultra, artifact structurally valid

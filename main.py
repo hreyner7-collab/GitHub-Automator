@@ -55,9 +55,10 @@ class GenerateRequest(BaseModel):
 
 @app.post("/generate")
 async def generate_endpoint(req: GenerateRequest):
-    """Kimi 2.7 designs it from the user's words (or image); the local forge
-    compiles a real binary STL; the verifier must pass before any preview is
-    shown. Runs in a worker thread — it may call Kimi + booleans for seconds."""
+    """Nemotron 3 Ultra designs it from the user's words (or image); the
+    local forge compiles a real binary STL; the verifier must pass before
+    any preview is shown. Runs in a worker thread — a design call takes
+    ~1.5-2 min (measured 76-90 s) plus forge time."""
     prompt = (req.prompt or "").strip()
     if not prompt:
         raise HTTPException(status_code=400, detail="Describe what to make.")

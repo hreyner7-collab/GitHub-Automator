@@ -69,8 +69,8 @@ def _load_mesh(stl_path):
 def req_env():
     from dotenv import load_dotenv
     load_dotenv(BASE / ".env")
-    if not os.getenv("MOONSHOT_API_KEY"):
-        die("MOONSHOT_API_KEY not set in .env")
+    if not os.getenv("NVIDIA_API_KEY"):
+        die("NVIDIA_API_KEY not set in .env")
 
 def _post_generate():
     import requests
@@ -78,7 +78,7 @@ def _post_generate():
     if not VENV_PY.exists():
         die("venv python missing")
     r = requests.post("http://127.0.0.1:8000/generate",
-                      json={"prompt": MODEL_PROMPT}, timeout=115)
+                      json={"prompt": MODEL_PROMPT}, timeout=300)
     if r.status_code != 200:
         die(f"/generate HTTP {r.status_code}: {r.text[:300]}")
     d = r.json()
@@ -93,16 +93,15 @@ def _post_generate():
 # ────────────────────────── gates ──────────────────────────
 
 def g1_kimi_reachable():
+    """Primary design brain must answer a real completion (not just a
+    models-list ping). Uses the app's own probe so what is gated is what
+    the dashboard actually calls. NIM 503 flakiness is retried inside."""
     req_env()
-    import requests
-    r = requests.get("https://api.moonshot.ai/v1/models",
-                     headers={"Authorization": "Bearer " + os.environ["MOONSHOT_API_KEY"]},
-                     timeout=20)
-    if r.status_code != 200:
-        die(f"GET /v1/models -> {r.status_code}")
-    if "kimi" not in r.text.lower():
-        die("no kimi models in list")
-    ok("G1", f"HTTP {r.status_code}, moonshot models listed")
+    from generator import generate as gen
+    s = gen.kimi_status()
+    if s["state"] != "ok":
+        die(f"primary brain probe failed: {s.get('detail', '')[:200]}")
+    ok("G1", f"brain {s.get('model', '?')} answered: {s.get('detail', '')[:40]!r}")
 
 def g2_knowledge():
     p = BASE / "generator" / "stl_knowledge.md"
@@ -252,10 +251,13 @@ def g11_e2e():
     except Exception:
         die("dashboard not running — start it with main.py before running G11")
     t0 = time.time()
-    d, stl = _post_generate()   # full Kimi→forge→verify→preview round trip
+    d, stl = _post_generate()   # full brain→forge→verify→preview round trip
     dt = time.time() - t0
-    if dt > 120:
-        die(f"e2e took {dt:.0f}s (>120)")
+    # Budget matches the measured Nemotron design path (76-90 s design,
+    # 78-98 s e2e) with headroom for one 503-retry cycle; the old 120 s
+    # budget silently assumed GLM-class latency.
+    if dt > 240:
+        die(f"e2e took {dt:.0f}s (>240)")
     _struct_audit(stl)          # downloaded artifact is a valid binary STL
     ok("G11", f"e2e in {dt:.1f}s, artifact structurally valid")
 

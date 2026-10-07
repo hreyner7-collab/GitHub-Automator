@@ -1,6 +1,7 @@
-"""STL generator: Kimi 2.7 turns a description (or image) into a strict JSON
-build spec; the local forge compiles that spec into a real binary STL with
-trimesh + manifold3d booleans; the verifier proves it printable.
+"""STL generator: NVIDIA Nemotron 3 Ultra turns a description (or image)
+into a strict JSON build spec; the local forge compiles that spec into a
+real binary STL with trimesh + manifold3d booleans; the verifier proves it
+printable.
 
 Public surface:
     design_spec(prompt, image_path=None)  -> (spec dict, meta dict)
@@ -15,12 +16,19 @@ import sys
 import time
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE))
+load_dotenv(BASE / ".env")
 DL = BASE / "downloads"
 
-KIMI_URL = "https://api.moonshot.ai/v1/chat/completions"
-KIMI_MODEL = "kimi-k2.7-code"   # the account's Kimi 2.7 (vision-capable)
+BRAIN_BASE = "https://integrate.api.nvidia.com/v1/chat/completions"
+# Primary design brain: Nemotron 3 Ultra. Measured on the full design path
+# (scripts/time_nemotron.py): design call 76-90 s, end-to-end 78-98 s,
+# 2/2 runs produced a valid watertight build. GLM 5.3 Flash (~300 s best,
+# ~25% success) stays available by editing this one constant.
+BRAIN_MODEL = "nvidia/nemotron-3-ultra-550b-a55b"
 LEDGER = Path(__file__).parent / "lessons.json"
 KNOWLEDGE = Path(__file__).parent / "stl_knowledge.md"
 MAX_REPAIR_RETRIES = 2
@@ -136,27 +144,39 @@ Apply the verifier's numbers exactly. Do not repeat the failure.
 """
 
 
-def _call_kimi(messages, max_tokens=3500, temperature=0.35):
-    """One Moonshot chat completion. Raises RuntimeError with the API's
-    message on any failure (caller decides fallback)."""
+def _call_kimi(messages, max_tokens=8000, temperature=0.35):
+    """One chat completion on the primary brain (NVIDIA Nemotron 3 Ultra).
+    Reasoning models burn thousands of tokens thinking before the spec,
+    so the budget is generous and the ceiling is ~6 minutes.
+    The NVIDIA NIM balancer intermittently answers 503 'Service
+    temporarily overloaded' (observed on ~half of short calls); those are
+    retried with backoff, everything else raises RuntimeError."""
     from requests import post
-    key = os.getenv("MOONSHOT_API_KEY", "")
+    key = os.getenv("NVIDIA_API_KEY", "")
     if not key:
-        raise RuntimeError("MOONSHOT_API_KEY not set")
-    r = post(
-        KIMI_URL,
-        headers={"Authorization": "Bearer " + key},
-        json={
-            "model": KIMI_MODEL,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        },
-        timeout=90,
-    )
-    if r.status_code != 200:
-        raise RuntimeError(f"Kimi HTTP {r.status_code}: {r.text[:200]}")
-    return r.json()["choices"][0]["message"]["content"]
+        raise RuntimeError("NVIDIA_API_KEY not set")
+    last_err = None
+    for attempt in range(4):
+        r = post(
+            BRAIN_BASE,
+            headers={"Authorization": "Bearer " + key},
+            json={
+                "model": BRAIN_MODEL,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            },
+            timeout=360,
+        )
+        if r.status_code == 200:
+            m = r.json()["choices"][0]["message"]
+            return m.get("content") or m.get("reasoning_content") or ""
+        last_err = f"brain HTTP {r.status_code}: {r.text[:200]}"
+        transient = r.status_code in (429, 502, 503, 504)
+        if not transient or attempt == 3:
+            raise RuntimeError(last_err)
+        time.sleep(2.0 * (attempt + 1))
+    raise RuntimeError(last_err or "brain call failed")
 
 
 def _image_block(image_path):
@@ -170,7 +190,10 @@ def _image_block(image_path):
 
 
 def _extract_json(text):
-    """Pull the first JSON object out of a possible fenced/prose reply."""
+    """Pull the first JSON object out of a possible fenced/prose reply.
+    Tolerates the three malformations LLM brains actually emit: markdown
+    fences (stripped), trailing commas, and missing commas between
+    adjacent "key": value fields. Raises ValueError when no repair works."""
     text = text.strip()
     if text.startswith("```"):
         text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
@@ -178,27 +201,40 @@ def _extract_json(text):
     start = text.find("{")
     if start < 0:
         raise ValueError("no JSON object in reply")
-    return json.loads(text[start:text.rfind("}") + 1])
+    raw = text[start:text.rfind("}") + 1]
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    # repair 1: trailing commas before } or ]
+    cleaned = re.sub(r",\s*([}\]])", r"\1", raw)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+    # repair 2: missing comma between adjacent fields — insert one after a
+    # closing quote/brace/bracket when the next non-space char opens a new
+    # "key": pair
+    cleaned = re.sub(r'(["\]}])\s+(?="[A-Za-z_][A-Za-z0-9_]*"\s*:)',
+                     r"\1,", cleaned)
+    return json.loads(cleaned)
 
 
 # ────────────────────────── local seed composer ──────────────────────────
 
 def kimi_status():
-    """Honest health of the Kimi brain. Returns dict with state.
-    state stages: 'ok' (completions work), 'no_key', 'suspended'
-    (429 insufficient balance), 'error' (anything else)."""
-    if not os.getenv("MOONSHOT_API_KEY"):
-        return {"state": "no_key", "detail": "MOONSHOT_API_KEY is not set"}
+    """Honest health of the primary design brain (name kept for API
+    stability). Returns dict with state: 'ok' (completions work),
+    'no_key', 'error' (anything else)."""
+    if not os.getenv("NVIDIA_API_KEY"):
+        return {"state": "no_key", "detail": "NVIDIA_API_KEY is not set"}
     try:
         reply = _call_kimi(
             [{"role": "user", "content": "Reply with exactly: OK"}],
-            max_tokens=8, temperature=0.0)
-        return {"state": "ok", "detail": reply[:40]}
-    except RuntimeError as e:
-        msg = str(e)
-        if "429" in msg or "insufficient balance" in msg or "suspended" in msg:
-            return {"state": "suspended", "detail": msg[:300]}
-        return {"state": "error", "detail": msg[:300]}
+            max_tokens=200, temperature=0.0)
+        return {"state": "ok", "model": BRAIN_MODEL, "detail": reply[:40]}
+    except Exception as e:  # any probe failure = brain unavailable, never crash
+        return {"state": "error", "detail": f"{type(e).__name__}: {str(e)[:280]}"}
 
 
 _CONCEPT_WORDS = [
@@ -309,7 +345,8 @@ def local_seed_spec(prompt, image_path=None):
 
 
 def design_spec(prompt, image_path=None):
-    """Ask Kimi 2.7 for a strict build spec. Returns (spec, meta)."""
+    """Ask the primary brain (Nemotron 3 Ultra) for a strict build spec.
+    Returns (spec, meta)."""
     knowledge = _knowledge_text()
     lessons = lessons_prompt_block()
     user_text = (
@@ -329,7 +366,7 @@ def design_spec(prompt, image_path=None):
     reply = _call_kimi(messages)
     spec = _extract_json(reply)
     meta = {
-        "model": KIMI_MODEL,
+        "model": BRAIN_MODEL,
         "elapsed_s": round(time.time() - t0, 1),
         "retries": 0,
     }
@@ -337,7 +374,8 @@ def design_spec(prompt, image_path=None):
 
 
 def repair_spec(spec, error_text):
-    """Re-ask Kimi to fix a spec that failed verification (max 2)."""
+    """Re-ask the primary brain to fix a spec that failed verification
+    (max 2)."""
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user",
@@ -364,7 +402,8 @@ def build_stl(spec, meta, out_dir, allow_repair=True, deadline_s=100.0):
     """Compile + verify a spec. Returns (stl_path, verify_report).
 
     On verify failure: logs a lesson, then (if allowed and within the
-    deadline) re-asks Kimi for a corrected spec, up to MAX_REPAIR_RETRIES.
+    deadline) re-asks the primary brain for a corrected spec, up to
+    MAX_REPAIR_RETRIES.
     Raises VerifyError (with the last report) when the design never passes.
     """
     from generator.forge import forge, SpecError
@@ -412,7 +451,32 @@ def build_stl(spec, meta, out_dir, allow_repair=True, deadline_s=100.0):
                     "png_paths": [],
                 }
                 raise VerifyError(report) from None
-            spec = repair_spec(spec, err_text)
+            try:
+                spec = repair_spec(spec, err_text)
+            except Exception as repair_err:
+                # The brain's repair reply was unusable (network, malformed
+                # JSON, ...). Surface the REAL verifier errors, not the
+                # repair transport error.
+                add_lesson({
+                    "what": f"repair call failed: "
+                            f"{type(repair_err).__name__}: "
+                            f"{str(repair_err)[:150]}",
+                    "why": "brain could not produce a corrected spec",
+                    "fix": "retry the design; if it keeps failing the "
+                           "verifier errors above are the cause",
+                    "spec_name": str(spec.get("name", ""))[:80],
+                    "attempt": attempts,
+                    "source": (meta or {}).get("source", "dashboard"),
+                })
+                report = err if isinstance(err, dict) else {
+                    "ok": False,
+                    "errors": [err_text],
+                    "warnings": [],
+                    "stl_path": str(stl_path) if stl_path.exists() else None,
+                    "binary_layout_ok": None,
+                    "png_paths": [],
+                }
+                raise VerifyError(report) from None
             if isinstance(meta, dict):
                 meta["retries"] = meta.get("retries", 0) + 1
 
@@ -421,22 +485,29 @@ def generate(prompt, image_path=None, out_dir=None):
     """Full pipeline: prompt -> spec -> STL -> verify -> previews.
 
     Returns the dashboard-ready payload dict. Raises VerifyError when no
-    acceptable design was produced (the caller surfaces Kimi's design +
-    verifier errors to the user honestly instead of shipping junk).
+    acceptable design was produced (the caller surfaces the brain's design
+    + verifier errors to the user honestly instead of shipping junk).
     """
     out_dir = Path(out_dir or DL)
     kimi = kimi_status()
+    spec = None
     if kimi["state"] == "ok":
-        spec, meta = design_spec(prompt, image_path)
-        meta["source"] = "dashboard"
-        meta["brain"] = kimi
+        try:
+            spec, meta = design_spec(prompt, image_path)
+            meta["source"] = "dashboard"
+            meta["brain"] = kimi
+        except Exception as e:
+            kimi = {"state": "error",
+                    "model": BRAIN_MODEL,
+                    "detail": f"design call failed: {type(e).__name__}: {str(e)[:240]}"}
+    if spec is not None:
         stl_path, report = build_stl(spec, meta, out_dir)
     else:
         # Kimi unreachable (no key / suspended / down): the deterministic
         # library composer designs it instead — never a broken guess, and
         # the response states the degradation honestly.
         spec = local_seed_spec(prompt, image_path)
-        meta = {"model": KIMI_MODEL, "source": "dashboard", "retries": 0,
+        meta = {"model": BRAIN_MODEL, "source": "dashboard", "retries": 0,
                 "used_fallback": True, "brain": kimi}
         stl_path, report = build_stl(spec, meta, out_dir,
                                      allow_repair=False)
