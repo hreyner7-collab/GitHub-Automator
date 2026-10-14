@@ -398,6 +398,21 @@ TRIED_PATH = Path(__file__).resolve().parent / "artifacts" / "tried_listings.jso
 TRIED_COOLDOWN_SECONDS = 7 * 24 * 3600
 
 
+# States that mean a run OPENED the listing's page (or was in the middle of it),
+# whatever the outcome. "published" is not here: the ledger already refuses those.
+USED_STATES = ("skipped", "fetch-failed", "duplicate", "failed", "fetching", "uploading")
+
+
+def listing_was_used(it: dict) -> bool:
+    """True when a run opened this listing's page. A run stopped AFTER the page
+    was read leaves the item 'queued' with a 'run stopped …' reason: that page was
+    still opened, so it counts too — otherwise the next run opens it again."""
+    state = it.get("state") or ""
+    if state in USED_STATES:
+        return True
+    return state == "queued" and (it.get("reason") or "").startswith("run stopped")
+
+
 def _seed_from_runs(runs_dir: Path) -> dict:
     """First use of the record: remember what earlier runs decided, so the
     listings they already refused are not opened again either."""
@@ -410,9 +425,7 @@ def _seed_from_runs(runs_dir: Path) -> dict:
         except (OSError, ValueError, TypeError):
             continue
         for it in run.get("items") or []:
-            # "fetch-failed" is main.FETCH_FAILED; kept as a literal so this
-            # module does not import the web app.
-            if it.get("state") in ("skipped", "fetch-failed") and it.get("url"):
+            if listing_was_used(it) and it.get("url"):
                 data[_english_url(it["url"])] = {"name": it.get("name", ""),
                                                  "reason": it.get("reason", ""),
                                                  "when": when}

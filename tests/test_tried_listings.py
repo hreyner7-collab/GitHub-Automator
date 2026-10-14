@@ -82,6 +82,52 @@ def test_first_use_remembers_what_earlier_runs_decided(tmp_path):
     assert not discover.was_tried_recently(published, path=store, now=when + DAY)
 
 
+def test_listing_a_stopped_run_already_read_is_remembered(tmp_path, monkeypatch):
+    """Regression: a run stopped AFTER it read a page left the item 'queued', and
+    nothing was written, so the next run opened the same page again."""
+    store = tmp_path / "tried_listings.json"
+    monkeypatch.setattr(discover, "TRIED_PATH", store)
+    monkeypatch.setitem(main.AUTO, "items", [
+        {"url": URL + "-read", "name": "Read", "state": "queued",
+         "reason": "run stopped after this model was read"},
+        {"url": URL + "-retry", "name": "Retry", "state": "queued",
+         "reason": "run stopped while retrying this model's fetch"},
+        {"url": URL + "-dup", "name": "Dup", "state": "duplicate",
+         "reason": "Already published"},
+        {"url": URL + "-failed", "name": "Failed", "state": "failed",
+         "reason": "Creality rejected the submit"},
+        {"url": URL + "-inflight", "name": "Inflight", "state": "fetching"},
+        {"url": URL + "-undecided", "name": "Undecided", "state": "queued",
+         "reason": ""},
+    ])
+
+    main._remember_outcomes()
+
+    saved = json.loads(store.read_text(encoding="utf-8"))
+    for tail in ("-read", "-retry", "-dup", "-failed", "-inflight"):
+        assert discover._english_url(URL + tail) in saved, tail
+    assert discover._english_url(URL + "-undecided") not in saved
+
+
+def test_seed_remembers_listings_a_stopped_run_opened(tmp_path):
+    finished = "2026-10-13 17:15:00"
+    when = time.mktime(time.strptime(finished, "%Y-%m-%d %H:%M:%S"))
+    stopped = URL + "-stopped"
+    (tmp_path / "auto_run_20261013-171500.json").write_text(json.dumps({
+        "finished": finished,
+        "items": [
+            {"url": stopped, "name": "Stopped", "state": "queued",
+             "reason": "run stopped after this model was read"},
+            {"url": URL + "-plain", "name": "Plain", "state": "queued",
+             "reason": ""},
+        ],
+    }), encoding="utf-8")
+    store = tmp_path / "tried_listings.json"
+
+    assert discover.was_tried_recently(stopped, path=store, now=when + DAY)
+    assert not discover.was_tried_recently(URL + "-plain", path=store, now=when + DAY)
+
+
 def test_run_outcomes_are_written_to_the_record(tmp_path, monkeypatch):
     store = tmp_path / "tried_listings.json"
     monkeypatch.setattr(discover, "TRIED_PATH", store)

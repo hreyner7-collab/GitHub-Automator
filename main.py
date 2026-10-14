@@ -13,7 +13,7 @@ from uploader import (upload as uploader_upload, _debug_port_up,
                       license_answer_indexes, expected_badge_token,
                       NO_COVERS_ERROR, usable_cover_images)
 from discover import discover as discover_models, find_creality, \
-    CREALITY_LICENCE_ALLOW, CREALITY_LICENCE_DENY, remember_tried, was_tried_recently
+    CREALITY_LICENCE_ALLOW, CREALITY_LICENCE_DENY, listing_was_used, remember_tried, was_tried_recently
 import analytics
 import creality_rules
 import ledger
@@ -530,11 +530,12 @@ def _fetch_failure_is_recoverable(message: str) -> bool:
 
 
 def _remember_outcomes() -> None:
-    """Write every listing that ended as a skip or a fetch failure into the tried
-    record. Called with each log write, so a run stopped midway keeps what it
-    decided. A listing already recorded keeps its first date."""
+    """Write every listing a run OPENED into the tried record — refused, failed,
+    duplicate, or left undecided by a Stop after its page was read. Called with
+    each log write, so a run stopped midway keeps what it decided. A listing
+    already recorded keeps its first date."""
     for it in AUTO.get("items") or []:
-        if it.get("state") in ("skipped", FETCH_FAILED):
+        if listing_was_used(it):
             remember_tried(it.get("url", ""), it.get("name", ""), it.get("reason", ""))
 
 
