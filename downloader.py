@@ -385,6 +385,59 @@ def _flat_render_reason(path: str) -> str:
     return ""
 
 
+# A real surface in a listing photo is either a coloured, grainy surface (wood,
+# a mat, a coloured floor) or a near-black backdrop. A slicer/CAD render sits on
+# a neutral grey or white bed. Calibrated on the two reference photos the user
+# supplied: the desk photo's frame border is ~90% saturated with texture 4.4;
+# the slicer screenshot's border has no colour at all, and its grid lines give
+# texture 14.2, so texture alone cannot tell them apart.
+BACKGROUND_SATURATION = 45        # HSV saturation (0-255) that counts as coloured
+BACKGROUND_SURFACE_SHARE = 0.5    # share of the frame border that must be coloured
+BACKGROUND_TEXTURE_FLOOR = 1.5    # mean |Laplacian| on the coloured border (grain)
+
+
+def _background_reason(path: str) -> str:
+    """'' when the frame's background is a black backdrop or a coloured, grainy
+    surface (a desk, table, mat or floor); otherwise why it is not. The frame
+    border is the background. A slicer or CAD render has a neutral grey or white
+    bed, so it is rejected whatever its texture."""
+    try:
+        import cv2
+        import numpy as np
+        img = _imread_any(path)
+        if img is None:
+            return ""
+        h, w = img.shape[:2]
+        step = max(1, max(h, w) // 256)
+        small = img[::step, ::step]
+        hh, ww = small.shape[:2]
+        m = max(2, min(hh, ww) // 10)
+        border = np.zeros((hh, ww), bool)
+        border[:m, :] = border[-m:, :] = True
+        border[:, :m] = border[:, -m:] = True
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        vals = gray[border]
+        if float(np.median(vals)) < 45 and float(vals.std()) < 20:
+            return ""                                    # a black backdrop
+        hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
+        sat = hsv[..., 1][border]
+        val = hsv[..., 2][border]
+        coloured = (sat >= BACKGROUND_SATURATION) & (val >= 40) & (val <= 245)
+        share = float(coloured.mean())
+        if share < BACKGROUND_SURFACE_SHARE:
+            return ("background is a neutral grey or white render bed (%d%% of the "
+                    "frame edge is coloured): a slicer/CAD screenshot, not a desk, "
+                    "table, floor or black backdrop" % round(share * 100))
+        lap = cv2.Laplacian(gray, cv2.CV_32F)
+        texture = float(np.abs(lap[border]).mean())
+        if texture < BACKGROUND_TEXTURE_FLOOR:
+            return ("background is a coloured but smooth surface with no grain or "
+                    "sensor noise (a render, not a real surface)")
+        return ""                                        # coloured and grainy: a real surface
+    except Exception:
+        return ""
+
+
 def _download_images(images: list[str], slug: str, limit: int = 12,
                      strict: bool = True) -> list[str]:
     """Download images and keep the usable ones, in the order given.
@@ -418,6 +471,8 @@ def _download_images(images: list[str], slug: str, limit: int = 12,
                 ok = _image_quality_ok(p, min_side=200, min_sharpness=0.0)
             if ok and _flat_render_reason(p):
                 ok = False                  # a CAD/slicer-style render, not the object
+            if ok and _background_reason(p):
+                ok = False                  # not on a desk/table or a black backdrop
             if ok and p:
                 paths.append(p)
             elif p and os.path.exists(p):
