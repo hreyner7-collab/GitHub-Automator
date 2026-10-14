@@ -366,7 +366,8 @@ def judge_card(name: str, url: str, used_families: set, is_done=None) -> dict:
     """
     if is_done is not None:
         try:
-            if is_done(url, name):
+            if is_done(url, name) or (_english_url(url) != url
+                                      and is_done(_english_url(url), name)):
                 return {"state": "skipped", "reason": "already published",
                         "family": ""}
         except Exception:
@@ -383,9 +384,14 @@ def judge_card(name: str, url: str, used_families: set, is_done=None) -> dict:
             "source": verdict["source"], "family": ""}
 
 
+def _english_url(url: str) -> str:
+    """The English form of a Creality model link (drops the /xx/ locale)."""
+    return re.sub(r"(crealitycloud\.com)/[a-z]{2}(?=/|$)", r"\1", url or "")
+
+
 def find_creality(keywords: list[str] | None = None, count: int = 10,
                   sort: str = "Downloads", is_done=None, progress=None,
-                  should_stop=None) -> dict:
+                  should_stop=None, exclude=None) -> dict:
     """Find Creality Cloud models worth re-publishing.
 
     For each keyword (and once for the whole listing when none is given): the
@@ -394,6 +400,10 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
     scrolls. Returns
     {models: [{name, url, keyword}], licence: {...}, keywords, note,
      rejected: [{name, url, reason, source}], rejected_total, families}.
+
+    `exclude` — listing URLs this run has already attempted (a failed or refused
+    model is replaced by a fresh one, never re-picked). They are scrolled past
+    without being counted, exactly like an already-done model.
 
     `is_done(url, name)` — models that are already in the "already published"
     config are NEVER harvested: they are not counted towards `count` and the
@@ -420,6 +430,7 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
     ensure_browser()
 
     found: dict[str, dict] = {}
+    skip_urls = {_english_url(u) for u in (exclude or ())}
     skipped_names: list[str] = []          # already-done models, never harvested
     rejected: list[dict] = []              # judged not worth publishing, with why
     rejected_seen: set = set()
@@ -479,7 +490,7 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
                     cards = json.loads(page.evaluate(CREALITY_CARDS_JS) or "[]")
                     for c in cards:
                         url = c.get("url") or ""
-                        if not url or url in found:
+                        if not url or url in found or _english_url(url) in skip_urls:
                             continue
                         name = clean_card_name(c.get("name"), c.get("alt"),
                                                c.get("title")) or \

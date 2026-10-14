@@ -437,7 +437,7 @@ def test_a_run_asks_the_harvester_to_skip_what_is_already_published(monkeypatch,
     captured = {}
 
     def fake_find(keywords, count, sort="Downloads", is_done=None, progress=None,
-                  should_stop=None):
+                  should_stop=None, exclude=None):
         captured["is_done"] = is_done
         captured["count"] = count
         return {"models": [{"name": "Fresh cable organizer",
@@ -686,3 +686,189 @@ def test_a_fetch_without_creator_photos_is_refused_never_rendered(
     assert main._auto_counts()["published"] == 1
 
 
+
+# ---- top-up: a model that did not publish is replaced by a fresh candidate ----
+
+A_URL = "https://x/model-detail/bottle-rack"
+B_URL = "https://x/model-detail/clothes-peg"
+
+
+def _cc_cover(tmp_path):
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(bytes([255, 216, 255, 224]))
+    return str(cover)
+
+
+def _cc_page(url, cover, name=None):
+    page = _fake_fetch(url, "https://creativecommons.org/licenses/by/4.0")
+    page["image_paths"] = [cover]
+    if name:
+        page["name"] = name
+    return page
+
+
+async def _publish_upload(*a, **k):
+    return {"success": True, "message": "Published to your Creality Cloud account"}
+
+
+async def _refuse_upload(*a, **k):
+    return {"success": False, "error": "Creality refused the submit"}
+
+
+async def _must_not_publish(*a, **k):
+    raise AssertionError("a known model must never reach the publisher")
+
+
+def _card(name, url):
+    return {"name": name, "url": url, "keyword": "k"}
+
+
+def test_a_card_already_published_is_refused_before_its_page_is_opened(monkeypatch, tmp_path):
+    """The worker checks the card's own name and link in the ledger BEFORE it
+    opens the page, so a known model costs no page read at all."""
+    import main
+    import ledger
+
+    ledger.record(name="Known cable organizer", source_url="https://x/model-detail/known")
+    opened = []
+
+    def fake_find(keywords, count, sort="Downloads", is_done=None, progress=None,
+                  should_stop=None, exclude=None):
+        return {"models": [_card("Known cable organizer", "https://x/model-detail/known")],
+                "licence": {"opened": True, "verified": True}, "note": ""}
+
+    def fake_dl(url):
+        opened.append(url)
+        return _cc_page(url, _cc_cover(tmp_path))
+
+    monkeypatch.setattr(main, "find_creality", fake_find)
+    monkeypatch.setattr(main, "dl_fetch", fake_dl)
+    monkeypatch.setattr(main, "uploader_upload", _must_not_publish)
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+
+    asyncio.run(main._auto_worker(1, ["k"], "preopenjob"))
+    assert opened == []
+    assert [i["state"] for i in main.AUTO["items"]] == ["duplicate"]
+
+
+def test_a_failed_model_is_replaced_by_a_fresh_candidate_never_a_repeat(monkeypatch, tmp_path):
+    """A is refused by Creality and replaced by B. The top-up asks only for the
+    shortfall and excludes A, so A is never opened a second time."""
+    import main
+
+    cover = _cc_cover(tmp_path)
+    calls = []
+    opened = []
+
+    def fake_find(keywords, count, sort="Downloads", is_done=None, progress=None,
+                  should_stop=None, exclude=None):
+        calls.append({"count": count, "exclude": set(exclude or ())})
+        if len(calls) == 1:
+            return {"models": [_card("Bottle storage rack", A_URL)],
+                    "licence": {"opened": True, "verified": True}, "note": ""}
+        # the listing still offers A again, alongside a fresh B
+        return {"models": [_card("Bottle storage rack", A_URL),
+                           _card("Clothes peg", B_URL)],
+                "licence": {"opened": True, "verified": True}, "note": ""}
+
+    def fake_dl(url):
+        opened.append(url)
+        return _cc_page(url, cover)
+
+    async def upload(name, *a, **k):
+        if "rack" in name.lower():
+            return await _refuse_upload()
+        return await _publish_upload()
+
+    monkeypatch.setattr(main, "find_creality", fake_find)
+    monkeypatch.setattr(main, "dl_fetch", fake_dl)
+    monkeypatch.setattr(main, "uploader_upload", upload)
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+
+    asyncio.run(main._auto_worker(1, ["k"], "replacejob"))
+    assert opened == [A_URL, B_URL]        # A opened once, never again
+    assert len(calls) == 2
+    assert calls[1]["count"] == 1          # asks only for the shortfall
+    assert A_URL in calls[1]["exclude"]    # A is excluded from the top-up
+    states = {i["url"]: i["state"] for i in main.AUTO["items"]}
+    assert states[A_URL] == "failed"
+    assert states[B_URL] == "published"
+    assert main.AUTO["state"] == "done"
+
+
+def test_a_pool_that_runs_dry_ends_the_run_honestly(monkeypatch, tmp_path):
+    """Asking for 3 when only one candidate exists: the run publishes it, tops
+    up once, finds nothing new, and ends instead of looping."""
+    import main
+
+    cover = _cc_cover(tmp_path)
+    calls = []
+
+    def fake_find(keywords, count, sort="Downloads", is_done=None, progress=None,
+                  should_stop=None, exclude=None):
+        calls.append(set(exclude or ()))
+        models = [_card("Bottle storage rack", A_URL)] if len(calls) == 1 else []
+        return {"models": models, "licence": {"opened": True, "verified": True},
+                "note": "only 1 of 3 found"}
+
+    monkeypatch.setattr(main, "find_creality", fake_find)
+    monkeypatch.setattr(main, "dl_fetch", lambda url: _cc_page(url, cover))
+    monkeypatch.setattr(main, "uploader_upload", _publish_upload)
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+
+    asyncio.run(main._auto_worker(3, ["k"], "dryjob"))
+    assert len(calls) == 2
+    assert main.AUTO["state"] == "done"
+    assert [i["state"] for i in main.AUTO["items"]] == ["published"]
+
+
+def test_a_model_the_page_names_as_published_is_refused_after_the_first_read(monkeypatch, tmp_path):
+    """The card link is new, but the page names a model already on the account
+    under another link: it is refused before any photo or form work."""
+    import main
+    import ledger
+
+    ledger.record(name="Known cable organizer", source_url="https://x/model-detail/other-link")
+    cover = _cc_cover(tmp_path)
+    opened = []
+
+    def fake_find(keywords, count, sort="Downloads", is_done=None, progress=None,
+                  should_stop=None, exclude=None):
+        return {"models": [_card("Bottle storage rack", "https://x/model-detail/fresh-link")],
+                "licence": {"opened": True, "verified": True}, "note": ""}
+
+    def fake_dl(url):
+        opened.append(url)
+        return _cc_page(url, cover, name="Known cable organizer")
+
+    monkeypatch.setattr(main, "find_creality", fake_find)
+    monkeypatch.setattr(main, "dl_fetch", fake_dl)
+    monkeypatch.setattr(main, "uploader_upload", _must_not_publish)
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+
+    asyncio.run(main._auto_worker(1, ["k"], "afterreadjob"))
+    assert opened == ["https://x/model-detail/fresh-link"]
+    assert [i["state"] for i in main.AUTO["items"]] == ["duplicate"]
+
+def test_a_localised_link_is_also_checked_in_its_english_form():
+    """A model reached through a /de/ link is the same model as its English
+    link: the already-published check tries the English form as well."""
+    from discover import _english_url, judge_card
+
+    english = "https://www.crealitycloud.com/model-detail/abc"
+    assert _english_url("https://www.crealitycloud.com/de/model-detail/abc") == english
+    assert _english_url(english) == english
+
+    asked = []
+
+    def is_done(url, name):
+        asked.append(url)
+        return url == english
+
+    verdict = judge_card("Bottle storage rack",
+                         "https://www.crealitycloud.com/de/model-detail/abc", set(), is_done)
+    assert verdict["state"] == "skipped"
+    assert english in asked
+
+    not_done = judge_card("Bottle storage rack", english, set(), lambda u, n: False)
+    assert not_done["state"] != "skipped"

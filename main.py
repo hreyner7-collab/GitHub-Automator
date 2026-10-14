@@ -616,6 +616,10 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
 
     try:
         AUTO["state"] = "discovering"
+        # a run starts with an empty queue and empty counters, even when the
+        # same worker state was used by an earlier run in this process
+        AUTO.update({"items": [], "licence": {}, "note": "", "discovered": 0,
+                     "rejected_total": 0, "skipped_already": 0, "already_done": []})
         # Models already in the "already published" config are filtered out
         # DURING discovery (not queued and skipped later), so the run never
         # picks a model it has finished before.
@@ -628,36 +632,73 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
         def _stop_requested() -> bool:
             return bool(AUTO.get("stop"))
 
-        disc = await asyncio.to_thread(find_creality, keywords, count,
-                                      "Downloads", _already_done, _on_progress,
-                                      should_stop=_stop_requested)
-        AUTO["licence"] = disc.get("licence") or {}
-        AUTO["note"] = disc.get("note") or ""
-        AUTO["skipped_already"] = disc.get("skipped_done") or 0
-        AUTO["already_done"] = disc.get("already_done") or []
-        # The user's rule, re-judged here by the one owner (selector.py) even
-        # though discovery already applied it: a rubbish or off-family candidate
-        # is written into the run as a visible `rejected` row with its reason and
-        # can never reach the publisher. Discovery's own refusals are listed too,
-        # so the run shows exactly what was passed over and why.
-        models = disc.get("models") or []
-        AUTO["discovered"] = len(models)
-        verdicts = selector.filter_candidates(models)
-        items = [{"name": m.get("name", ""), "url": m.get("url", ""),
-                  "keyword": m.get("keyword", ""), "family": m.get("family", ""),
-                  "state": "queued", "reason": "", "result": ""}
-                 for m in verdicts["kept"]]
-        for m in verdicts["rejected"]:
-            items.append({"name": m.get("name", ""), "url": m.get("url", ""),
-                          "state": "rejected", "reason": m["reason"],
-                          "result": ""})
-        for m in (disc.get("rejected") or []):
-            items.append({"name": m.get("name", ""), "url": m.get("url", ""),
-                          "state": "rejected", "reason": m["reason"],
-                          "result": ""})
-        AUTO["rejected_total"] = (len(verdicts["rejected"])
-                                  + (disc.get("rejected_total") or 0))
-        AUTO["items"] = items
+        def _discover(need: int, exclude: set) -> dict:
+            # One discovery pass. The first pass fills the queue; a top-up
+            # replaces what did not publish. `exclude` holds every listing URL
+            # this run already attempted, so none is picked twice.
+            disc = find_creality(keywords, need, "Downloads", _already_done,
+                                 _on_progress, should_stop=_stop_requested,
+                                 exclude=exclude)
+            # The user's rule, re-judged here by the one owner (selector.py) even
+            # though discovery already applied it: a rubbish or off-family candidate
+            # is written into the run as a visible `rejected` row with its reason and
+            # can never reach the publisher. Discovery's own refusals are listed too,
+            # so the run shows exactly what was passed over and why.
+            # `exclude` is enforced here too, not only inside the harvester: a
+            # listing already attempted by this run is never handed over again.
+            models = [m for m in (disc.get("models") or [])
+                      if m.get("url") not in exclude]
+            verdicts = selector.filter_candidates(models)
+            items = [{"name": m.get("name", ""), "url": m.get("url", ""),
+                      "keyword": m.get("keyword", ""), "family": m.get("family", ""),
+                      "state": "queued", "reason": "", "result": ""}
+                     for m in verdicts["kept"]]
+            for m in verdicts["rejected"]:
+                items.append({"name": m.get("name", ""), "url": m.get("url", ""),
+                              "state": "rejected", "reason": m["reason"],
+                              "result": ""})
+            for m in (disc.get("rejected") or []):
+                items.append({"name": m.get("name", ""), "url": m.get("url", ""),
+                              "state": "rejected", "reason": m["reason"],
+                              "result": ""})
+            return {"disc": disc, "models": models, "items": items,
+                    "rejected_total": (len(verdicts["rejected"])
+                                       + (disc.get("rejected_total") or 0))}
+
+        def _absorb(found: dict) -> None:
+            disc = found["disc"]
+            AUTO["licence"] = AUTO.get("licence") or disc.get("licence") or {}
+            AUTO["note"] = disc.get("note") or AUTO.get("note") or ""
+            # Each discovery pass re-reads the same listings, so a model skipped
+            # in one pass is skipped again in the next. Keep the largest pass's
+            # count and the unique names, rather than adding passes together.
+            AUTO["skipped_already"] = max(AUTO.get("skipped_already") or 0,
+                                           disc.get("skipped_done") or 0)
+            AUTO["already_done"] = list(dict.fromkeys(
+                (AUTO.get("already_done") or []) + (disc.get("already_done") or [])))[:12]
+            AUTO["discovered"] = ((AUTO.get("discovered") or 0)
+                                  + len(found["models"]))
+            AUTO["rejected_total"] = max(AUTO.get("rejected_total") or 0,
+                                          found["rejected_total"])
+            # a listing re-read by a later pass is already a row: not added twice
+            seen = {it.get("url") for it in AUTO.setdefault("items", []) if it.get("url")}
+            for it in found["items"]:
+                if it.get("url") and it.get("url") in seen:
+                    continue
+                seen.add(it.get("url"))
+                AUTO["items"].append(it)
+
+        def _published_count() -> int:
+            return sum(1 for it in AUTO.get("items") or []
+                       if it.get("state") == "published")
+
+        def _attempted() -> set:
+            return {it.get("url") for it in AUTO.get("items") or []
+                    if it.get("url")}
+
+        first = await asyncio.to_thread(_discover, count, set())
+        _absorb(first)
+        disc = first["disc"]
         if AUTO.get("stop") or disc.get("stopped"):
             # Stop was pressed while the listings were being read: nothing has
             # been fetched or published, so the run ends here as stopped.
@@ -665,15 +706,35 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
             AUTO["finished"] = _time.strftime("%Y-%m-%d %H:%M:%S")
             AUTO["log_path"] = _log()
             return
-        if not models:
-            AUTO["state"] = "done"
-            AUTO["finished"] = _time.strftime("%Y-%m-%d %H:%M:%S")
-            AUTO["log_path"] = _log()
-            return
         AUTO["state"] = "running"
         AUTO["log_path"] = _log()      # the queue is on disk from the start
 
-        for it in AUTO["items"]:
+        idx = 0
+        topups = 0
+        max_topups = 4
+        while True:
+            if idx >= len(AUTO["items"]):
+                # The queue is used up. Anything that did not publish (refused,
+                # duplicate, failed, fetch failed) is replaced by a NEW candidate,
+                # never a repeat, until `count` models are on the account or the
+                # listings run dry.
+                need = count - _published_count()
+                if need <= 0 or AUTO.get("stop") or topups >= max_topups:
+                    break
+                topups += 1
+                AUTO["state"] = "discovering"
+                more = await asyncio.to_thread(_discover, need, _attempted())
+                _absorb(more)
+                AUTO["log_path"] = _log()
+                if more["disc"].get("stopped") or AUTO.get("stop"):
+                    AUTO["state"] = "stopped"
+                    break
+                if not more["models"]:
+                    break
+                AUTO["state"] = "running"
+                continue
+            it = AUTO["items"][idx]
+            idx += 1
             # keep the log current after every model, so a run that is stopped or
             # killed mid-way still leaves what it did on disk
             AUTO["log_path"] = _log()
@@ -682,6 +743,13 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
             if AUTO.get("stop"):
                 AUTO["state"] = "stopped"
                 break
+            # Already published? Judged by the card's own name and link BEFORE
+            # the model's page is opened at all.
+            hit0 = ledger.find(source_url=it["url"], name=it["name"])
+            if hit0["found"]:
+                it["state"] = "duplicate"
+                it["reason"] = ledger.describe(hit0)
+                continue
             it["state"] = "fetching"
             # A fetch that died on a navigation or a temporary network drop is
             # retried a few times before this candidate is written off.
@@ -698,6 +766,17 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                 it["state"] = FETCH_FAILED
                 it["reason"] = ("could not fetch this model: " + fetch_err[:160]
                                 + _fetch_attempts_note(fetch_tries))
+                continue
+            # Already published, as the page names it? Refused now, before the
+            # second licence read and the photo downloads.
+            hit1 = ledger.find(source_url=res.get("source_url") or it["url"],
+                               name=res.get("name") or it["name"],
+                               author=res.get("author", ""),
+                               slug=res.get("slug", ""),
+                               file_path=res.get("stl_path"))
+            if hit1["found"]:
+                it["state"] = "duplicate"
+                it["reason"] = ledger.describe(hit1)
                 continue
             lic = res.get("license") or {}
             # An UNREADABLE licence gets ONE clean retry before it is believed:
@@ -858,7 +937,7 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                                   outcome="published" if really_published
                                           else "creality-duplicate",
                                   note="run " + job_id)
-        else:
+        if AUTO.get("state") != "stopped":
             AUTO["state"] = "done"
         AUTO["finished"] = _time.strftime("%Y-%m-%d %H:%M:%S")
         AUTO["log_path"] = _log()
