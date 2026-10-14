@@ -147,3 +147,33 @@ def test_run_outcomes_are_written_to_the_record(tmp_path, monkeypatch):
     assert discover._english_url(URL + "-fail") in saved
     assert discover._english_url(URL + "-ok") not in saved
     assert discover._english_url(URL + "-queued") not in saved
+
+
+def test_expired_refusal_is_refreshed_so_it_is_not_opened_every_run(tmp_path):
+    """Regression: after the cooldown the old entry was never replaced, so the
+    listing was opened again on every run from then on."""
+    store = tmp_path / "tried_listings.json"
+    discover.remember_tried(URL, "Cable organizer X", "no licence was read",
+                            path=store, now=NOW)
+    later = NOW + discover.TRIED_COOLDOWN_SECONDS + 1
+    assert not discover.was_tried_recently(URL, path=store, now=later)
+
+    discover.remember_tried(URL, "Cable organizer X", "no licence was read",
+                            path=store, now=later)
+
+    assert discover.was_tried_recently(URL, path=store, now=later + DAY)
+
+
+def test_corrupt_record_is_kept_aside_not_wiped(tmp_path):
+    """Regression: an unreadable record was read as empty, and the next write
+    replaced it, forgetting every listing."""
+    store = tmp_path / "tried_listings.json"
+    store.write_text("{ not json", encoding="utf-8")
+
+    discover.remember_tried(URL, "Cable organizer X", "no licence was read",
+                            path=store, now=NOW)
+
+    assert (tmp_path / "tried_listings.corrupt.json").read_text(
+        encoding="utf-8") == "{ not json"
+    assert discover.was_tried_recently(URL, path=store, now=NOW)
+    assert not (tmp_path / "tried_listings.json.tmp").exists()

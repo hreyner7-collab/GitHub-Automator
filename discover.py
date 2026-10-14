@@ -440,12 +440,22 @@ def _tried_store(path: Path) -> dict:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return {}
+        # Unreadable record: keep the bad file aside rather than overwrite it with
+        # a fresh one (that wiped every remembered listing on the next write).
+        try:
+            path.replace(path.with_name(path.stem + ".corrupt.json"))
+        except OSError:
+            pass
+        return _seed_from_runs(path.parent)
 
 
 def _write_tried(path: Path, data: dict) -> None:
     path.parent.mkdir(exist_ok=True)
-    path.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8")
+    # write to a temp file and swap it in, so a crash mid-write cannot leave a
+    # half-written record behind
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
 
 
 def remember_tried(url: str, name: str, reason: str, path=None, now=None) -> None:
@@ -456,10 +466,13 @@ def remember_tried(url: str, name: str, reason: str, path=None, now=None) -> Non
     store = Path(path) if path else TRIED_PATH
     data = _tried_store(store)
     key = _english_url(url)
-    if key in data:
+    now_ts = time.time() if now is None else now
+    # keep the first date while the cooldown runs; once it has ended, a fresh
+    # decision starts a new cooldown (otherwise the listing was opened every run)
+    if key in data and now_ts - float(data[key].get("when") or 0) < TRIED_COOLDOWN_SECONDS:
         return
     data[key] = {"name": name or "", "reason": (reason or "")[:200],
-                 "when": time.time() if now is None else now}
+                 "when": now_ts}
     _write_tried(store, data)
 
 
