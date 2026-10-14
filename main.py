@@ -777,6 +777,13 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
             if hit1["found"]:
                 it["state"] = "duplicate"
                 it["reason"] = ledger.describe(hit1)
+                # Learn this listing's link and both titles on the published
+                # model, so the next run refuses it before opening the page.
+                ledger.learn_listing(
+                    source_url=it["url"],
+                    names=[res.get("name") or "", it["name"]],
+                    author=res.get("author", ""), slug=res.get("slug", ""),
+                    file_path=res.get("stl_path") or "")
                 continue
             lic = res.get("license") or {}
             # An UNREADABLE licence gets ONE clean retry before it is believed:

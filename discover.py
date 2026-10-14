@@ -474,13 +474,13 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
                 if not rep["opened"]:
                     note = ("the listing's Filters panel did not open — refusing to "
                             "harvest from an unfiltered list")
-                    break
+                    continue           # this keyword only: try the next one
                 if not rep["verified"]:
                     note = ("the licence filter did not read back as the allow-list "
                             "(ticked on: %s, off: %s) — refusing to harvest from an "
                             "unverified filter"
                             % (", ".join(rep["ticked_on"]), ", ".join(rep["ticked_off"])))
-                    break
+                    continue           # this keyword only: try the next one
                 # harvest, scrolling the listing until it stops growing
                 empty_scrolls = 0
                 for pss in range(200):  # a ceiling only: the listing stops when it stops growing

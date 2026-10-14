@@ -95,3 +95,73 @@ def test_scan_stops_at_end_of_listing_when_most_cards_are_already_done(monkeypat
     # the scan ended at the end of the 60-card listing, far below the 200 ceiling
     assert max(passes) < 20
     assert page.evaluations < 40
+
+
+class KeywordPage:
+    """The first keyword's listing shows no cards; the second shows one fresh card."""
+
+    def __init__(self):
+        self.url = ""
+
+    def set_viewport_size(self, _size):
+        pass
+
+    def goto(self, url, *_a, **_k):
+        self.url = url
+
+    def wait_for_timeout(self, _ms):
+        pass
+
+    def evaluate(self, js, *_a):
+        if js == discover.CREALITY_CARDS_JS:
+            if "q=first" in self.url:
+                return "[]"
+            return json.dumps([{"url": "https://www.crealitycloud.com/model-detail/fresh-two",
+                                "name": "Fresh Two", "alt": None, "title": None}])
+        return None
+
+    def close(self):
+        pass
+
+
+def test_a_keyword_whose_filter_fails_does_not_stop_the_next_keyword(monkeypatch):
+    """A keyword whose licence filter cannot be verified is skipped on its own.
+    It must not end the whole discovery: the next keyword is still scanned."""
+    page = KeywordPage()
+
+    class Context:
+        def new_page(self):
+            return page
+
+    class Browser:
+        contexts = [Context()]
+
+    class FakePW:
+        class chromium:
+            @staticmethod
+            def connect_over_cdp(_url):
+                return Browser()
+
+    @contextmanager
+    def fake_pw():
+        yield FakePW()
+
+    monkeypatch.setattr(browser_opener, "sync_playwright_auto", fake_pw)
+    monkeypatch.setattr(uploader, "ensure_browser", lambda: None)
+    monkeypatch.setattr(discover, "_sort_by_downloads", lambda _p: None)
+
+    def fake_filter(p, **_k):
+        verified = "q=first" not in p.url
+        return {"opened": True, "verified": verified,
+                "ticked_on": [], "ticked_off": []}
+
+    monkeypatch.setattr(discover, "filter_creality_licences", fake_filter)
+    monkeypatch.setattr(discover, "judge_card",
+                        lambda name, url, used, is_done=None: {"state": "harvest", "reason": "",
+                                                               "family": "f-" + name})
+
+    result = discover.find_creality(["first", "second"], 1, "Downloads", None)
+
+    assert [m["name"] for m in result["models"]] == ["Fresh Two"]
+    assert result["models"][0]["keyword"] == "second"
+    assert result["licence"]["verified"] is True

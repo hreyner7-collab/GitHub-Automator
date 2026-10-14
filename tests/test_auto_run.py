@@ -872,3 +872,79 @@ def test_a_localised_link_is_also_checked_in_its_english_form():
 
     not_done = judge_card("Bottle storage rack", english, set(), lambda u, n: False)
     assert not_done["state"] != "skipped"
+
+
+def test_a_duplicate_found_only_after_opening_is_refused_by_its_card_next_time():
+    """The card of a model we already published can have a different link and
+    title (Cable Holder 3Dprint is Cable Organizer). Only its page shows the
+    duplicate, so that listing is learned as an alias: the next card check
+    refuses it by link BEFORE its page is opened again."""
+    import ledger
+
+    original = "https://www.crealitycloud.com/model-detail/cable-management-tool-3d-print"
+    listing = "https://www.crealitycloud.com/model-detail/cable-holder-3dprint"
+    ledger.record(name="Cable Organizer", source_url=original)
+    assert not ledger.find(source_url=listing, name="Cable Holder 3Dprint")["found"]
+
+    learned = ledger.learn_listing(source_url=listing,
+                                   names=["Cable Organizer", "Cable Holder 3Dprint"])
+    assert learned
+    assert ledger.find(source_url=listing, name="Cable Holder 3Dprint")["found"]
+    assert ledger.find(source_url=listing)["found"]
+
+
+def test_a_duplicate_found_after_opening_does_not_stop_the_run(monkeypatch, tmp_path):
+    """A listing that turns out to be an already-published model is written up as
+    a duplicate, its listing is learned, and the run goes on to a fresh model
+    from the top-up. It must not end the run."""
+    import main
+    import ledger
+    from downloader import classify_license
+
+    dup = "https://www.crealitycloud.com/model-detail/cable-holder-3dprint"
+    fresh = "https://www.crealitycloud.com/model-detail/fresh"
+    ledger.record(name="Cable Organizer",
+                  source_url="https://www.crealitycloud.com/model-detail/cable-management-tool-3d-print")
+
+    def fake_find(keywords, count, sort="Downloads", is_done=None, progress=None,
+                  should_stop=None, exclude=None):
+        # the first pass offers the duplicate; the top-up, which excludes what
+        # was attempted, offers a fresh model
+        if dup in (exclude or ()):
+            url, name = fresh, "Fresh cable organizer"
+        else:
+            url, name = dup, "Cable Holder 3Dprint"
+        return {"models": [{"name": name, "url": url, "keyword": "k"}],
+                "licence": {"opened": True, "verified": True}, "note": "",
+                "skipped_done": 0, "already_done": []}
+
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(b"\xff\xd8\xff\xe0")
+    license_ = classify_license("https://creativecommons.org/licenses/by/4.0")
+    by_url = {
+        # the page names the model as the one already published; no STL needed
+        dup: {"name": "Cable Organizer", "description": "d", "stl_path": "",
+              "image_paths": [], "license": license_, "author": ""},
+        fresh: {"name": "Fresh cable organizer", "description": "d",
+                "stl_path": REAL_MODEL, "image_paths": [str(cover)], "license": license_},
+    }
+    uploads = []
+
+    async def fake_upload(*a, **k):
+        uploads.append(a)
+        return {"success": True, "message": "Published", "url": "https://x/fresh"}
+
+    monkeypatch.setattr(main, "find_creality", fake_find)
+    monkeypatch.setattr(main, "dl_fetch", lambda url: by_url[url])
+    monkeypatch.setattr(main, "uploader_upload", fake_upload)
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(main, "UPLOAD_LOCK", asyncio.Lock())
+
+    asyncio.run(main._auto_worker(1, ["k"], "dupjob"))
+
+    states = {it["url"]: it["state"] for it in main.AUTO["items"] if it.get("url")}
+    assert states[dup] == "duplicate"
+    assert states[fresh] == "published"
+    assert len(uploads) == 1
+    # the duplicate's listing is learned, so the next card check refuses it by link
+    assert ledger.find(source_url=dup, name="Cable Holder 3Dprint")["found"]

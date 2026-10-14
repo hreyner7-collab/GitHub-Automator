@@ -420,6 +420,37 @@ def record(name: str = "", source_url: str = "", author: str = "",
         return entry
 
 
+def learn_listing(source_url: str = "", names=(), author: str = "",
+                  slug: str = "", file_path: str = "") -> dict:
+    """A listing that turned out, only once its page was open, to be a model we
+    already published. `find()` could only see that after the page was read, so
+    remember the listing's link and the titles the card and the page show as
+    spellings of that entry. The next run's card check then refuses the listing
+    BEFORE its page is opened again. Returns the entry, or {} if none matches."""
+    names = [n for n in dict.fromkeys(names or ()) if n]
+    with _LOCK:
+        data = load()
+        for entry in data["entries"]:
+            have = _identity(entry)
+            for n in (names or [""]):
+                want = _candidate_values(source_url=source_url, name=n,
+                                         author=author, slug=slug,
+                                         file_path=file_path)
+                if not _same_model(want, have):
+                    continue
+                fp = fingerprints(source_url=source_url, name=n, author=author,
+                                  slug=slug, file_path=file_path)
+                _merge_into(entry, fp, name=n, author=author,
+                            source_url=source_url, aliases=[source_url],
+                            outcome="", when="")
+                for other in names:
+                    if other != n:
+                        _merge_into(entry, {}, name=other, outcome="", when="")
+                _save(data)
+                return entry
+    return {}
+
+
 def forget(match: str) -> int:
     """Deliberately drop entries (a listing you deleted and want to re-publish).
     Matches an entry's source link, published link, slug, name or file digest."""
