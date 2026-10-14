@@ -14,3 +14,13 @@ edge_debug_profile/
 School/
 .freebuff/
 .unlazy/
+
+# Browser login profile (cookies/sessions) and large local-only data
+chrome_debug_profile/
+driver-audit/
+dataset/
+debug/
+debug_after/
+logs/
+School/
+read-aloud/

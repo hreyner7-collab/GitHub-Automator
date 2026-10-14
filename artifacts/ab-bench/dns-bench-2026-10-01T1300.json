@@ -1,0 +1,91 @@
+{
+  "ts": "2026-10-01T13:00:17.359Z",
+  "candidates": {
+    "194.168.4.100": {
+      "medianMs": 20.9,
+      "minMs": 16.1,
+      "maxMs": 21.8,
+      "lost": 0,
+      "sent": 7
+    },
+    "194.168.8.100": {
+      "medianMs": 31.3,
+      "minMs": 24.8,
+      "maxMs": 42.2,
+      "lost": 0,
+      "sent": 7
+    },
+    "1.1.1.1": {
+      "medianMs": 19.8,
+      "minMs": 17.6,
+      "maxMs": 21.1,
+      "lost": 0,
+      "sent": 7
+    },
+    "8.8.8.8": {
+      "medianMs": 26.3,
+      "minMs": 18,
+      "maxMs": 33.7,
+      "lost": 0,
+      "sent": 7
+    },
+    "9.9.9.9": {
+      "medianMs": 34.1,
+      "minMs": 21.2,
+      "maxMs": 553.7,
+      "lost": 0,
+      "sent": 7
+    },
+    "8.8.4.4": {
+      "medianMs": 27.2,
+      "minMs": 24,
+      "maxMs": 41.3,
+      "lost": 0,
+      "sent": 7
+    }
+  },
+  "ranking": [
+    {
+      "server": "1.1.1.1",
+      "medianMs": 19.8
+    },
+    {
+      "server": "194.168.4.100",
+      "medianMs": 20.9
+    },
+    {
+      "server": "8.8.8.8",
+      "medianMs": 26.3
+    },
+    {
+      "server": "8.8.4.4",
+      "medianMs": 27.2
+    },
+    {
+      "server": "194.168.8.100",
+      "medianMs": 31.3
+    },
+    {
+      "server": "9.9.9.9",
+      "medianMs": 34.1
+    }
+  ],
+  "fastest": "1.1.1.1",
+  "applied": "1.1.1.1, 194.168.4.100",
+  "appliedList": [
+    "1.1.1.1",
+    "194.168.4.100"
+  ],
+  "persisted": true,
+  "persistedRaw": [
+    "1.1.1.1",
+    "194.168.4.100"
+  ],
+  "leak": {
+    "server": "1.1.1.1",
+    "usesChosen": true,
+    "raw": "Server: one.one.one.one Address: 1.1.1.1 Name: example.com Addresses: 2606:4700:10::ac42:93f3 2606:4700:10::6814:179a 172.66.147.243 104.20.23.154 "
+  },
+  "method": "raw UDP DNS A-query RTT, 7 probes per resolver (1 warmup dropped), median",
+  "queryName": "random-label .example.com (cache-busting)"
+}

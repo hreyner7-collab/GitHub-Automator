@@ -1,0 +1,322 @@
+[
+ {
+  "epoch": 1,
+  "loss": 3.3617,
+  "val_all": 0.6769,
+  "val_thin_wire": 0.2984,
+  "val_multi_object": 0.6858,
+  "val_low_contrast": 0.631
+ },
+ {
+  "epoch": 2,
+  "loss": 3.1761,
+  "val_all": 0.2613,
+  "val_thin_wire": 0.1794,
+  "val_multi_object": 0.271,
+  "val_low_contrast": 0.2901
+ },
+ {
+  "epoch": 3,
+  "loss": 3.0511,
+  "val_all": 0.6487,
+  "val_thin_wire": 0.2923,
+  "val_multi_object": 0.66,
+  "val_low_contrast": 0.6036
+ },
+ {
+  "epoch": 4,
+  "loss": 3.027,
+  "val_all": 0.6989,
+  "val_thin_wire": 0.3123,
+  "val_multi_object": 0.7126,
+  "val_low_contrast": 0.6487
+ },
+ {
+  "epoch": 5,
+  "loss": 2.8374,
+  "val_all": 0.7087,
+  "val_thin_wire": 0.3158,
+  "val_multi_object": 0.7222,
+  "val_low_contrast": 0.6571
+ },
+ {
+  "epoch": 6,
+  "loss": 2.8016,
+  "val_all": 0.7151,
+  "val_thin_wire": 0.3173,
+  "val_multi_object": 0.7275,
+  "val_low_contrast": 0.6635
+ },
+ {
+  "epoch": 7,
+  "loss": 2.93,
+  "val_all": 0.6791,
+  "val_thin_wire": 0.3144,
+  "val_multi_object": 0.6944,
+  "val_low_contrast": 0.6284
+ },
+ {
+  "epoch": 8,
+  "loss": 2.7298,
+  "val_all": 0.6996,
+  "val_thin_wire": 0.3124,
+  "val_multi_object": 0.7137,
+  "val_low_contrast": 0.6485
+ },
+ {
+  "epoch": 9,
+  "loss": 2.7339,
+  "val_all": 0.7228,
+  "val_thin_wire": 0.3121,
+  "val_multi_object": 0.735,
+  "val_low_contrast": 0.6631
+ },
+ {
+  "epoch": 10,
+  "loss": 2.556,
+  "val_all": 0.4185,
+  "val_thin_wire": 0.1984,
+  "val_multi_object": 0.3335,
+  "val_low_contrast": 0.3295
+ },
+ {
+  "epoch": 11,
+  "loss": 2.1848,
+  "val_all": 0.7041,
+  "val_thin_wire": 0.3212,
+  "val_multi_object": 0.7142,
+  "val_low_contrast": 0.6528
+ },
+ {
+  "epoch": 12,
+  "loss": 2.6631,
+  "val_all": 0.4222,
+  "val_thin_wire": 0.1798,
+  "val_multi_object": 0.3588,
+  "val_low_contrast": 0.3538
+ },
+ {
+  "epoch": 13,
+  "loss": 2.7054,
+  "val_all": 0.725,
+  "val_thin_wire": 0.3216,
+  "val_multi_object": 0.7394,
+  "val_low_contrast": 0.6701
+ },
+ {
+  "epoch": 14,
+  "loss": 2.4937,
+  "val_all": 0.7333,
+  "val_thin_wire": 0.3063,
+  "val_multi_object": 0.7491,
+  "val_low_contrast": 0.6689
+ },
+ {
+  "epoch": 15,
+  "loss": 2.3778,
+  "val_all": 0.4998,
+  "val_thin_wire": 0.2415,
+  "val_multi_object": 0.4418,
+  "val_low_contrast": 0.4225
+ },
+ {
+  "epoch": 16,
+  "loss": 2.1209,
+  "val_all": 0.6495,
+  "val_thin_wire": 0.2901,
+  "val_multi_object": 0.6553,
+  "val_low_contrast": 0.6051
+ },
+ {
+  "epoch": 17,
+  "loss": 2.3834,
+  "val_all": 0.7245,
+  "val_thin_wire": 0.3124,
+  "val_multi_object": 0.7387,
+  "val_low_contrast": 0.6665
+ },
+ {
+  "epoch": 18,
+  "loss": 2.0102,
+  "val_all": 0.7448,
+  "val_thin_wire": 0.2726,
+  "val_multi_object": 0.7542,
+  "val_low_contrast": 0.656
+ },
+ {
+  "epoch": 19,
+  "loss": 1.8627,
+  "val_all": 0.7399,
+  "val_thin_wire": 0.2806,
+  "val_multi_object": 0.7535,
+  "val_low_contrast": 0.6445
+ },
+ {
+  "epoch": 20,
+  "loss": 1.8716,
+  "val_all": 0.7209,
+  "val_thin_wire": 0.3137,
+  "val_multi_object": 0.7362,
+  "val_low_contrast": 0.6553
+ },
+ {
+  "epoch": 21,
+  "loss": 2.1902,
+  "val_all": 0.7396,
+  "val_thin_wire": 0.3001,
+  "val_multi_object": 0.7532,
+  "val_low_contrast": 0.6686
+ },
+ {
+  "epoch": 22,
+  "loss": 1.9312,
+  "val_all": 0.7501,
+  "val_thin_wire": 0.2851,
+  "val_multi_object": 0.7626,
+  "val_low_contrast": 0.667
+ },
+ {
+  "epoch": 23,
+  "loss": 2.0651,
+  "val_all": 0.7325,
+  "val_thin_wire": 0.3118,
+  "val_multi_object": 0.7477,
+  "val_low_contrast": 0.6605
+ },
+ {
+  "epoch": 24,
+  "loss": 1.815,
+  "val_all": 0.7495,
+  "val_thin_wire": 0.2938,
+  "val_multi_object": 0.764,
+  "val_low_contrast": 0.6624
+ },
+ {
+  "epoch": 25,
+  "loss": 1.9273,
+  "val_all": 0.7429,
+  "val_thin_wire": 0.298,
+  "val_multi_object": 0.7576,
+  "val_low_contrast": 0.6589
+ },
+ {
+  "epoch": 26,
+  "loss": 1.6278,
+  "val_all": 0.7471,
+  "val_thin_wire": 0.2972,
+  "val_multi_object": 0.7618,
+  "val_low_contrast": 0.6624
+ },
+ {
+  "epoch": 27,
+  "loss": 1.6926,
+  "val_all": 0.741,
+  "val_thin_wire": 0.3057,
+  "val_multi_object": 0.755,
+  "val_low_contrast": 0.6623
+ },
+ {
+  "epoch": 28,
+  "loss": 1.8833,
+  "val_all": 0.7283,
+  "val_thin_wire": 0.3121,
+  "val_multi_object": 0.7443,
+  "val_low_contrast": 0.6588
+ },
+ {
+  "epoch": 29,
+  "loss": 1.7346,
+  "val_all": 0.7458,
+  "val_thin_wire": 0.2947,
+  "val_multi_object": 0.76,
+  "val_low_contrast": 0.6601
+ },
+ {
+  "epoch": 30,
+  "loss": 1.8248,
+  "val_all": 0.7418,
+  "val_thin_wire": 0.2943,
+  "val_multi_object": 0.755,
+  "val_low_contrast": 0.6563
+ },
+ {
+  "epoch": 31,
+  "loss": 1.7902,
+  "val_all": 0.7352,
+  "val_thin_wire": 0.3059,
+  "val_multi_object": 0.7491,
+  "val_low_contrast": 0.6579
+ },
+ {
+  "epoch": 32,
+  "loss": 1.708,
+  "val_all": 0.7413,
+  "val_thin_wire": 0.3061,
+  "val_multi_object": 0.7557,
+  "val_low_contrast": 0.6628
+ },
+ {
+  "epoch": 33,
+  "loss": 1.6573,
+  "val_all": 0.7425,
+  "val_thin_wire": 0.3114,
+  "val_multi_object": 0.758,
+  "val_low_contrast": 0.667
+ },
+ {
+  "epoch": 34,
+  "loss": 1.8103,
+  "val_all": 0.7409,
+  "val_thin_wire": 0.3123,
+  "val_multi_object": 0.7559,
+  "val_low_contrast": 0.666
+ },
+ {
+  "epoch": 35,
+  "loss": 1.8321,
+  "val_all": 0.7396,
+  "val_thin_wire": 0.3123,
+  "val_multi_object": 0.7542,
+  "val_low_contrast": 0.6649
+ },
+ {
+  "epoch": 36,
+  "loss": 1.8992,
+  "val_all": 0.7415,
+  "val_thin_wire": 0.3081,
+  "val_multi_object": 0.7561,
+  "val_low_contrast": 0.664
+ },
+ {
+  "epoch": 37,
+  "loss": 1.7519,
+  "val_all": 0.7416,
+  "val_thin_wire": 0.308,
+  "val_multi_object": 0.7561,
+  "val_low_contrast": 0.664
+ },
+ {
+  "epoch": 38,
+  "loss": 1.777,
+  "val_all": 0.7415,
+  "val_thin_wire": 0.307,
+  "val_multi_object": 0.7558,
+  "val_low_contrast": 0.6634
+ },
+ {
+  "epoch": 39,
+  "loss": 1.7263,
+  "val_all": 0.7414,
+  "val_thin_wire": 0.3069,
+  "val_multi_object": 0.7556,
+  "val_low_contrast": 0.6633
+ },
+ {
+  "epoch": 40,
+  "loss": 1.5541,
+  "val_all": 0.7414,
+  "val_thin_wire": 0.3069,
+  "val_multi_object": 0.7557,
+  "val_low_contrast": 0.6633
+ }
+]

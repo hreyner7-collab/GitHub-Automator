@@ -1,0 +1,680 @@
+{
+ "job_id": "20261008-222217",
+ "requested": 5,
+ "keywords": [
+  "cable organizer",
+  "phone holder",
+  "cotton bud holder",
+  "water bottle holder",
+  "clothes pegs",
+  "wall hooks",
+  "desk organizer",
+  "storage box organizer"
+ ],
+ "licence": {
+  "opened": true,
+  "state": {
+   "CC BY": true,
+   "CC BY-SA": true,
+   "CC BY-NC": true,
+   "CC BY-NC-SA": true,
+   "CC BY-ND": false,
+   "CC BY-NC-ND": true,
+   "CC0": true,
+   "Standard License": false
+  },
+  "ticked_on": [
+   "CC BY",
+   "CC BY-NC",
+   "CC BY-NC-ND",
+   "CC BY-NC-SA",
+   "CC BY-SA",
+   "CC0"
+  ],
+  "ticked_off": [
+   "CC BY-ND",
+   "Standard License"
+  ],
+  "verified": true,
+  "applied_with": "Confirm"
+ },
+ "counts": {
+  "published": 5,
+  "skipped": 0,
+  "failed": 0,
+  "fetch_failed": 0,
+  "duplicate": 0,
+  "queued": 0,
+  "working": 0,
+  "rejected": 13
+ },
+ "items": [
+  {
+   "name": "Organizer Box",
+   "url": "https://www.crealitycloud.com/model-detail/organizer-box",
+   "keyword": "cable organizer",
+   "family": "storage-box",
+   "state": "published",
+   "reason": "",
+   "result": "Published to your Creality Cloud account with 9 photo(s) in the creator's order \u2014 web cover organizer_box_img_0.webp, app cover organizer_box_img_1.webp, 9 in the gallery. Check 'My Designs'.",
+   "licence": "creativecommons.org/licenses/by-nc-sa/4 License This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any mediu",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY-NC-SA)",
+    "the CC grant paragraph"
+   ],
+   "upload_verify": {
+    "images": {
+     "photos_available": 9,
+     "cover_web": "organizer_box_img_0.webp",
+     "cover_app": "organizer_box_img_1.webp",
+     "covers_differ": true,
+     "gallery_sent": 9,
+     "gallery_counter": [
+      0,
+      9
+     ],
+     "gallery_ok": true,
+     "converted": [],
+     "dropped_over_9": 0,
+     "zones": {
+      "web": 3,
+      "app": 4,
+      "gallery": 5
+     }
+    },
+    "consent": {
+     "found": true,
+     "row": "I have read and agree to Copyright Statement. Please check the box to agree before submitting",
+     "row_cls": "el-checkbox",
+     "input_html": "<input class=\"el-checkbox__original\" type=\"checkbox\">",
+     "points": {
+      "circle": "el-checkbox__input",
+      "label": "el-checkbox"
+     },
+     "reach": [
+      [
+       "consent",
+       "topmost",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-escape",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-click",
+       "span",
+       "el-checkbox__inner"
+      ],
+      [
+       "submit",
+       "topmost",
+       "div",
+       "submit"
+      ]
+     ],
+     "reachable": true,
+     "tried": [
+      [
+       "round1:circle",
+       true
+      ]
+     ],
+     "checked": true
+    },
+    "copyright_agreed": true,
+    "license_answers": {
+     "wanted": [
+      2,
+      1,
+      1
+     ],
+     "source_code": "by-nc-sa",
+     "clicked": [],
+     "radio_index_verified": [
+      2,
+      1,
+      1
+     ],
+     "badge": "CC BY-NC-SA This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format for noncommercial purposes only, and only so long as attribution is given to the creator. If you remix, adapt, or build upon the material, you must license the modified material u",
+     "badge_parsed_from": "badge",
+     "badge_in_card": true,
+     "badge_license": "CCBY-NC-SA",
+     "badge_expected": "CC BY-NC-SA",
+     "badge_ok": true,
+     "license_card": "License * Allow adaptations of your work to be shared? Yes No Yes, as long as others share in the same way Allow commercial uses of your work? Yes No This work is licensed under the Copyright License 4.0. CC BY-NC-SA This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format for noncommercial purposes only, and only so long as attribution is given ",
+     "radios_read": true,
+     "radios_ok": true
+    },
+    "remix_source_declared": true,
+    "remix_registered_href": "",
+    "remix_suggestion_clicked": "ORGANIZER BOX"
+   }
+  },
+  {
+   "name": "Charger Cables organizer 2nd edition",
+   "url": "https://www.crealitycloud.com/model-detail/charger-cables-organizer-2nd-edition",
+   "keyword": "cable organizer",
+   "family": "cable-organizer",
+   "state": "published",
+   "reason": "",
+   "result": "Published to your Creality Cloud account with 1 photo(s) in the creator's order \u2014 web cover charger_cables_organizer_2nd_edition_img_0.webp, app cover charger_cables_organizer_2nd_edition_img_0.webp, 1 in the gallery. Check 'My Designs'.",
+   "licence": "creativecommons.org/licenses/by-nc/4 License This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any medium o",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY-NC)",
+    "the CC grant paragraph"
+   ],
+   "upload_verify": {
+    "images": {
+     "photos_available": 1,
+     "cover_web": "charger_cables_organizer_2nd_edition_img_0.webp",
+     "cover_app": "charger_cables_organizer_2nd_edition_img_0.webp",
+     "covers_differ": false,
+     "gallery_sent": 1,
+     "gallery_counter": [
+      0,
+      1
+     ],
+     "gallery_ok": true,
+     "converted": [],
+     "dropped_over_9": 0,
+     "zones": {
+      "web": 3,
+      "app": 4,
+      "gallery": 5
+     }
+    },
+    "consent": {
+     "found": true,
+     "row": "I have read and agree to Copyright Statement. Please check the box to agree before submitting",
+     "row_cls": "el-checkbox",
+     "input_html": "<input class=\"el-checkbox__original\" type=\"checkbox\">",
+     "points": {
+      "circle": "el-checkbox__input",
+      "label": "el-checkbox"
+     },
+     "reach": [
+      [
+       "consent",
+       "topmost",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-escape",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-click",
+       "span",
+       "el-checkbox__inner"
+      ],
+      [
+       "submit",
+       "topmost",
+       "div",
+       "submit"
+      ]
+     ],
+     "reachable": true,
+     "tried": [
+      [
+       "round1:circle",
+       true
+      ]
+     ],
+     "checked": true
+    },
+    "copyright_agreed": true,
+    "license_answers": {
+     "wanted": [
+      0,
+      1,
+      1
+     ],
+     "source_code": "by-nc",
+     "clicked": [],
+     "radio_index_verified": [
+      0,
+      1,
+      1
+     ],
+     "badge": "CC BY-NC This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format for noncommercial purposes only, and only so long as attribution is given to the creator.",
+     "badge_parsed_from": "badge",
+     "badge_in_card": true,
+     "badge_license": "CCBY-NC",
+     "badge_expected": "CC BY-NC",
+     "badge_ok": true,
+     "license_card": "License * Allow adaptations of your work to be shared? Yes No Yes, as long as others share in the same way Allow commercial uses of your work? Yes No This work is licensed under the Copyright License 4.0. CC BY-NC This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format for noncommercial purposes only, and only so long as attribution is given to ",
+     "radios_read": true,
+     "radios_ok": true
+    },
+    "remix_source_declared": true,
+    "remix_registered_href": "",
+    "remix_suggestion_clicked": "Charger Cables organizer 2nd edition"
+   }
+  },
+  {
+   "name": "D Print Phone Mount",
+   "url": "https://www.crealitycloud.com/model-detail/3d-print-phone-mount",
+   "keyword": "cable organizer",
+   "family": "phone-holder",
+   "state": "published",
+   "reason": "",
+   "result": "Published to your Creality Cloud account with 1 photo(s) in the creator's order \u2014 web cover phone_holder_img_0.webp, app cover phone_holder_img_0.webp, 1 in the gallery. Check 'My Designs'.",
+   "licence": "creativecommons.org/licenses/by/4 License This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or f",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY)",
+    "the CC grant paragraph"
+   ],
+   "upload_verify": {
+    "images": {
+     "photos_available": 1,
+     "cover_web": "phone_holder_img_0.webp",
+     "cover_app": "phone_holder_img_0.webp",
+     "covers_differ": false,
+     "gallery_sent": 1,
+     "gallery_counter": [
+      0,
+      1
+     ],
+     "gallery_ok": true,
+     "converted": [],
+     "dropped_over_9": 0,
+     "zones": {
+      "web": 3,
+      "app": 4,
+      "gallery": 5
+     }
+    },
+    "consent": {
+     "found": true,
+     "row": "I have read and agree to Copyright Statement. Please check the box to agree before submitting",
+     "row_cls": "el-checkbox",
+     "input_html": "<input class=\"el-checkbox__original\" type=\"checkbox\">",
+     "points": {
+      "circle": "el-checkbox__input",
+      "label": "el-checkbox"
+     },
+     "reach": [
+      [
+       "consent",
+       "topmost",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-escape",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-click",
+       "span",
+       "el-checkbox__inner"
+      ],
+      [
+       "submit",
+       "topmost",
+       "div",
+       "submit"
+      ]
+     ],
+     "reachable": true,
+     "tried": [
+      [
+       "round1:circle",
+       true
+      ]
+     ],
+     "checked": true
+    },
+    "copyright_agreed": true,
+    "license_answers": {
+     "wanted": [
+      0,
+      0,
+      1
+     ],
+     "source_code": "by",
+     "clicked": [],
+     "radio_index_verified": [
+      0,
+      0,
+      1
+     ],
+     "badge": "CC BY This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format, so long as attribution is given to the creator. The license allows for commercial use.",
+     "badge_parsed_from": "badge",
+     "badge_in_card": true,
+     "badge_license": "CCBY",
+     "badge_expected": "CC BY",
+     "badge_ok": true,
+     "license_card": "License * Allow adaptations of your work to be shared? Yes No Yes, as long as others share in the same way Allow commercial uses of your work? Yes No Allow sharing or redistributing of your work or its derivatives? Yes No This work is licensed under the Copyright License 4.0. CC BY This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format, so long",
+     "radios_read": true,
+     "radios_ok": true
+    },
+    "remix_source_declared": true,
+    "remix_registered_href": "",
+    "remix_suggestion_clicked": "Horse Phone Holder"
+   }
+  },
+  {
+   "name": "Strong Cable Wall Hook",
+   "url": "https://www.crealitycloud.com/model-detail/strong-cable-wall-hook",
+   "keyword": "cable organizer",
+   "family": "hook",
+   "state": "published",
+   "reason": "",
+   "result": "Published to your Creality Cloud account with 1 photo(s) in the creator's order \u2014 web cover strong_cable_wall_hook_img_0.webp, app cover strong_cable_wall_hook_img_0.webp, 1 in the gallery. Check 'My Designs'.",
+   "licence": "creativecommons.org/licenses/by/4 License This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or f",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY)",
+    "the CC grant paragraph"
+   ],
+   "upload_verify": {
+    "images": {
+     "photos_available": 1,
+     "cover_web": "strong_cable_wall_hook_img_0.webp",
+     "cover_app": "strong_cable_wall_hook_img_0.webp",
+     "covers_differ": false,
+     "gallery_sent": 1,
+     "gallery_counter": [
+      0,
+      1
+     ],
+     "gallery_ok": true,
+     "converted": [],
+     "dropped_over_9": 0,
+     "zones": {
+      "web": 3,
+      "app": 4,
+      "gallery": 5
+     }
+    },
+    "consent": {
+     "found": true,
+     "row": "I have read and agree to Copyright Statement. Please check the box to agree before submitting",
+     "row_cls": "el-checkbox",
+     "input_html": "<input class=\"el-checkbox__original\" type=\"checkbox\">",
+     "points": {
+      "circle": "el-checkbox__input",
+      "label": "el-checkbox"
+     },
+     "reach": [
+      [
+       "consent",
+       "topmost",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-escape",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-click",
+       "span",
+       "el-checkbox__inner"
+      ],
+      [
+       "submit",
+       "topmost",
+       "div",
+       "submit"
+      ]
+     ],
+     "reachable": true,
+     "tried": [
+      [
+       "round1:circle",
+       true
+      ]
+     ],
+     "checked": true
+    },
+    "copyright_agreed": true,
+    "license_answers": {
+     "wanted": [
+      0,
+      0,
+      1
+     ],
+     "source_code": "by",
+     "clicked": [],
+     "radio_index_verified": [
+      0,
+      0,
+      1
+     ],
+     "badge": "CC BY This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format, so long as attribution is given to the creator. The license allows for commercial use.",
+     "badge_parsed_from": "badge",
+     "badge_in_card": true,
+     "badge_license": "CCBY",
+     "badge_expected": "CC BY",
+     "badge_ok": true,
+     "license_card": "License * Allow adaptations of your work to be shared? Yes No Yes, as long as others share in the same way Allow commercial uses of your work? Yes No Allow sharing or redistributing of your work or its derivatives? Yes No This work is licensed under the Copyright License 4.0. CC BY This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format, so long",
+     "radios_read": true,
+     "radios_ok": true
+    },
+    "remix_source_declared": true,
+    "remix_registered_href": "",
+    "remix_suggestion_clicked": "strong cable wall hook"
+   }
+  },
+  {
+   "name": "Creative Desk Organizer",
+   "url": "https://www.crealitycloud.com/model-detail/creative-desk-organizer",
+   "keyword": "cable organizer",
+   "family": "desk-organizer",
+   "state": "published",
+   "reason": "",
+   "result": "Published to your Creality Cloud account with 6 photo(s) in the creator's order \u2014 web cover desk_organizer_img_0.webp, app cover desk_organizer_img_1.webp, 6 in the gallery. Check 'My Designs'.",
+   "licence": "creativecommons.org/licenses/by-nc/4 License This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any medium o",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY-NC)",
+    "the CC grant paragraph"
+   ],
+   "upload_verify": {
+    "images": {
+     "photos_available": 6,
+     "cover_web": "desk_organizer_img_0.webp",
+     "cover_app": "desk_organizer_img_1.webp",
+     "covers_differ": true,
+     "gallery_sent": 6,
+     "gallery_counter": [
+      0,
+      6
+     ],
+     "gallery_ok": true,
+     "converted": [],
+     "dropped_over_9": 0,
+     "zones": {
+      "web": 3,
+      "app": 4,
+      "gallery": 5
+     }
+    },
+    "consent": {
+     "found": true,
+     "row": "I have read and agree to Copyright Statement. Please check the box to agree before submitting",
+     "row_cls": "el-checkbox",
+     "input_html": "<input class=\"el-checkbox__original\" type=\"checkbox\">",
+     "points": {
+      "circle": "el-checkbox__input",
+      "label": "el-checkbox"
+     },
+     "reach": [
+      [
+       "consent",
+       "topmost",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-escape",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-click",
+       "span",
+       "el-checkbox__inner"
+      ],
+      [
+       "submit",
+       "topmost",
+       "div",
+       "submit"
+      ]
+     ],
+     "reachable": true,
+     "tried": [
+      [
+       "round1:circle",
+       true
+      ]
+     ],
+     "checked": true
+    },
+    "copyright_agreed": true,
+    "license_answers": {
+     "wanted": [
+      0,
+      1,
+      1
+     ],
+     "source_code": "by-nc",
+     "clicked": [],
+     "radio_index_verified": [
+      0,
+      1,
+      1
+     ],
+     "badge": "CC BY-NC This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format for noncommercial purposes only, and only so long as attribution is given to the creator.",
+     "badge_parsed_from": "badge",
+     "badge_in_card": true,
+     "badge_license": "CCBY-NC",
+     "badge_expected": "CC BY-NC",
+     "badge_ok": true,
+     "license_card": "License * Allow adaptations of your work to be shared? Yes No Yes, as long as others share in the same way Allow commercial uses of your work? Yes No This work is licensed under the Copyright License 4.0. CC BY-NC This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format for noncommercial purposes only, and only so long as attribution is given to ",
+     "radios_read": true,
+     "radios_ok": true
+    },
+    "remix_source_declared": true,
+    "remix_registered_href": "",
+    "remix_suggestion_clicked": "Desk Organizer"
+   }
+  },
+  {
+   "name": "Double Heavy Duty Hook / Tool Holder \u2014 Cable Organizer (V4)",
+   "url": "https://www.crealitycloud.com/model-detail/double-heavy-duty-wall-hook-cable-organizer-v4",
+   "state": "rejected",
+   "reason": "garage / automotive / workshop gear \u2014 not a house item",
+   "result": ""
+  },
+  {
+   "name": "cable organiser",
+   "url": "https://www.crealitycloud.com/model-detail/cable-storage-solution-3d",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "charging cable organizer",
+   "url": "https://www.crealitycloud.com/model-detail/charging-cable-organizer",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Double laptop stand",
+   "url": "https://www.crealitycloud.com/model-detail/double-laptop-stand",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Cable holder - 4 size",
+   "url": "https://www.crealitycloud.com/model-detail/cable-holder-4-size",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "K2 Plus Collecteur",
+   "url": "https://www.crealitycloud.com/model-detail/k2-plus-collecteur",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Usbc Cable Holder Screw Clamp",
+   "url": "https://www.crealitycloud.com/model-detail/usbc-cable-holder-screw-clamp",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Cable Organizer V1",
+   "url": "https://www.crealitycloud.com/model-detail/cable-organizer-v1",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Extension Cable Holder",
+   "url": "https://www.crealitycloud.com/model-detail/extension-cable-holder",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Cable Organizer 3D",
+   "url": "https://www.crealitycloud.com/model-detail/cable-organizer-3d",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "D Printed Cable Clip",
+   "url": "https://www.crealitycloud.com/model-detail/3d-printed-cable-clip",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Organizer Storage Solution",
+   "url": "https://www.crealitycloud.com/model-detail/organizer-storage-solution",
+   "state": "rejected",
+   "reason": "a storage box / basket / tray is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Wind Up Cable Organizer",
+   "url": "https://www.crealitycloud.com/model-detail/wind-up-cable-organizer",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  }
+ ],
+ "finished": "2026-10-08 22:27:44"
+}

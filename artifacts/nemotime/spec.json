@@ -1,0 +1,92 @@
+{
+  "name": "5-Slot USB Cable Dock",
+  "description": "Desk cable dock with five separated slots for organizing USB-A, USB-C, Lightning, and Micro-USB charging cables. Stable 8 mm base with 30 mm tall dividers.",
+  "design_notes": "Single solid print: 8 mm thick base plate welded to four 2 mm-thick vertical dividers (1 mm Z-overlap) creating five 14 mm-wide cable channels. All walls >=1.6 mm. No supports needed.",
+  "parts": [
+    {
+      "id": "base",
+      "op": "add",
+      "shape": {
+        "type": "box",
+        "size": [
+          120,
+          80,
+          8
+        ],
+        "pos": [
+          60,
+          40,
+          4
+        ]
+      }
+    },
+    {
+      "id": "divider_1",
+      "op": "add",
+      "shape": {
+        "type": "box",
+        "size": [
+          2,
+          80,
+          30
+        ],
+        "pos": [
+          36,
+          40,
+          22
+        ]
+      }
+    },
+    {
+      "id": "divider_2",
+      "op": "add",
+      "shape": {
+        "type": "box",
+        "size": [
+          2,
+          80,
+          30
+        ],
+        "pos": [
+          52,
+          40,
+          22
+        ]
+      }
+    },
+    {
+      "id": "divider_3",
+      "op": "add",
+      "shape": {
+        "type": "box",
+        "size": [
+          2,
+          80,
+          30
+        ],
+        "pos": [
+          68,
+          40,
+          22
+        ]
+      }
+    },
+    {
+      "id": "divider_4",
+      "op": "add",
+      "shape": {
+        "type": "box",
+        "size": [
+          2,
+          80,
+          30
+        ],
+        "pos": [
+          84,
+          40,
+          22
+        ]
+      }
+    }
+  ]
+}

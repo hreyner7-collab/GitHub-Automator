@@ -1,0 +1,117 @@
+{
+ "job_id": "20261008-165952",
+ "requested": 5,
+ "keywords": [
+  "household items",
+  "cable organizer",
+  "useful household"
+ ],
+ "licence": {
+  "opened": true,
+  "state": {
+   "CC BY": true,
+   "CC BY-SA": true,
+   "CC BY-NC": true,
+   "CC BY-NC-SA": true,
+   "CC BY-ND": false,
+   "CC BY-NC-ND": true,
+   "CC0": true,
+   "Standard License": false
+  },
+  "ticked_on": [
+   "CC BY",
+   "CC BY-NC",
+   "CC BY-NC-ND",
+   "CC BY-NC-SA",
+   "CC BY-SA",
+   "CC0"
+  ],
+  "ticked_off": [
+   "CC BY-ND",
+   "Standard License"
+  ],
+  "verified": true,
+  "applied_with": "Confirm"
+ },
+ "counts": {
+  "published": 1,
+  "skipped": 0,
+  "failed": 1,
+  "duplicate": 3,
+  "queued": 0,
+  "working": 0
+ },
+ "items": [
+  {
+   "name": "Stand for cleaning accessories",
+   "url": "https://www.crealitycloud.com/model-detail/cleaning-accessories-stand",
+   "keyword": "household items",
+   "state": "duplicate",
+   "reason": "Already published on 2026-10-08 16:38:38 as \u201cStand for cleaning accessories\u201d \u2014 matched on the same name and designer, so it was NOT uploaded again. It is here: https://www.crealitycloud.com/model-detail/3d-printed-cleaning-stand",
+   "result": "",
+   "licence": "creativecommons.org/licenses/by-nc-sa/4 License This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any mediu",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY-NC-SA)",
+    "the CC grant paragraph"
+   ]
+  },
+  {
+   "name": "Toothbrush stand",
+   "url": "https://www.crealitycloud.com/model-detail/innovative-3d-toothbrush-stand",
+   "keyword": "household items",
+   "state": "duplicate",
+   "reason": "Already published on 2026-10-08 16:38:38 as \u201cToothbrush stand\u201d \u2014 matched on the same name and designer, so it was NOT uploaded again. It is here: https://www.crealitycloud.com/model-detail/6ac7b19bf5ed98d3279c96a7",
+   "result": "",
+   "licence": "creativecommons.org/licenses/by/4 License This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or f",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY)",
+    "the CC grant paragraph"
+   ]
+  },
+  {
+   "name": "Laundry Detergent Cup Drain - Tide",
+   "url": "https://www.crealitycloud.com/model-detail/laundry-detergent-cup-drain-tide",
+   "keyword": "household items",
+   "state": "duplicate",
+   "reason": "Already published on 2026-10-08 16:38:38 as \u201cLaundry Detergent Cup Drain - Tide\u201d \u2014 matched on the same name and designer, so it was NOT uploaded again. It is here: https://www.crealitycloud.com/model-detail/tide-laundry-detergent-drain-cup",
+   "result": "",
+   "licence": "creativecommons.org/licenses/by/4 License This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or f",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY)",
+    "the CC grant paragraph"
+   ]
+  },
+  {
+   "name": "Clothespin",
+   "url": "https://www.crealitycloud.com/model-detail/clothespin-3d-printing",
+   "keyword": "household items",
+   "state": "published",
+   "reason": "",
+   "result": "Published to your Creality Cloud account with 5 photo(s) in the creator's order \u2014 web cover clothespin_img_0.webp, app cover clothespin_img_1.webp, 5 in the gallery. Check 'My Designs'.",
+   "licence": "creativecommons.org/licenses/by-nc/4 License This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any medium o",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY-NC)",
+    "the CC grant paragraph"
+   ]
+  },
+  {
+   "name": "\u0414\u043e\u043c\u043a\u0440\u0430\u0442 \u0434\u043b\u044f \u043f\u043e\u0434\u044a\u0435\u043c\u0430 \u043f\u043e\u0434\u0434\u043e\u043d\u043e\u0432 1/10-\u0433\u043e \u043c\u0430\u0441\u0448\u0442\u0430\u0431\u0430",
+   "url": "https://www.crealitycloud.com/model-detail/scale-model-pallet-jack",
+   "keyword": "household items",
+   "state": "failed",
+   "reason": "Submit was pressed but Creality never confirmed the submission \u2014 the form is still open (see downloads/_shots/after_submit.png). Nothing was published; check the form for a missing field and press Sub",
+   "result": "",
+   "licence": "creativecommons.org/licenses/by-nc-sa/4 Comments Comments (6) Images Only Newest comments Creality Cloud Creality Verified Print Settings 0.2mm layer, 4 walls, 15% infill 2025-11-27 08:24 K2 Pro Hyper",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY-NC-SA)",
+    "the CC grant paragraph"
+   ]
+  }
+ ],
+ "finished": "2026-10-08 17:04:31"
+}

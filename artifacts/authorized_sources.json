@@ -1,0 +1,13 @@
+{
+ "authorized": [
+  {
+   "source_url": "crealitycloud.com/model-detail/hand-shaped-jewelry-stand-display-lotus-bowl",
+   "note": "Operator-directed manual publish of this exact model (2026-10-13): upload its file, creator photos, description and CC BY-NC licence answers as instructed by the user."
+  },
+  {
+   "source_url": "hand-shaped-jewelry-stand-display-lotus-bowl",
+   "note": "Operator-directed upload of this one model (2026-10-13), authorised by the user."
+  }
+ ],
+ "_about": "Sources THIS account may re-publish: models you designed yourself, or models whose creator gave you permission to redistribute. Creality's program page lists re-uploaded models as not eligible, so anything not named here is refused. Add one with: python scripts/authorize_source.py <model-url> \"why it is allowed\""
+}

@@ -1,0 +1,275 @@
+{
+ "job_id": "20261009-225623",
+ "requested": 1,
+ "keywords": [
+  "cable organizer"
+ ],
+ "licence": {
+  "opened": true,
+  "state": {
+   "CC BY": true,
+   "CC BY-SA": true,
+   "CC BY-NC": false,
+   "CC BY-NC-SA": false,
+   "CC BY-ND": false,
+   "CC BY-NC-ND": false,
+   "CC0": true,
+   "Standard License": false
+  },
+  "ticked_on": [
+   "CC BY",
+   "CC BY-SA",
+   "CC0"
+  ],
+  "ticked_off": [
+   "CC BY-NC",
+   "CC BY-NC-ND",
+   "CC BY-NC-SA",
+   "CC BY-ND",
+   "Standard License"
+  ],
+  "verified": true,
+  "applied_with": "Confirm"
+ },
+ "counts": {
+  "published": 1,
+  "skipped": 0,
+  "failed": 0,
+  "fetch_failed": 0,
+  "duplicate": 0,
+  "queued": 0,
+  "working": 0,
+  "rejected": 12
+ },
+ "items": [
+  {
+   "name": "Side Cable Clip for Creality Ender-3 V3 KE",
+   "url": "https://www.crealitycloud.com/model-detail/side-cable-clip-creality-ender-3-v3-ke",
+   "keyword": "cable organizer",
+   "family": "cable-organizer",
+   "state": "published",
+   "reason": "",
+   "result": "Published to your Creality Cloud account with 7 photo(s) in the creator's order \u2014 web cover side_cable_clip_for_creality_ender-3_v3__view0.png, app cover side_cable_clip_for_creality_ender-3_v3__view1.png, 7 in the gallery. Check 'My Designs'.",
+   "licence": "creativecommons.org/licenses/by/4 License This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or f",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY)",
+    "the CC grant paragraph"
+   ],
+   "policy": {
+    "rule": "ok",
+    "allowed": true,
+    "checks": [
+     {
+      "check": "content",
+      "rule": "",
+      "allowed": true,
+      "reason": ""
+     },
+     {
+      "check": "licence",
+      "rule": "licence-by",
+      "allowed": true,
+      "reason": ""
+     },
+     {
+      "check": "source",
+      "rule": "cc-licensed-source",
+      "allowed": true,
+      "reason": ""
+     },
+     {
+      "check": "proof",
+      "rule": "proof-of-creation",
+      "allowed": true,
+      "reason": ""
+     }
+    ]
+   },
+   "proof": {
+    "ok": true,
+    "sha256": "42c0ef8b37b23a038c50c96b2f7879cd56839f46c7f02b8c3782d26161a2032f",
+    "why": ""
+   },
+   "photo_note": "photos: 6 render(s) of OUR OWN model file (the safe default; change it in the rules card) + the proof of creation",
+   "upload_verify": {
+    "images": {
+     "photos_available": 7,
+     "cover_web": "side_cable_clip_for_creality_ender-3_v3__view0.png",
+     "cover_app": "side_cable_clip_for_creality_ender-3_v3__view1.png",
+     "covers_differ": true,
+     "gallery_sent": 7,
+     "gallery_counter": [
+      0,
+      7
+     ],
+     "gallery_ok": true,
+     "converted": [],
+     "dropped_over_9": 0,
+     "zones": {
+      "web": 3,
+      "app": 4,
+      "gallery": 5
+     }
+    },
+    "consent": {
+     "found": true,
+     "row": "I have read and agree to Copyright Statement. Please check the box to agree before submitting",
+     "row_cls": "el-checkbox",
+     "input_html": "<input class=\"el-checkbox__original\" type=\"checkbox\">",
+     "points": {
+      "circle": "el-checkbox__input",
+      "label": "el-checkbox"
+     },
+     "reach": [
+      [
+       "consent",
+       "topmost",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-escape",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-click",
+       "span",
+       "el-checkbox__inner"
+      ],
+      [
+       "submit",
+       "topmost",
+       "div",
+       "submit"
+      ]
+     ],
+     "reachable": true,
+     "tried": [
+      [
+       "round1:circle",
+       true
+      ]
+     ],
+     "checked": true
+    },
+    "copyright_agreed": true,
+    "license_answers": {
+     "wanted": [
+      0,
+      0,
+      1
+     ],
+     "source_code": "by",
+     "clicked": [],
+     "radio_index_verified": [
+      0,
+      0,
+      1
+     ],
+     "badge": "CC BY This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format, so long as attribution is given to the creator. The license allows for commercial use.",
+     "badge_parsed_from": "badge",
+     "badge_in_card": true,
+     "badge_license": "CCBY",
+     "badge_expected": "CC BY",
+     "badge_ok": true,
+     "license_card": "License * Allow adaptations of your work to be shared? Yes No Yes, as long as others share in the same way Allow commercial uses of your work? Yes No Allow sharing or redistributing of your work or its derivatives? Yes No This work is licensed under the Copyright License 4.0. CC BY This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format, so long",
+     "radios_read": true,
+     "radios_ok": true
+    },
+    "remix_source_declared": true,
+    "remix_registered_href": "",
+    "remix_suggestion_clicked": "Side Cable Clip for Creality Ender-3 V3 KE",
+    "remix_source_why": "the registered source names the source model"
+   }
+  },
+  {
+   "name": "Double Heavy Duty Hook / Tool Holder \u2014 Cable Organizer (V4)",
+   "url": "https://www.crealitycloud.com/model-detail/double-heavy-duty-wall-hook-cable-organizer-v4",
+   "state": "rejected",
+   "reason": "garage / automotive / workshop gear \u2014 not a house item",
+   "result": ""
+  },
+  {
+   "name": "charging cable organizer",
+   "url": "https://www.crealitycloud.com/model-detail/charging-cable-organizer",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Organizador de mesa ou cabeceira para controles",
+   "url": "https://www.crealitycloud.com/model-detail/desk-or-bedside-organizer-for-controllers",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Cable Organizer V1",
+   "url": "https://www.crealitycloud.com/model-detail/cable-organizer-v1",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Ender 3 Cable Chain",
+   "url": "https://www.crealitycloud.com/model-detail/ender-3-cable-chain",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "K2 Plus Collecteur",
+   "url": "https://www.crealitycloud.com/model-detail/k2-plus-collecteur",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "D Printed Usb Cable Reel",
+   "url": "https://www.crealitycloud.com/model-detail/3d-printed-usb-cable-reel",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Creality Hi Segmented Cable",
+   "url": "https://www.crealitycloud.com/model-detail/creality-hi-segmented-cable",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "D Printed Cable Clip",
+   "url": "https://www.crealitycloud.com/model-detail/3d-printed-cable-clip",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Wind Up Cable Organizer",
+   "url": "https://www.crealitycloud.com/model-detail/wind-up-cable-organizer",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Cable Organizer 3D",
+   "url": "https://www.crealitycloud.com/model-detail/cable-organizer-3d",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Flexible Cable Channel For Creality K1Se",
+   "url": "https://www.crealitycloud.com/model-detail/flexible-cable-channel-for-creality-k1se",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  }
+ ],
+ "finished": "2026-10-09 22:57:43"
+}

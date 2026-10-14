@@ -1,0 +1,529 @@
+{
+ "job_id": "20261009-213319",
+ "requested": 5,
+ "keywords": [
+  "cable organizer",
+  "phone holder",
+  "cotton bud holder",
+  "water bottle holder",
+  "clothes pegs",
+  "wall hooks",
+  "desk organizer",
+  "storage box organizer"
+ ],
+ "licence": {
+  "opened": true,
+  "state": {
+   "CC BY": true,
+   "CC BY-SA": true,
+   "CC BY-NC": false,
+   "CC BY-NC-SA": false,
+   "CC BY-ND": false,
+   "CC BY-NC-ND": false,
+   "CC0": true,
+   "Standard License": false
+  },
+  "ticked_on": [
+   "CC BY",
+   "CC BY-SA",
+   "CC0"
+  ],
+  "ticked_off": [
+   "CC BY-NC",
+   "CC BY-NC-ND",
+   "CC BY-NC-SA",
+   "CC BY-ND",
+   "Standard License"
+  ],
+  "verified": true,
+  "applied_with": "Confirm"
+ },
+ "counts": {
+  "published": 0,
+  "skipped": 5,
+  "failed": 0,
+  "fetch_failed": 0,
+  "duplicate": 0,
+  "queued": 0,
+  "working": 0,
+  "rejected": 40
+ },
+ "items": [
+  {
+   "name": "Side Cable Clip for Creality Ender-3 V3 KE",
+   "url": "https://www.crealitycloud.com/model-detail/side-cable-clip-creality-ender-3-v3-ke",
+   "keyword": "cable organizer",
+   "family": "cable-organizer",
+   "state": "skipped",
+   "reason": "\"Side Cable Clip for Creality Ender-3 V3 KE\" is another Creality listing and is not in the authorisation file (authorized_sources.json), so re-publishing it is a re-upload \u2014 which Creality's Commercial Creator Program page lists as not eligible. Authorise it in the dashboard's rules card (or with scripts/authorize_source.py https://crealitycloud.com/model-detail/side-cable-clip-creality-ender-3-v3-ke \"why it is allowed\") only if you designed it or the creator allowed redistribution.",
+   "result": "",
+   "licence": "creativecommons.org/licenses/by/4 License This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or f",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY)",
+    "the CC grant paragraph"
+   ],
+   "policy": {
+    "rule": "source-not-authorized",
+    "allowed": false,
+    "checks": [
+     {
+      "check": "content",
+      "rule": "",
+      "allowed": true,
+      "reason": ""
+     },
+     {
+      "check": "licence",
+      "rule": "licence-by",
+      "allowed": true,
+      "reason": ""
+     },
+     {
+      "check": "source",
+      "rule": "source-not-authorized",
+      "allowed": false,
+      "reason": "\"Side Cable Clip for Creality Ender-3 V3 KE\" is another Creality listing and is not in the authorisation file (authorized_sources.json), so re-publishing it is a re-upload \u2014 which Creality's Commercial Creator Program page lists as not eligible. Authorise it in the dashboard's rules card (or with scripts/authorize_source.py https://crealitycloud.com/model-detail/side-cable-clip-creality-ender-3-v3-ke \"why it is allowed\") only if you designed it or the creator allowed redistribution."
+     }
+    ]
+   }
+  },
+  {
+   "name": "Modular Socket Organizers (1/4 - 3/8 - 1/2)",
+   "url": "https://www.crealitycloud.com/model-detail/modular-socket-organizers-1-4-3-8-1-2",
+   "keyword": "cable organizer",
+   "family": "storage-box",
+   "state": "skipped",
+   "reason": "\"Modular Socket Organizers (1/4 - 3/8 - 1/2)\" is another Creality listing and is not in the authorisation file (authorized_sources.json), so re-publishing it is a re-upload \u2014 which Creality's Commercial Creator Program page lists as not eligible. Authorise it in the dashboard's rules card (or with scripts/authorize_source.py https://crealitycloud.com/model-detail/modular-socket-organizers-1-4-3-8-1-2 \"why it is allowed\") only if you designed it or the creator allowed redistribution.",
+   "result": "",
+   "licence": "creativecommons.org/licenses/by/4 License This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or f",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY)",
+    "the CC grant paragraph"
+   ],
+   "policy": {
+    "rule": "source-not-authorized",
+    "allowed": false,
+    "checks": [
+     {
+      "check": "content",
+      "rule": "",
+      "allowed": true,
+      "reason": ""
+     },
+     {
+      "check": "licence",
+      "rule": "licence-by",
+      "allowed": true,
+      "reason": ""
+     },
+     {
+      "check": "source",
+      "rule": "source-not-authorized",
+      "allowed": false,
+      "reason": "\"Modular Socket Organizers (1/4 - 3/8 - 1/2)\" is another Creality listing and is not in the authorisation file (authorized_sources.json), so re-publishing it is a re-upload \u2014 which Creality's Commercial Creator Program page lists as not eligible. Authorise it in the dashboard's rules card (or with scripts/authorize_source.py https://crealitycloud.com/model-detail/modular-socket-organizers-1-4-3-8-1-2 \"why it is allowed\") only if you designed it or the creator allowed redistribution."
+     }
+    ]
+   }
+  },
+  {
+   "name": "Incastro Desk Organizer",
+   "url": "https://www.crealitycloud.com/model-detail/incastro-desk-organizer",
+   "keyword": "cable organizer",
+   "family": "desk-organizer",
+   "state": "skipped",
+   "reason": "\"Incastro. Desk organizer.\" is another Creality listing and is not in the authorisation file (authorized_sources.json), so re-publishing it is a re-upload \u2014 which Creality's Commercial Creator Program page lists as not eligible. Authorise it in the dashboard's rules card (or with scripts/authorize_source.py https://crealitycloud.com/model-detail/incastro-desk-organizer \"why it is allowed\") only if you designed it or the creator allowed redistribution.",
+   "result": "",
+   "licence": "creativecommons.org/licenses/by/4 Description Incastro Organize your desk with style! https://www.printables.com/model/56992-incastro-desk-organizer Comments Comments (7) Images Only Newest comments C",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY)",
+    "the CC grant paragraph"
+   ],
+   "policy": {
+    "rule": "source-not-authorized",
+    "allowed": false,
+    "checks": [
+     {
+      "check": "content",
+      "rule": "",
+      "allowed": true,
+      "reason": ""
+     },
+     {
+      "check": "licence",
+      "rule": "licence-by",
+      "allowed": true,
+      "reason": ""
+     },
+     {
+      "check": "source",
+      "rule": "source-not-authorized",
+      "allowed": false,
+      "reason": "\"Incastro. Desk organizer.\" is another Creality listing and is not in the authorisation file (authorized_sources.json), so re-publishing it is a re-upload \u2014 which Creality's Commercial Creator Program page lists as not eligible. Authorise it in the dashboard's rules card (or with scripts/authorize_source.py https://crealitycloud.com/model-detail/incastro-desk-organizer \"why it is allowed\") only if you designed it or the creator allowed redistribution."
+     }
+    ]
+   }
+  },
+  {
+   "name": "Phone support",
+   "url": "https://www.crealitycloud.com/model-detail/3d-printing-phone-support",
+   "keyword": "cable organizer",
+   "family": "phone-holder",
+   "state": "skipped",
+   "reason": "\"Phone support\" is another Creality listing and is not in the authorisation file (authorized_sources.json), so re-publishing it is a re-upload \u2014 which Creality's Commercial Creator Program page lists as not eligible. Authorise it in the dashboard's rules card (or with scripts/authorize_source.py https://crealitycloud.com/model-detail/3d-printing-phone-support \"why it is allowed\") only if you designed it or the creator allowed redistribution.",
+   "result": "",
+   "licence": "creativecommons.org/licenses/by/4 Description This content has been automatically translated. Show original To load and watch your phone :-) Comments Comments (16) Images Only Newest comments Creality",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY)",
+    "the CC grant paragraph"
+   ],
+   "policy": {
+    "rule": "source-not-authorized",
+    "allowed": false,
+    "checks": [
+     {
+      "check": "content",
+      "rule": "",
+      "allowed": true,
+      "reason": ""
+     },
+     {
+      "check": "licence",
+      "rule": "licence-by",
+      "allowed": true,
+      "reason": ""
+     },
+     {
+      "check": "source",
+      "rule": "source-not-authorized",
+      "allowed": false,
+      "reason": "\"Phone support\" is another Creality listing and is not in the authorisation file (authorized_sources.json), so re-publishing it is a re-upload \u2014 which Creality's Commercial Creator Program page lists as not eligible. Authorise it in the dashboard's rules card (or with scripts/authorize_source.py https://crealitycloud.com/model-detail/3d-printing-phone-support \"why it is allowed\") only if you designed it or the creator allowed redistribution."
+     }
+    ]
+   }
+  },
+  {
+   "name": "Ridgid Pro Gear Organizer Nesting Cups",
+   "url": "https://www.crealitycloud.com/model-detail/ridgid-pro-gear-organizer-nesting-cups",
+   "keyword": "cable organizer",
+   "family": "bottle-storage",
+   "state": "skipped",
+   "reason": "\"Ridgid Pro Gear Organizer Nesting Cups\" is another Creality listing and is not in the authorisation file (authorized_sources.json), so re-publishing it is a re-upload \u2014 which Creality's Commercial Creator Program page lists as not eligible. Authorise it in the dashboard's rules card (or with scripts/authorize_source.py https://crealitycloud.com/model-detail/ridgid-pro-gear-organizer-nesting-cups \"why it is allowed\") only if you designed it or the creator allowed redistribution.",
+   "result": "",
+   "licence": "creativecommons.org/licenses/by/4 Find similar 3D Previews Ridgid Pro Gear Organizer Nesting Cups DJHprints3D Follow Print Settings(2) Add Household Tools & Spare Parts All SPARKX i8 SPARKX i7 K2 Pro ",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY)",
+    "the CC grant paragraph"
+   ],
+   "policy": {
+    "rule": "source-not-authorized",
+    "allowed": false,
+    "checks": [
+     {
+      "check": "content",
+      "rule": "",
+      "allowed": true,
+      "reason": ""
+     },
+     {
+      "check": "licence",
+      "rule": "licence-by",
+      "allowed": true,
+      "reason": ""
+     },
+     {
+      "check": "source",
+      "rule": "source-not-authorized",
+      "allowed": false,
+      "reason": "\"Ridgid Pro Gear Organizer Nesting Cups\" is another Creality listing and is not in the authorisation file (authorized_sources.json), so re-publishing it is a re-upload \u2014 which Creality's Commercial Creator Program page lists as not eligible. Authorise it in the dashboard's rules card (or with scripts/authorize_source.py https://crealitycloud.com/model-detail/ridgid-pro-gear-organizer-nesting-cups \"why it is allowed\") only if you designed it or the creator allowed redistribution."
+     }
+    ]
+   }
+  },
+  {
+   "name": "Double Heavy Duty Hook / Tool Holder \u2014 Cable Organizer (V4)",
+   "url": "https://www.crealitycloud.com/model-detail/double-heavy-duty-wall-hook-cable-organizer-v4",
+   "state": "rejected",
+   "reason": "garage / automotive / workshop gear \u2014 not a house item",
+   "result": ""
+  },
+  {
+   "name": "charging cable organizer",
+   "url": "https://www.crealitycloud.com/model-detail/charging-cable-organizer",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Organizador de mesa ou cabeceira para controles",
+   "url": "https://www.crealitycloud.com/model-detail/desk-or-bedside-organizer-for-controllers",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Cable Organizer V1",
+   "url": "https://www.crealitycloud.com/model-detail/cable-organizer-v1",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Ender 3 Cable Chain",
+   "url": "https://www.crealitycloud.com/model-detail/ender-3-cable-chain",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "K2 Plus Collecteur",
+   "url": "https://www.crealitycloud.com/model-detail/k2-plus-collecteur",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "D Printed Usb Cable Reel",
+   "url": "https://www.crealitycloud.com/model-detail/3d-printed-usb-cable-reel",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Creality Hi Segmented Cable",
+   "url": "https://www.crealitycloud.com/model-detail/creality-hi-segmented-cable",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "D Printed Cable Clip",
+   "url": "https://www.crealitycloud.com/model-detail/3d-printed-cable-clip",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Wind Up Cable Organizer",
+   "url": "https://www.crealitycloud.com/model-detail/wind-up-cable-organizer",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Cable Organizer 3D",
+   "url": "https://www.crealitycloud.com/model-detail/cable-organizer-3d",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Flexible Cable Channel For Creality K1Se",
+   "url": "https://www.crealitycloud.com/model-detail/flexible-cable-channel-for-creality-k1se",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "LAPTOP STAND (With cable management)",
+   "url": "https://www.crealitycloud.com/model-detail/laptop-stand-with-cable-management",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "iphone cable protector",
+   "url": "https://www.crealitycloud.com/model-detail/iphone-cable-protector",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Phone Stand with Cable Slot",
+   "url": "https://www.crealitycloud.com/model-detail/phone-stand-with-cable-slot",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Cable Clip for Ender3 V3 SE",
+   "url": "https://www.crealitycloud.com/model-detail/cable-clip-for-ender3-v3-se",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "ORGANIZADOR ESCRITORIO XL",
+   "url": "https://www.crealitycloud.com/model-detail/unique-office-desk-organizer",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Desk organiser",
+   "url": "https://www.crealitycloud.com/model-detail/custom-3d-desk-organizer",
+   "state": "rejected",
+   "reason": "a desk organizer / pen stand is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Cable Holder 3Dprint",
+   "url": "https://www.crealitycloud.com/model-detail/cable-holder-3dprint",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Desk Accessory Organizer 3D",
+   "url": "https://www.crealitycloud.com/model-detail/desk-accessory-organizer-3d",
+   "state": "rejected",
+   "reason": "a desk organizer / pen stand is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Desk Organizer 3D Model",
+   "url": "https://www.crealitycloud.com/model-detail/desk-organizer-3d-model",
+   "state": "rejected",
+   "reason": "a desk organizer / pen stand is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Custom Cable Holder 3D",
+   "url": "https://www.crealitycloud.com/model-detail/custom-cable-holder-3d",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "D Printed Desk Organizer",
+   "url": "https://www.crealitycloud.com/model-detail/3d-printed-desk-organizer",
+   "state": "rejected",
+   "reason": "a desk organizer / pen stand is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Under Desk Cable Holder",
+   "url": "https://www.crealitycloud.com/model-detail/under-desk-cable-holder",
+   "state": "rejected",
+   "reason": "a cable / headphone organizer is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Charging Cable Protector 01",
+   "url": "https://www.crealitycloud.com/model-detail/charging-cable-protector-01",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Clip Cavi",
+   "url": "https://www.crealitycloud.com/model-detail/clip-cavi",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Cable Protection",
+   "url": "https://www.crealitycloud.com/model-detail/cable-protection",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Organizer Tray",
+   "url": "https://www.crealitycloud.com/model-detail/organizer-tray",
+   "state": "rejected",
+   "reason": "a storage box / basket / tray is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Cable Guide Creality Hi",
+   "url": "https://www.crealitycloud.com/model-detail/cable-guide-creality-hi",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Cable Holder Sprite Extruder Pro",
+   "url": "https://www.crealitycloud.com/model-detail/cable-holder-sprite-extruder-pro",
+   "state": "rejected",
+   "reason": "3D-printer part \u2014 not a household item",
+   "result": ""
+  },
+  {
+   "name": "Creative Phone Stand 3D Print",
+   "url": "https://www.crealitycloud.com/model-detail/creative-phone-stand-3d-print",
+   "state": "rejected",
+   "reason": "a phone holder / stand is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Ablage f\u00fcr Ender3 V3 SE",
+   "url": "https://www.crealitycloud.com/model-detail/ender3-v3-se-storage",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Organizer da cassetto componibile",
+   "url": "https://www.crealitycloud.com/model-detail/modular-drawer-organizer",
+   "state": "rejected",
+   "reason": "a storage box / basket / tray is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "K1C lid raiser + spool top holder",
+   "url": "https://www.crealitycloud.com/model-detail/k1c-lid-raiser-spool-top-holder",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Ender-3 S1 Cable Chain",
+   "url": "https://www.crealitycloud.com/model-detail/63cd686b1a0d9fe394bef9f1",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "cableduct",
+   "url": "https://www.crealitycloud.com/model-detail/cable-duct-3d-printing",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Modular Plier Organizers",
+   "url": "https://www.crealitycloud.com/model-detail/modular-plier-organizers",
+   "state": "rejected",
+   "reason": "a storage box / basket / tray is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  },
+  {
+   "name": "Organizador de cabos",
+   "url": "https://www.crealitycloud.com/model-detail/cable-arrangement-tool-3d",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Remote Holder",
+   "url": "https://www.crealitycloud.com/model-detail/custom-remote-control-holder",
+   "state": "rejected",
+   "reason": "not one of the useful household families we publish (bottle / cup storage, cable / headphone organizer, clothes clip / peg, cotton-bud holder, desk organizer / pen stand, hook / key holder, phone holder / stand, storage box / basket / tray)",
+   "result": ""
+  },
+  {
+   "name": "Organizer Cr 10Se",
+   "url": "https://www.crealitycloud.com/model-detail/organizer-cr-10se",
+   "state": "rejected",
+   "reason": "a storage box / basket / tray is already going out in this run \u2014 one of each is enough",
+   "result": ""
+  }
+ ],
+ "finished": "2026-10-09 21:35:51"
+}

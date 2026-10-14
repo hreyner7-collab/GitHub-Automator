@@ -1,0 +1,21 @@
+{
+ "job_id": "20261008-210242",
+ "requested": 5,
+ "keywords": [
+  "household items",
+  "cable organizer",
+  "useful household"
+ ],
+ "licence": {},
+ "counts": {
+  "published": 0,
+  "skipped": 0,
+  "failed": 0,
+  "fetch_failed": 0,
+  "duplicate": 0,
+  "queued": 0,
+  "working": 0
+ },
+ "items": [],
+ "finished": "2026-10-08 21:02:47"
+}

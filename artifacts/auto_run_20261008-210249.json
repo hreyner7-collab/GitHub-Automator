@@ -1,0 +1,486 @@
+{
+ "job_id": "20261008-210249",
+ "requested": 5,
+ "keywords": [
+  "household items",
+  "cable organizer",
+  "useful household"
+ ],
+ "licence": {
+  "opened": true,
+  "state": {
+   "CC BY": true,
+   "CC BY-SA": true,
+   "CC BY-NC": true,
+   "CC BY-NC-SA": true,
+   "CC BY-ND": false,
+   "CC BY-NC-ND": true,
+   "CC0": true,
+   "Standard License": false
+  },
+  "ticked_on": [
+   "CC BY",
+   "CC BY-NC",
+   "CC BY-NC-ND",
+   "CC BY-NC-SA",
+   "CC BY-SA",
+   "CC0"
+  ],
+  "ticked_off": [
+   "CC BY-ND",
+   "Standard License"
+  ],
+  "verified": true,
+  "applied_with": "Confirm"
+ },
+ "counts": {
+  "published": 4,
+  "skipped": 0,
+  "failed": 1,
+  "fetch_failed": 0,
+  "duplicate": 0,
+  "queued": 0,
+  "working": 0
+ },
+ "items": [
+  {
+   "name": "\u041a\u043b\u044e\u0447\u043d\u0438\u0446\u0430 \u0434\u043e\u043c\u043e\u0439",
+   "url": "https://www.crealitycloud.com/model-detail/key-holder-home",
+   "keyword": "household items",
+   "state": "published",
+   "reason": "",
+   "result": "Published to your Creality Cloud account with 1 photo(s) in the creator's order \u2014 web cover \u043a\u043b\u044e\u0447\u043d\u0438\u0446\u0430_\u0434\u043e\u043c\u043e\u0439_img_0.webp, app cover \u043a\u043b\u044e\u0447\u043d\u0438\u0446\u0430_\u0434\u043e\u043c\u043e\u0439_img_0.webp, 1 in the gallery. Check 'My Designs'.",
+   "licence": "creativecommons.org/licenses/by-nc/4 License This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any medium o",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY-NC)",
+    "the CC grant paragraph"
+   ],
+   "upload_verify": {
+    "images": {
+     "photos_available": 1,
+     "cover_web": "\u043a\u043b\u044e\u0447\u043d\u0438\u0446\u0430_\u0434\u043e\u043c\u043e\u0439_img_0.webp",
+     "cover_app": "\u043a\u043b\u044e\u0447\u043d\u0438\u0446\u0430_\u0434\u043e\u043c\u043e\u0439_img_0.webp",
+     "covers_differ": false,
+     "gallery_sent": 1,
+     "gallery_counter": [
+      0,
+      1
+     ],
+     "gallery_ok": true,
+     "converted": [],
+     "dropped_over_9": 0,
+     "zones": {
+      "web": 3,
+      "app": 4,
+      "gallery": 5
+     }
+    },
+    "consent": {
+     "found": true,
+     "row": "I have read and agree to Copyright Statement. Please check the box to agree before submitting",
+     "row_cls": "el-checkbox",
+     "input_html": "<input class=\"el-checkbox__original\" type=\"checkbox\">",
+     "points": {
+      "circle": "el-checkbox__input",
+      "label": "el-checkbox"
+     },
+     "reach": [
+      [
+       "consent",
+       "topmost",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-escape",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-click",
+       "span",
+       "el-checkbox__inner"
+      ],
+      [
+       "submit",
+       "topmost",
+       "div",
+       "submit"
+      ]
+     ],
+     "reachable": true,
+     "tried": [
+      [
+       "round1:circle",
+       true
+      ]
+     ],
+     "checked": true
+    },
+    "copyright_agreed": true,
+    "license_answers": {
+     "wanted": [
+      0,
+      1,
+      1
+     ],
+     "source_code": "by-nc",
+     "clicked": [],
+     "radio_index_verified": [
+      0,
+      1,
+      1
+     ],
+     "badge": "CC BY-NC This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format for noncommercial purposes only, and only so long as attribution is given to the creator.",
+     "badge_parsed_from": "badge",
+     "badge_in_card": true,
+     "badge_license": "CCBY-NC",
+     "badge_expected": "CC BY-NC",
+     "badge_ok": true,
+     "license_card": "License * Allow adaptations of your work to be shared? Yes No Yes, as long as others share in the same way Allow commercial uses of your work? Yes No This work is licensed under the Copyright License 4.0. CC BY-NC This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format for noncommercial purposes only, and only so long as attribution is given to ",
+     "radios_read": true,
+     "radios_ok": true
+    },
+    "remix_source_declared": true,
+    "remix_registered_href": "",
+    "remix_suggestion_clicked": "\u041a\u043b\u044e\u0447\u043d\u0438\u0446\u0430 \u0434\u043e\u043c\u043e\u0439"
+   }
+  },
+  {
+   "name": "Clothes Peg",
+   "url": "https://www.crealitycloud.com/model-detail/clothes-peg-3d-printing",
+   "keyword": "household items",
+   "state": "published",
+   "reason": "",
+   "result": "Published to your Creality Cloud account with 1 photo(s) in the creator's order \u2014 web cover clothes_peg_img_0.webp, app cover clothes_peg_img_0.webp, 1 in the gallery. Check 'My Designs'.",
+   "licence": "creativecommons.org/licenses/by-nc/4 License This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any medium o",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY-NC)",
+    "the CC grant paragraph"
+   ],
+   "upload_verify": {
+    "images": {
+     "photos_available": 1,
+     "cover_web": "clothes_peg_img_0.webp",
+     "cover_app": "clothes_peg_img_0.webp",
+     "covers_differ": false,
+     "gallery_sent": 1,
+     "gallery_counter": [
+      0,
+      1
+     ],
+     "gallery_ok": true,
+     "converted": [],
+     "dropped_over_9": 0,
+     "zones": {
+      "web": 3,
+      "app": 4,
+      "gallery": 5
+     }
+    },
+    "consent": {
+     "found": true,
+     "row": "I have read and agree to Copyright Statement. Please check the box to agree before submitting",
+     "row_cls": "el-checkbox",
+     "input_html": "<input class=\"el-checkbox__original\" type=\"checkbox\">",
+     "points": {
+      "circle": "el-checkbox__input",
+      "label": "el-checkbox"
+     },
+     "reach": [
+      [
+       "consent",
+       "topmost",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-escape",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-click",
+       "span",
+       "el-checkbox__inner"
+      ],
+      [
+       "submit",
+       "topmost",
+       "div",
+       "submit"
+      ]
+     ],
+     "reachable": true,
+     "tried": [
+      [
+       "round1:circle",
+       true
+      ]
+     ],
+     "checked": true
+    },
+    "copyright_agreed": true,
+    "license_answers": {
+     "wanted": [
+      0,
+      1,
+      1
+     ],
+     "source_code": "by-nc",
+     "clicked": [],
+     "radio_index_verified": [
+      0,
+      1,
+      1
+     ],
+     "badge": "CC BY-NC This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format for noncommercial purposes only, and only so long as attribution is given to the creator.",
+     "badge_parsed_from": "badge",
+     "badge_in_card": true,
+     "badge_license": "CCBY-NC",
+     "badge_expected": "CC BY-NC",
+     "badge_ok": true,
+     "license_card": "License * Allow adaptations of your work to be shared? Yes No Yes, as long as others share in the same way Allow commercial uses of your work? Yes No This work is licensed under the Copyright License 4.0. CC BY-NC This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format for noncommercial purposes only, and only so long as attribution is given to ",
+     "radios_read": true,
+     "radios_ok": true
+    },
+    "remix_source_declared": true,
+    "remix_registered_href": "",
+    "remix_suggestion_clicked": "Clothes Peg"
+   }
+  },
+  {
+   "name": "Toilet",
+   "url": "https://www.crealitycloud.com/model-detail/toilet",
+   "keyword": "household items",
+   "state": "published",
+   "reason": "",
+   "result": "Published to your Creality Cloud account with 1 photo(s) in the creator's order \u2014 web cover toilet_img_0.jpeg, app cover toilet_img_0.jpeg, 1 in the gallery. Check 'My Designs'.",
+   "licence": "creativecommons.org/licenses/by/4 License This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or f",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY)",
+    "the CC grant paragraph"
+   ],
+   "upload_verify": {
+    "images": {
+     "photos_available": 1,
+     "cover_web": "toilet_img_0.jpeg",
+     "cover_app": "toilet_img_0.jpeg",
+     "covers_differ": false,
+     "gallery_sent": 1,
+     "gallery_counter": [
+      0,
+      1
+     ],
+     "gallery_ok": true,
+     "converted": [],
+     "dropped_over_9": 0,
+     "zones": {
+      "web": 3,
+      "app": 4,
+      "gallery": 5
+     }
+    },
+    "consent": {
+     "found": true,
+     "row": "I have read and agree to Copyright Statement. Please check the box to agree before submitting",
+     "row_cls": "el-checkbox",
+     "input_html": "<input class=\"el-checkbox__original\" type=\"checkbox\">",
+     "points": {
+      "circle": "el-checkbox__input",
+      "label": "el-checkbox"
+     },
+     "reach": [
+      [
+       "consent",
+       "topmost",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-escape",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-click",
+       "span",
+       "el-checkbox__inner"
+      ],
+      [
+       "submit",
+       "topmost",
+       "div",
+       "submit"
+      ]
+     ],
+     "reachable": true,
+     "tried": [
+      [
+       "round1:circle",
+       true
+      ]
+     ],
+     "checked": true
+    },
+    "copyright_agreed": true,
+    "license_answers": {
+     "wanted": [
+      0,
+      0,
+      1
+     ],
+     "source_code": "by",
+     "clicked": [],
+     "radio_index_verified": [
+      0,
+      0,
+      1
+     ],
+     "badge": "CC BY This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format, so long as attribution is given to the creator. The license allows for commercial use.",
+     "badge_parsed_from": "badge",
+     "badge_in_card": true,
+     "badge_license": "CCBY",
+     "badge_expected": "CC BY",
+     "badge_ok": true,
+     "license_card": "License * Allow adaptations of your work to be shared? Yes No Yes, as long as others share in the same way Allow commercial uses of your work? Yes No Allow sharing or redistributing of your work or its derivatives? Yes No This work is licensed under the Copyright License 4.0. CC BY This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format, so long",
+     "radios_read": true,
+     "radios_ok": true
+    },
+    "remix_source_declared": true,
+    "remix_registered_href": "",
+    "remix_suggestion_clicked": "Mini Toilet Paper Buddy"
+   }
+  },
+  {
+   "name": "Set of accessories for the bathroom",
+   "url": "https://www.crealitycloud.com/model-detail/bathroom-accessories-set",
+   "keyword": "household items",
+   "state": "published",
+   "reason": "",
+   "result": "Published to your Creality Cloud account with 9 photo(s) in the creator's order \u2014 web cover set_of_accessories_for_the_bathroom_img_0.jpg, app cover set_of_accessories_for_the_bathroom_img_1.webp, 9 in the gallery. Check 'My Designs'.",
+   "licence": "creativecommons.org/licenses/by-nc/4 License This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any medium o",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY-NC)",
+    "the CC grant paragraph"
+   ],
+   "upload_verify": {
+    "images": {
+     "photos_available": 9,
+     "cover_web": "set_of_accessories_for_the_bathroom_img_0.jpg",
+     "cover_app": "set_of_accessories_for_the_bathroom_img_1.webp",
+     "covers_differ": true,
+     "gallery_sent": 9,
+     "gallery_counter": [
+      0,
+      9
+     ],
+     "gallery_ok": true,
+     "converted": [],
+     "dropped_over_9": 0,
+     "zones": {
+      "web": 3,
+      "app": 4,
+      "gallery": 5
+     }
+    },
+    "consent": {
+     "found": true,
+     "row": "I have read and agree to Copyright Statement. Please check the box to agree before submitting",
+     "row_cls": "el-checkbox",
+     "input_html": "<input class=\"el-checkbox__original\" type=\"checkbox\">",
+     "points": {
+      "circle": "el-checkbox__input",
+      "label": "el-checkbox"
+     },
+     "reach": [
+      [
+       "consent",
+       "topmost",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-escape",
+       "div",
+       "origin-choose-mark"
+      ],
+      [
+       "consent",
+       "after-click",
+       "span",
+       "el-checkbox__inner"
+      ],
+      [
+       "submit",
+       "topmost",
+       "div",
+       "submit"
+      ]
+     ],
+     "reachable": true,
+     "tried": [
+      [
+       "round1:circle",
+       true
+      ]
+     ],
+     "checked": true
+    },
+    "copyright_agreed": true,
+    "license_answers": {
+     "wanted": [
+      0,
+      1,
+      1
+     ],
+     "source_code": "by-nc",
+     "clicked": [],
+     "radio_index_verified": [
+      0,
+      1,
+      1
+     ],
+     "badge": "CC BY-NC This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format for noncommercial purposes only, and only so long as attribution is given to the creator.",
+     "badge_parsed_from": "badge",
+     "badge_in_card": true,
+     "badge_license": "CCBY-NC",
+     "badge_expected": "CC BY-NC",
+     "badge_ok": true,
+     "license_card": "License * Allow adaptations of your work to be shared? Yes No Yes, as long as others share in the same way Allow commercial uses of your work? Yes No This work is licensed under the Copyright License 4.0. CC BY-NC This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format for noncommercial purposes only, and only so long as attribution is given to ",
+     "radios_read": true,
+     "radios_ok": true
+    },
+    "remix_source_declared": true,
+    "remix_registered_href": "",
+    "remix_suggestion_clicked": "Set of accessories for the bathroom"
+   }
+  },
+  {
+   "name": "Garage 3D Printing Projects",
+   "url": "https://www.crealitycloud.com/model-detail/garage-3d-printing-projects",
+   "keyword": "household items",
+   "state": "failed",
+   "reason": "Refusing to publish without declaring the source model (Remix Models): Page.wait_for_timeout: Target page, context or browser has been closed",
+   "result": "",
+   "licence": "creativecommons.org/licenses/by/4 Find similar 3D Previews Garage Creality Cloud FR Follow Print Settings(1) Add Household Other All SPARKX i8 K2 Plus K2 Pro K2 K2 SE SPARKX i7 Creality Hi Ender-3 V4 ",
+   "licence_evidence": [
+    "the creativecommons.org link",
+    "the licence named in the card (CC BY)",
+    "the CC grant paragraph"
+   ]
+  }
+ ],
+ "finished": "2026-10-08 21:08:06"
+}

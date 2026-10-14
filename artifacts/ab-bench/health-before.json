@@ -1,0 +1,160 @@
+{
+  "capturedAt": "2026-10-01T12:07:30.707Z",
+  "linkMbps": 1201000000,
+  "wlan": "There is 1 interface on the system: \r\n\r\n    Name                   : WiFi\r\n    Description            : Intel(R) Wi-Fi 6 AX201 160MHz\r\n    GUID                   : 3e424371-28cf-4405-8f69-90454edb36ce\r\n    Physical address       : 08:6a:c5:5b:ff:4a\r\n    Interface type         : Primary\r\n    State                  : connected\r\n    SSID                   : VM4847160\r\n    AP BSSID               : 64:7b:1e:91:e3:21\r\n    Band                   : 5 GHz\r\n    Channel                : 60\r\n    Connected Akm-cipher   : [ akm = 00-0f-ac:02, cipher =  00-0f-ac:04 ]\r\n    Network type           : Infrastructure\r\n    Radio type             : 802.11ax\r\n    Authentication         : WPA2-Personal\r\n    Cipher                 : CCMP\r\n    Connection mode        : Auto Connect\r\n    Receive rate (Mbps)    : 1201\r\n    Transmit rate (Mbps)   : 1201\r\n    Signal                 : 94% \r\n    Rssi                   : -40\r\n    Profile                : VM4847160 \r\n    QoS MSCS Configured         : 0\r\n    QoS Map Configured          : 0\r\n    QoS Map Allowed by Policy   : 0",
+  "adapterAdvanced": [
+    {
+      "DisplayName": "Sleep on WoWLAN Disconnect",
+      "DisplayValue": "Disabled",
+      "RegistryValue": [
+        "0"
+      ]
+    },
+    {
+      "DisplayName": "Packet Coalescing",
+      "DisplayValue": "Enabled",
+      "RegistryValue": [
+        "1"
+      ]
+    },
+    {
+      "DisplayName": "ARP offload for WoWLAN",
+      "DisplayValue": "Enabled",
+      "RegistryValue": [
+        "1"
+      ]
+    },
+    {
+      "DisplayName": "NS offload for WoWLAN",
+      "DisplayValue": "Enabled",
+      "RegistryValue": [
+        "1"
+      ]
+    },
+    {
+      "DisplayName": "GTK rekeying for WoWLAN",
+      "DisplayValue": "Enabled",
+      "RegistryValue": [
+        "1"
+      ]
+    },
+    {
+      "DisplayName": "Wake on Magic Packet",
+      "DisplayValue": "Enabled",
+      "RegistryValue": [
+        "1"
+      ]
+    },
+    {
+      "DisplayName": "Wake on Pattern Match",
+      "DisplayValue": "Enabled",
+      "RegistryValue": [
+        "1"
+      ]
+    },
+    {
+      "DisplayName": "Channel Width for 2.4GHz",
+      "DisplayValue": "Auto",
+      "RegistryValue": [
+        "1"
+      ]
+    },
+    {
+      "DisplayName": "Channel Width for 5GHz",
+      "DisplayValue": "Auto",
+      "RegistryValue": [
+        "1"
+      ]
+    },
+    {
+      "DisplayName": "Mixed Mode Protection",
+      "DisplayValue": "RTS/CTS Enabled",
+      "RegistryValue": [
+        "0"
+      ]
+    },
+    {
+      "DisplayName": "Fat Channel Intolerant",
+      "DisplayValue": "Disabled",
+      "RegistryValue": [
+        "0"
+      ]
+    },
+    {
+      "DisplayName": "Transmit Power",
+      "DisplayValue": "5. Highest",
+      "RegistryValue": [
+        "100"
+      ]
+    },
+    {
+      "DisplayName": "802.11n/ac/ax Wireless Mode",
+      "DisplayValue": "4. 802.11ax",
+      "RegistryValue": [
+        "3"
+      ]
+    },
+    {
+      "DisplayName": "MIMO Power Save Mode",
+      "DisplayValue": "Auto SMPS",
+      "RegistryValue": [
+        "0"
+      ]
+    },
+    {
+      "DisplayName": "Roaming Aggressiveness",
+      "DisplayValue": "3. Medium",
+      "RegistryValue": [
+        "2"
+      ]
+    },
+    {
+      "DisplayName": "Preferred Band",
+      "DisplayValue": "1. No Preference",
+      "RegistryValue": [
+        "0"
+      ]
+    },
+    {
+      "DisplayName": "Throughput Booster",
+      "DisplayValue": "Disabled",
+      "RegistryValue": [
+        "0"
+      ]
+    },
+    {
+      "DisplayName": "U-APSD support",
+      "DisplayValue": "Disabled",
+      "RegistryValue": [
+        "0"
+      ]
+    },
+    {
+      "DisplayName": "802.11a/b/g Wireless Mode",
+      "DisplayValue": "6. Dual Band 802.11a/b/g",
+      "RegistryValue": [
+        "34"
+      ]
+    }
+  ],
+  "adapterPower": {
+    "raw": "ERROR: Command failed: powershell -NoProfile -Command Get-NetAdapterPowerManagement -Name WiFi | Select-Object AllowComputerToTurnOffDevice,DeviceSleepOnDisconnect,SelectiveSuspend | ConvertTo-Json -Depth 4 "
+  },
+  "tcpGlobal": "Querying active state...\r\n\r\nTCP Global Parameters\r\n----------------------------------------------\r\nReceive-Side Scaling State          : enabled \r\nReceive Window Auto-Tuning Level    : normal \r\nAdd-On Congestion Control Provider  : default \r\nECN Capability                      : disabled \r\nRFC 1323 Timestamps                 : allowed \r\nInitial RTO                         : 1000 \r\nReceive Segment Coalescing State    : enabled \r\nNon Sack Rtt Resiliency             : disabled \r\nMax SYN Retransmissions             : 4 \r\nFast Open                           : enabled \r\nFast Open Fallback                  : enabled \r\nHyStart                             : enabled \r\nProportional Rate Reduction         : enabled \r\nPacing Profile                      : off",
+  "tcpSettings": {
+    "raw": "ERROR: Command failed: powershell -NoProfile -Command Get-NetTCPSetting -SettingIndex 0 | Select-Object AutoTuningLevelLocal,EcnCapability,Timestamps,PacingProfile,NonSackRttResiliency | ConvertTo-Json -Dept"
+  },
+  "dns": {
+    "InterfaceAlias": "WiFi",
+    "ServerAddresses": [
+      "194.168.4.100",
+      "194.168.8.100"
+    ]
+  },
+  "ipInterfaces": {
+    "AddressFamily": 2,
+    "NlMtu": 1500,
+    "ConnectionState": 1
+  },
+  "winhttpProxy": "Current WinHTTP proxy settings:\r\n\r\n    Direct access (no proxy server)."
+}

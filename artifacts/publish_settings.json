@@ -1,0 +1,4 @@
+{
+ "photo_source": "source",
+ "_about": "The dashboard's own publish settings. photo_source says which photos a listing carries: 'source' (the default since 2026-10-09, user direction) = the source creator's own photos — the exact images from the original upload, which is what the review wants to see; 'ours' = renders of the model file being uploaded. Change it on the dashboard — no env edit or restart needed. CREALITY_PHOTO_SOURCE overrides it."
+}

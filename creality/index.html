@@ -121,6 +121,28 @@
   }
   select:focus { border-color: #e53935; }
 
+  #auto-list { margin-top: 6px; }
+  .autorow {
+    display: flex; align-items: baseline; gap: 10px; padding: 6px 0;
+    border-bottom: 1px solid #1e1e1e; font-size: .85rem;
+  }
+  .autorow .aname { flex: 1 1 auto; color: #ddd; overflow: hidden;
+                    text-overflow: ellipsis; white-space: nowrap; }
+  .autorow .aname a { color: #ddd; text-decoration: none; }
+  .autorow .aname a:hover { color: #fff; text-decoration: underline; }
+  .autorow .astate { flex: 0 0 auto; font-size: .72rem; padding: 2px 8px;
+                     border-radius: 999px; border: 1px solid #333; color: #aaa; }
+  .autorow .astate.published { border-color: #2e7d32; color: #a5d6a7; }
+  .autorow .astate.uploading, .autorow .astate.fetching { border-color: #1565c0; color: #90caf9; }
+  .autorow .astate.skipped { border-color: #e65100; color: #ffcc80; }
+  /* a fetch that died (navigation/network, or no photos to publish) is a FAILURE,
+     never shown as a plain "skipped" decision */
+  .autorow .astate.fetch-failed { border-color: #b71c1c; color: #ff8a65; }
+  .autorow .astate.failed, .autorow .astate.duplicate { border-color: #b71c1c; color: #ef9a9a; }
+  /* turned down by the household gate before it was ever fetched */
+  .autorow .astate.rejected { border-color: #4e342e; color: #bcaaa4; }
+  .autorow .areason { flex: 1 1 40%; color: #888; font-size: .78rem; }
+
   .discover-grid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
     gap: 16px; margin-top: 16px;
@@ -144,6 +166,7 @@
   .dcard a.view:hover { background: #e5393520; }
   .note { font-size: .78rem; color: #777; margin-top: 10px; line-height: 1.5; }
 
+  .updetail { color: #9e9e9e; font-size: .78rem; }
   .pickbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
   .pickbar button { padding: 6px 14px; font-size: .8rem; }
   .pickbar .count { font-size: .8rem; color: #999; }
@@ -199,14 +222,6 @@
   }
   .tile-wrap.selected .tick { background: #2e7d32; border-color: #2e7d32; color: #fff; }
   .tile-hint { font-size: .72rem; color: #666; margin-top: 5px; text-transform: uppercase; letter-spacing: .05em; }
-
-  /* ── Make a file (STL generator) ── */
-  #gen-previews { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 14px; }
-  #gen-previews img { width: 100%; border-radius: 8px; border: 1px solid #2a2a2a; display: block; background: #111; }
-  .gen-facts { display: flex; gap: 18px; flex-wrap: wrap; font-size: .82rem; color: #999; margin-top: 10px; }
-  .gen-facts b { color: #eee; font-weight: 600; }
-  .gen-bar { display: flex; gap: 10px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
-  .gen-bar .btn-outline { text-decoration: none; display: inline-block; padding: 9px 18px; font-size: .85rem; }
 </style>
 </head>
 <body>
@@ -244,6 +259,36 @@
   <div id="an-models"></div>
 </div>
 
+<!-- Auto: find models, then publish each one -->
+<div class="card" id="auto-card">
+  <h2>Auto · Find &amp; Publish</h2>
+  <div class="row">
+    <label for="auto-count" style="font-size:.85rem;color:#aaa">How many models do you want me to find?</label>
+    <input type="number" id="auto-count" min="1" value="5"
+           style="width:90px" placeholder="e.g. 20"
+           title="Type how many models you want (1 or more)">
+    <input type="text" id="auto-keywords" style="min-width:280px"
+           placeholder="cable organizer, phone holder, cotton bud holder…">
+    <button id="auto-start" onclick="autoStart()">Find &amp; publish</button>
+    <button id="auto-stop" class="btn-outline" onclick="autoStop()" disabled>Stop</button>
+  </div>
+  <div id="auto-families" class="note" style="margin:6px 0"></div>
+  <div id="auto-status" class="status"></div>
+  <div id="auto-summary" class="count" style="margin:8px 0"></div>
+  <div id="auto-list"></div>
+  <p class="note">Finds models with the licence filter on — <strong>CC0, CC BY, CC BY-SA</strong>
+    ticked, and CC BY-NC / CC BY-NC-SA / CC BY-ND / CC BY-NC-ND / Standard License left
+    unticked (the ticked set is read back before anything is fetched) — most-downloaded
+    first, then re-uploads each one with credit to the designer. Only licences that allow
+    redistribution, remixing <em>and commercial use</em> are published: a NonCommercial
+    source is refused because a listing here can earn, and a No-Derivatives one cannot be
+    remixed at all. Only the useful household
+    families listed above are harvested: a toilet, a bathroom set, garage or workshop gear,
+    a novelty and a decorative trinket can never reach the uploader, and every candidate the
+    gate turns down is listed below with the reason. ND- and NC-licensed finds are skipped and
+    the next model is used; anything that fails is logged with its reason and the run carries on.</p>
+</div>
+
 <!-- Find Top Models (research only) -->
 <div class="card">
   <h2>Find Top Models · Research</h2>
@@ -267,45 +312,45 @@
     creator's page. Only repost models you have the rights to, with credit to the designer.</p>
 </div>
 
-<!-- Make a file (STL generator: describe → Kimi designs → forge → verify) -->
-<div class="card" id="generate-file">
-  <h2>Make a file · Generate an STL from a description</h2>
-  <div class="row">
-    <input type="text" id="generate-input" placeholder="Describe it… e.g. a cable organizer that retracts automatically">
-    <button id="generate-btn" onclick="generateFile()">Make a file</button>
-  </div>
-  <div class="row" style="margin-top:10px">
-    <input type="text" id="generate-image" placeholder="Optional: image path under downloads/ to match the look (e.g. auto-locking_hanger_-_gravity_towel_hook_img_0.png)">
-    <button class="btn-outline" id="generate-image-btn" onclick="generateFile(true)">Make from image</button>
-  </div>
-  <div id="generate-status" class="status"></div>
-  <div id="gen-previews" style="display:none"></div>
-  <div id="gen-facts" class="gen-facts" style="display:none"></div>
-  <div id="gen-bar" class="gen-bar" style="display:none">
-    <a class="btn-outline" id="gen-download" href="#" download>Download STL</a>
-    <button class="btn-outline" onclick="acceptGenerated()">Accept &amp; load into Publish</button>
-  </div>
-  <p class="note">Kimi 2.7 designs it, the local forge compiles a real binary STL,
-    and the verifier must prove watertight + print-sane before anything is shown.
-    If Kimi is unavailable, an honest fallback template designs it instead.
-    "Accept" loads the name, description and STL into the Publish step below —
-    nothing is uploaded without you clicking Upload.</p>
-</div>
-
 <!-- Step 1: Fetch URL -->
 <div class="card">
   <h2>1 · Model URL</h2>
   <div class="row">
-    <input type="text" id="url-input" placeholder="Paste Thingiverse or Printables URL…">
-    <button id="fetch-btn" onclick="fetchModel()">Fetch &amp; Edit</button>
+    <input type="text" id="url-input" placeholder="Paste a Creality Cloud model link…">
+    <button id="fetch-btn" onclick="fetchModel()">Fetch from Creality Cloud</button>
   </div>
   <div id="fetch-status" class="status"></div>
+  <div id="policy-controls" style="margin-top:10px;border-top:1px solid #1e1e1e;padding-top:10px">
+    <div class="row">
+      <label for="photo-source" style="font-size:.85rem;color:#aaa;min-width:190px">Photos the listing carries</label>
+      <select id="photo-source" onchange="setPhotoSource(this.value)">
+        <option value="source">The creator's ORIGINAL photos from the original upload — default</option>
+      </select>
+      <span id="photo-source-note" class="note" style="margin:0"></span>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <input type="text" id="auth-url" placeholder="Model link or slug to authorise (your own design, or with the creator's permission)">
+      <input type="text" id="auth-note" placeholder="why it is allowed (required)">
+      <button class="btn-outline" onclick="authorizeFromCard()">Authorise source</button>
+    </div>
+    <div id="auth-list" class="note" style="margin-top:8px"></div>
+    <div id="policy-status" class="status"></div>
+  </div>
 </div>
 
 <!-- Step 2: Preview -->
 <div class="card" id="preview-section" style="display:none">
   <h2>2 · Preview</h2>
+  <div id="license-line" style="font-size:.85rem;color:#ccc;margin-bottom:10px;display:none"></div>
+  <div id="policy-line" style="font-size:.85rem;color:#ccc;margin-bottom:10px;display:none"></div>
+  <div id="proof-line" style="font-size:.85rem;color:#ccc;margin-bottom:10px;display:none"></div>
   <div id="image-container"></div>
+  <div style="margin-top:12px">
+    <button id="regen-btn" class="btn-outline" onclick="regeneratePhotos()"
+            title="Optional: AI re-edit of the creator's photos. Off by default — their original photos are uploaded.">
+      Regenerate photos (AI re-edit)</button>
+    <span style="font-size:.75rem;color:#777;margin-left:8px">Off by default — the creator's original photos are used.</span>
+  </div>
 </div>
 
 <!-- Step 3: Publish -->
@@ -326,9 +371,13 @@
 <script>
   let _stlPath = null;
   let _imagePaths = [];   // the images that will actually be uploaded (selected ones)
-  let _editedRaw = [];    // all edited images returned by /fetch
+  let _origRaw = [];      // ORIGINAL photo PATHS (the /edit-images source)
+  let _editedRaw = [];    // CURRENT upload-set PATHS (originals by default)
+  let _imgUrls = [];      // /file/… URLs for the CURRENT set (what tiles render)
   let _selected = new Set();
   let _sourceUrl = '';
+  let _licenseRaw = '';
+  let _usingEdited = false;
 
   function updatePickCount() {
     const el = document.getElementById('pick-count');
@@ -370,11 +419,15 @@
 
   async function fetchModel() {
     const url = document.getElementById('url-input').value.trim();
-    if (!url) return;
+    if (!url) {
+      setStatus('fetch-status', 'warn', 'Paste a Creality Cloud model link first (crealitycloud.com/model-detail/…).');
+      document.getElementById('url-input').focus();
+      return;
+    }
 
     const btn = document.getElementById('fetch-btn');
     btn.disabled = true;
-    setStatus('fetch-status', 'info', '<span class="spinner"></span>Downloading and editing with Gemini…');
+    setStatus('fetch-status', 'info', '<span class="spinner"></span>Downloading model + original photos from Creality Cloud…');
 
     document.getElementById('preview-section').style.display = 'none';
     document.getElementById('upload-section').style.display = 'none';
@@ -388,87 +441,96 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Unknown error');
 
-      // Store paths for upload
+      // Store paths for upload — ORIGINAL photos by default (user's rule);
+      // the AI re-edit only replaces this set when the user clicks Regenerate.
       _stlPath = data._raw_stl;
-      _editedRaw = data._raw_images || [];
+      _origRaw = data._raw_orig_images || [];   // paths (edit source)
+      _editedRaw = data._raw_images || [];      // paths (what gets uploaded)
+      _imgUrls = data.image_urls || [];         // URLs (what the tiles show)
       _selected = new Set(_editedRaw.map((_, i) => i));   // all selected by default
       _imagePaths = _editedRaw.slice();
       _sourceUrl = data.source_url || url;
+      _licenseRaw = (data.license && data.license.raw) || '';
+      _usingEdited = false;
+      document.getElementById('regen-btn').disabled = false;
+      document.getElementById('regen-btn').textContent = 'Regenerate photos (AI re-edit)';
+
+      // License line — honest, visible before publishing
+      const lic = data.license;
+      const licEl = document.getElementById('license-line');
+      if (lic && (lic.raw || lic.note)) {
+        const blocked = lic.ok_for_reupload === false;
+        const col = blocked ? '#ef9a9a' : '#a5d6a7';
+        licEl.style.display = 'block';
+        // Show the exact licence answers the upload will set on Creality's
+        // three questions (and the badge they must produce), so every link is
+        // checked the same way before anything is submitted. A source that
+        // forbids derivatives (Creality's own Standard/Copyright License, or a
+        // CC *-ND) cannot be remixed: say so here, and don't promise a plan.
+        const ans = lic.form_answers || [];
+        const plan = (blocked || ans.length !== 3)
+          ? (blocked
+              ? '<br><span style="color:#ef5350"><b>⛔ Not re-uploadable:</b> ' +
+                esc(lic.note || 'this source license does not allow derivatives.') +
+                '</span>'
+              : '')
+          : '<br><span style="color:#b0bec5">Creality form → adaptations: <b>' + esc(ans[0]) +
+            '</b> · commercial: <b>' + esc(ans[1]) + '</b> · sharing: <b>' + esc(ans[2]) +
+            '</b> — the badge on the form must read <b>' + esc(lic.form_badge || '') +
+            '</b> (checked before publishing)</span>';
+        licEl.innerHTML = '<strong>License:</strong> ' + esc(lic.raw || 'not stated') +
+          ' &nbsp;·&nbsp; <span style="color:' + col + '">' + esc(lic.note || '') + '</span>' + plan;
+        _licenseBlocked = blocked;
+        const ub = document.getElementById('upload-btn');
+        if (ub) {
+          ub.disabled = blocked;
+          ub.title = blocked ? 'This source license does not allow remixing.' : '';
+        }
+      } else {
+        licEl.style.display = 'none';
+        _licenseBlocked = false;
+        const ub = document.getElementById('upload-btn');
+        if (ub) { ub.disabled = false; ub.title = ''; }
+      }
+
+      // Creality's published rules for THIS link, from the one owner
+      // (creality_rules via /fetch): the licence is only one of the checks —
+      // the content class, the source authorisation and the proof of creation
+      // are shown too, each with the rule that decided it. A refusal disables
+      // Publish here (the backend refuses the same upload anyway).
+      // The model we are holding, so an authorisation change (or the photo
+      // switch) can be re-judged on the dashboard without fetching the live
+      // page a second time.
+      _model = {name: data.name || '', source_url: data.source_url || '',
+                licence_raw: _licenseRaw || '',
+                proof_ok: !!(data.proof || {}).ok,
+                proof_why: (data.proof || {}).why || ''};
+      _proof = data.proof || null;
+      renderPolicyLine(data.policy || null, data.photo_source || '');
+      renderProofLine(_proof, data.photo_note || '');
 
       // Populate form
       document.getElementById('model-name').value = data.name || '';
       document.getElementById('model-desc').value = data.description || '';
 
-      // Build image comparison grid
-      const container = document.getElementById('image-container');
-      container.innerHTML = '';
-
-      const originals = data.original_images || [];
-      const edited = data.edited_images || [];
-
-      if (originals.length === 0 && edited.length === 0) {
-        container.innerHTML = '<p style="color:#666">No preview images found for this model.</p>';
-      } else {
-        // Selection toolbar
-        const bar = document.createElement('div');
-        bar.className = 'pickbar';
-        bar.innerHTML = `<button class="btn-outline" onclick="selectAll(true)">Select all</button>
-                         <button class="btn-outline" onclick="selectAll(false)">Select none</button>
-                         <span class="count" id="pick-count"></span>`;
-        container.appendChild(bar);
-
-        const max = Math.max(originals.length, edited.length);
-        for (let i = 0; i < max; i++) {
-          const pair = document.createElement('div');
-          pair.className = 'compare';
-
-          const left = document.createElement('div');
-          left.className = 'col';
-          left.innerHTML = '<label>Original</label>';
-          if (originals[i]) {
-            const img = document.createElement('img');
-            img.src = originals[i];
-            img.alt = 'Original';
-            left.appendChild(img);
-          } else {
-            left.innerHTML += '<p style="color:#444;font-size:.8rem">N/A</p>';
-          }
-
-          const right = document.createElement('div');
-          right.className = 'col';
-          right.innerHTML = '<label>Edited (Original Colors · Wood Background)</label>';
-          if (edited[i]) {
-            // The WHOLE image is the toggle: click anywhere, tick marks it.
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'tilebtn';
-            btn.dataset.pick = String(i);
-            btn.setAttribute('aria-pressed', _selected.has(i) ? 'true' : 'false');
-            btn.title = 'Click to select / deselect this image for upload';
-            btn.innerHTML = `<span class="tile-wrap ${_selected.has(i) ? 'selected' : ''}">
-                               <img src="${edited[i]}" alt="Edited">
-                               <span class="tick">&#10003;</span>
-                             </span>
-                             <span class="tile-hint">Click image to select</span>`;
-            btn.addEventListener('click', () => togglePick(i));
-            right.appendChild(btn);
-          } else {
-            right.innerHTML += '<p style="color:#444;font-size:.8rem">Edit failed</p>';
-          }
-
-          pair.appendChild(left);
-          pair.appendChild(right);
-          container.appendChild(pair);
-        }
-      }
+      // Build image comparison grid — see renderPhotoTiles(), the one place
+      // that paints the tiles (the fetch, the AI re-edit and the photo switch
+      // all go through it, so they can never disagree with the upload set).
+      renderPhotoTiles(_editedRaw.map((p, i) => ({
+        url: _imgUrls[i] || ('/file/' + String(p).split(/[\\/]/).pop()),
+        alt: 'Photo ' + (i + 1)
+      })));
 
       document.getElementById('preview-section').style.display = 'block';
       document.getElementById('upload-section').style.display = 'block';
 
-      const warnMsg = data.edit_warning
-        ? `<br><small>Image editing warning: ${esc(data.edit_warning)}</small>` : '';
+      const photoKind = _usingEdited ? 'AI-regenerated' : "the creator's original";
       updatePickCount();
-      setStatus('fetch-status', 'ok', `Downloaded <strong>${esc(data.name || 'model')}</strong> · ${_selected.size} of ${_editedRaw.length} image(s) selected for upload.${warnMsg}`);
+      const gal = data.gallery || {};
+      const galNote = gal.images
+        ? ` Gallery: ${gal.images}${gal.strip_thumbs ? ' of ' + gal.strip_thumbs : ''} creator photo(s) — no adverts.`
+        : '';
+      setStatus('fetch-status', 'ok', `Downloaded <strong>${esc(data.name || 'model')}</strong>${data.author ? ' by ' + esc(data.author) : ''} · using ${photoKind} photos · ${_selected.size} of ${_editedRaw.length} image(s) selected for upload — they go up in THIS order: first photo → web cover, second → app cover, all of them → the Model Images gallery.` + galNote);
 
     } catch (err) {
       setStatus('fetch-status', 'error', '&#10005; ' + err.message);
@@ -477,7 +539,52 @@
     }
   }
 
+  async function regeneratePhotos() {
+    if (!_origRaw.length) {
+      setStatus('fetch-status', 'warn', 'Fetch a model first — there are no original photos to regenerate yet.');
+      return;
+    }
+    const btn = document.getElementById('regen-btn');
+    btn.disabled = true;
+    setStatus('fetch-status', 'info', '<span class="spinner"></span>Re-generating photos with the local editor…');
+    try {
+      const res = await fetch('/edit-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_paths: _origRaw })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Editing failed');
+      const editedUrls = data.edited_images || [];   // renderable URLs
+      if (!editedUrls.length) throw new Error('The editor returned no images');
+      _editedRaw = data._raw_edited || [];           // paths for the upload
+      _imgUrls = editedUrls;
+      _selected = new Set(editedUrls.map((_, i) => i));
+      _usingEdited = true;
+      // rebuild the tile grid with the regenerated set (same one painter)
+      renderPhotoTiles(editedUrls.map((src, i) => ({url: src,
+        alt: 'Regenerated photo ' + (i + 1)})));
+      btn.textContent = 'Photos regenerated — click to regenerate again';
+      updatePickCount();
+      setStatus('fetch-status', 'ok', `Using ${editedUrls.length} regenerated photo(s) for the upload. Click again to re-roll.`);
+    } catch (err) {
+      setStatus('fetch-status', 'error', '&#10005; ' + err.message);
+      btn.disabled = false;
+      return;
+    }
+    btn.disabled = false;
+  }
+
   async function uploadModel() {
+    if (!_stlPath) {
+      setStatus('upload-status', 'warn', 'Nothing to upload yet — fetch a model first.');
+      return;
+    }
+    if (!(document.getElementById('model-name').value || '').trim()) {
+      setStatus('upload-status', 'warn', 'Give the listing a model name first.');
+      document.getElementById('model-name').focus();
+      return;
+    }
     const btn = document.getElementById('upload-btn');
     btn.disabled = true;
     setStatus('upload-status', 'info', '<span class="spinner"></span>Opening Creality Cloud… (a browser window will appear)');
@@ -491,22 +598,492 @@
           description: document.getElementById('model-desc').value,
           stl_path: _stlPath || '',
           image_paths: _editedRaw.filter((_, i) => _selected.has(i)),
-          source_url: _sourceUrl || ''
+          source_url: _sourceUrl || '',
+          license_raw: _licenseRaw || ''
         })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Upload failed');
 
+      const v = data.verify || {};
+      const la = v.license_answers || {};
+      const im = v.images || {};
+      // Honest, visible detail: which licence the form was read back to have,
+      // and how the photos landed (the counters come from Creality's own form).
+      let detail = '';
+      if (la.badge_expected || (la.wanted || []).length) {
+        detail += `<br><span class="updetail">Licence read back: badge <b>${esc(la.badge_license || 'unreadable')}</b>` +
+          ` / needs <b>${esc(la.badge_expected || '?')}</b> · answers [${(la.radio_index_verified || []).join(', ')}]` +
+          ` / wanted [${(la.wanted || []).join(', ')}] ${la.badge_ok ? '✔' : ''}</span>`;
+      }
+      if (im.gallery_sent !== undefined) {
+        detail += `<br><span class="updetail">Photos: web cover ${esc(im.cover_web || '—')} · app cover ${esc(im.cover_app || '—')}` +
+          ` · gallery ${im.gallery_sent} sent, form counter ${(im.gallery_counter || []).join(' → ')}` +
+          ` ${im.gallery_ok ? '✔' : '⚠ not all registered'}</span>`;
+      }
+      if (data.policy && data.policy.rule) {
+        detail += `<br><span class="updetail">Published under Creality's own rules — ${esc(data.policy.rule)} ✔</span>`;
+      }
+      if (data.proof && data.proof.ok !== undefined) {
+        detail += `<br><span class="updetail">Proof of creation: ${data.proof.ok ? 'attached ✔' : esc(data.proof.why || 'missing')}</span>`;
+      }
+      if (data.photo_note) {
+        detail += `<br><span class="updetail">${esc(data.photo_note)}</span>`;
+      }
       if (data.success) {
-        setStatus('upload-status', 'ok', `&#10003; Uploaded successfully! <a href="${data.url}" target="_blank" style="color:#a5d6a7">${data.url}</a>`);
+        setStatus('upload-status', 'ok', `&#10003; ${esc(data.message || 'Uploaded successfully!')} <a href="${data.url}" target="_blank" style="color:#a5d6a7">${data.url}</a>` + detail);
       } else {
-        setStatus('upload-status', 'error', '&#10005; ' + (data.error || 'Upload failed'));
+        setStatus('upload-status', 'error', '&#10005; ' + (data.error || 'Upload failed') + detail);
       }
     } catch (err) {
       setStatus('upload-status', 'error', '&#10005; ' + err.message);
     } finally {
       btn.disabled = false;
     }
+  }
+
+  // ── Auto: find N models with the licence filter, then publish each one ──
+  let _autoTimer = null;
+  // The household gate's own lists, straight from /selector (selector.py): the
+  // dashboard does not keep its own idea of what is worth publishing.
+  let SEL = {default_keywords: [], families: [], rejects: []};
+
+  // Creality's published rules, straight from /policy (creality_rules.py): the
+  // dashboard keeps no copy of the licence lists, the not-eligible content
+  // classes, the proof requirement or the photo switch.
+  let POL = null;
+  let _proof = null;            // the proof built at fetch time
+  let _policy = null;           // the verdict currently shown for this link
+  let _model = {name: '', source_url: '', licence_raw: '',
+                proof_ok: false, proof_why: ''};
+  let _licenseBlocked = false;  // the licence alone refuses this link
+
+  function photoSourceLabel(v) {
+    return "the source creator's original photos";
+  }
+
+  // The ONE place that paints the preview tiles: the fetch, the AI re-edit and
+  // the photo switch all come through here, so the tiles can never disagree
+  // with the set that will be uploaded.
+  function renderPhotoTiles(entries) {
+    const container = document.getElementById('image-container');
+    container.innerHTML = '';
+    if (!entries.length) {
+      container.innerHTML = '<p style="color:#666">No preview images found for this model.</p>';
+      return;
+    }
+    const bar = document.createElement('div');
+    bar.className = 'pickbar';
+    bar.innerHTML = `<button class="btn-outline" onclick="selectAll(true)">Select all</button>
+                     <button class="btn-outline" onclick="selectAll(false)">Select none</button>
+                     <span class="count" id="pick-count"></span>`;
+    container.appendChild(bar);
+    entries.forEach((e, i) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tilebtn';
+      btn.style.width = 'calc(33.3% - 8px)';
+      btn.style.display = 'inline-block';
+      btn.style.verticalAlign = 'top';
+      btn.style.paddingRight = '8px';
+      btn.dataset.pick = String(i);
+      btn.setAttribute('aria-pressed', _selected.has(i) ? 'true' : 'false');
+      btn.title = 'Click to select / deselect this image for upload';
+      btn.innerHTML = `<span class="tile-wrap ${_selected.has(i) ? 'selected' : ''}">
+                         <img src="${e.url}" alt="${esc(e.alt)}">
+                         <span class="tick">✔</span>
+                       </span>`;
+      btn.onclick = () => togglePick(i);
+      container.appendChild(btn);
+    });
+    updatePickCount();
+  }
+
+  // The per-link verdict: the one owner's checks, the photo choice this listing
+  // will carry, and — when the only refusal is the source authorisation — the
+  // one-click way to resolve it without leaving the dashboard.
+  function renderPolicyLine(pol, fetchPhotoSource) {
+    const polEl = document.getElementById('policy-line');
+    if (!pol || !pol.checks) {
+      polEl.style.display = 'none';
+      _policy = null;
+      return;
+    }
+    _policy = pol;
+    const bad = pol.allowed === false;
+    const choice = fetchPhotoSource || (POL && POL.photo_source) || '';
+    polEl.style.display = 'block';
+    polEl.innerHTML = '<strong>Creality\'s rules:</strong> ' +
+      (bad
+        ? '<span style="color:#ef5350"><b>⛔ Refused by rule “' +
+          esc(pol.rule || '?') + '”:</b> ' + esc(pol.reason || '') + '</span>'
+        : '<span style="color:#a5d6a7">allowed ✔</span>') +
+      '<br><span style="color:#b0bec5">' + (pol.checks || []).map(c =>
+        (c.allowed ? '✔ ' : '✗ ') + esc(c.check || '') +
+        (c.rule && !c.allowed ? ' <b>' + esc(c.rule) + '</b>' : '') +
+        (c.allowed ? '' : ' — ' + esc((c.reason || '').slice(0, 160)))
+      ).join('<br>') + '</span>' +
+      '<br><span style="color:#b0bec5">Photos this listing carries: <b>' +
+      esc(photoSourceLabel(choice)) +
+      '</b> — change it in the rules card above.</span>';
+    if (bad && pol.rule === 'source-not-authorized') {
+      const wrap = document.createElement('div');
+      wrap.style.marginTop = '6px';
+      const note = document.createElement('input');
+      note.type = 'text';
+      note.id = 'auth-note-inline';
+      note.placeholder = "why it is allowed (required — your own design, or the creator's permission)";
+      note.style.minWidth = '380px';
+      const b = document.createElement('button');
+      b.className = 'btn-outline';
+      b.textContent = 'Authorise this source';
+      b.onclick = () => authorizeSource(_model.source_url, note.value, b);
+      wrap.appendChild(note);
+      wrap.appendChild(b);
+      polEl.appendChild(wrap);
+    }
+    const ub = document.getElementById('upload-btn');
+    if (ub) {
+      ub.disabled = bad || _licenseBlocked;
+      ub.title = bad ? (pol.reason || "refused by Creality's published rules")
+                     : (_licenseBlocked ? 'This source license does not allow remixing.' : '');
+    }
+  }
+
+  function renderProofLine(pf, photoNote) {
+    const pfEl = document.getElementById('proof-line');
+    if (!pf) {
+      pfEl.style.display = 'none';
+      return;
+    }
+    pfEl.style.display = 'block';
+    const p = pf.params || {};
+    pfEl.innerHTML = '<strong>Proof of creation:</strong> ' +
+      (pf.ok
+        ? '<span style="color:#a5d6a7">built from the model file ✔</span> — ' +
+          (p.triangles || 0) + ' triangles · ' + esc(p.format || '?') + ' · ' +
+          (p.size_mm || []).map(v => esc(v)).join(' × ') + ' mm' +
+          (pf.png ? ' · <a href="' + esc(pf.png) + '" target="_blank" rel="noopener">view</a>' : '')
+        : '<span style="color:#ef5350">could not be built — ' +
+          esc(pf.why || 'unknown reason') + ' (the upload is refused without it)</span>') +
+      '<br><span style="color:#b0bec5">' + esc(photoNote || '') + '</span>';
+  }
+
+  // The two decisions the dashboard owns, both saved server-side (no env edit,
+  // no restart, no terminal): which photos a listing carries, and which sources
+  // this account may re-publish.
+  function policyControls() {
+    if (!POL) return;
+    const sel = document.getElementById('photo-source');
+    const note = document.getElementById('photo-source-note');
+    const env = POL.photo_source_env || '';
+    if (sel) {
+      sel.value = POL.photo_source || POL.photo_source_default || 'source';
+      sel.disabled = !!env;
+    }
+    if (note) {
+      note.innerHTML = env
+        ? 'locked by the <code>' + esc(POL.photo_source_env_name || 'CREALITY_PHOTO_SOURCE') +
+          '</code> environment override (“' + esc(env) + '”) — the dashboard cannot move it while that is set'
+        : 'the creator\'s ORIGINAL photos from the original upload are used; renders of the model file are never uploaded';
+    }
+    const list = document.getElementById('auth-list');
+    if (!list) return;
+    list.innerHTML = '';
+    const ents = POL.authorized || [];
+    const head = document.createElement('div');
+    head.innerHTML = '<b>Sources allowed to re-publish:</b> ' +
+      (ents.length ? ents.length + ' named — a re-upload of any other Creality listing is refused.'
+                   : 'none — every re-upload of another Creality listing is refused until one is named here.');
+    list.appendChild(head);
+    ents.forEach(e => {
+      const row = document.createElement('div');
+      row.style.marginTop = '4px';
+      row.innerHTML = '· <code>' + esc(e.source_url) + '</code> — ' +
+        esc(e.note || 'no reason given') + ' ';
+      const b = document.createElement('button');
+      b.className = 'btn-outline';
+      b.style.cssText = 'padding:2px 8px;font-size:.72rem';
+      b.textContent = 'Remove';
+      b.onclick = () => unauthorizeSource(e.source_url);
+      row.appendChild(b);
+      list.appendChild(row);
+    });
+  }
+
+  function policyLoad() {
+    fetch('/policy').then(r => r.json()).then(j => {
+      POL = j || null;
+      policyControls();
+    }).catch(() => {});
+  }
+
+  async function policyPost(url, body) {
+    const res = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {})
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+    if (data.licence_allow) {          // /policy-shaped responses
+      POL = data;
+      policyControls();
+    }
+    return data;
+  }
+
+  // Switch the photo source. Saved server-side and applied to THIS model
+  // immediately through /photo-plan (no second fetch of the live page).
+  async function setPhotoSource(v) {
+    if (POL && v === POL.photo_source) return;
+    try {
+      await policyPost('/policy/photo-source', { value: v });
+      setStatus('policy-status', 'ok', 'Photos: ' + photoSourceLabel(v) + '.');
+    } catch (e) {
+      setStatus('policy-status', 'error', e.message);
+      policyControls();
+      return;
+    }
+    const sel = document.getElementById('photo-source');
+    if (sel) sel.disabled = true;          // no second change mid-rebuild
+    try {
+      if ((_origRaw && _origRaw.length) || _stlPath) await replanPhotos();
+    } finally {
+      policyControls();                    // re-enables unless the env locks it
+    }
+    if (_policy) renderPolicyLine(_policy, v);
+  }
+
+  async function replanPhotos() {
+    setStatus('fetch-status', 'info', '<span class="spinner"></span>Rebuilding the photo set for this model…');
+    try {
+      const res = await fetch('/photo-plan', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stl_path: _stlPath || '', images: _origRaw || [],
+                               name: _model.name || '', slug: '' })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'could not re-plan the photos');
+      _editedRaw = data._raw_images || [];
+      _imgUrls = data.image_urls || [];
+      _selected = new Set(_editedRaw.map((_, i) => i));
+      _imagePaths = _editedRaw.slice();
+      _usingEdited = false;
+      renderPhotoTiles(_editedRaw.map((p, i) => ({
+        url: _imgUrls[i] || ('/file/' + String(p).split(/[\\/]/).pop()),
+        alt: 'Photo ' + (i + 1)
+      })));
+      renderProofLine(_proof, data.photo_note || '');
+      setStatus('fetch-status', 'ok', esc(data.photo_note || '') +
+        ' — ' + _editedRaw.length + ' image(s) will be uploaded.');
+    } catch (e) {
+      setStatus('fetch-status', 'warn', 'The photo set was not rebuilt: ' + e.message);
+    }
+  }
+
+  function authorizeFromCard() {
+    const url = (document.getElementById('auth-url').value || '').trim();
+    const note = (document.getElementById('auth-note').value || '').trim();
+    authorizeSource(url, note, null);
+  }
+
+  // Authorise a source to be re-published — the dashboard's version of
+  // scripts/authorize_source.py. The reason is required: a re-upload is only
+  // legitimate when the user designed it or the creator allowed it.
+  async function authorizeSource(url, note, btn) {
+    url = (url || '').trim();
+    note = (note || '').trim();
+    if (!url) { setStatus('policy-status', 'warn', 'Paste the model link (or its slug) to authorise.'); return; }
+    if (!note) { setStatus('policy-status', 'warn', 'Say why it is allowed — your own design, or the creator\'s permission. An unexplained authorisation is not one.'); return; }
+    if (btn) btn.disabled = true;
+    try {
+      await policyPost('/policy/authorize', { url, note });
+      setStatus('policy-status', 'ok', 'Authorised: ' + esc(url));
+      const a = document.getElementById('auth-url'); if (a) a.value = '';
+      const n = document.getElementById('auth-note'); if (n) n.value = '';
+    } catch (e) {
+      setStatus('policy-status', 'error', e.message);
+      if (btn) btn.disabled = false;
+      return;
+    }
+    await recheckVerdict();
+  }
+
+  async function unauthorizeSource(url) {
+    try {
+      const data = await policyPost('/policy/unauthorize', { url });
+      setStatus('policy-status', 'ok', (data.removed ? 'Authorisation removed: ' : 'Was not authorised: ') + esc(url));
+    } catch (e) {
+      setStatus('policy-status', 'error', e.message);
+      return;
+    }
+    await recheckVerdict();
+  }
+
+  // Re-judge the link already loaded (same one owner) after an authorisation
+  // change — no second fetch of the live page.
+  async function recheckVerdict() {
+    if (!_model.source_url && !_model.name) return;
+    try {
+      const res = await fetch('/policy/verdict', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(_model)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'could not re-check');
+      renderPolicyLine(data.policy || null, (POL && POL.photo_source) || '');
+    } catch (e) {
+      setStatus('policy-status', 'warn', 'The verdict was not re-checked: ' + e.message);
+    }
+  }
+
+  function selLoad() {
+    fetch('/selector').then(r => r.json()).then(j => {
+      SEL = j || SEL;
+      const f = document.getElementById('auto-keywords');
+      if (f && !f.value && (SEL.default_keywords || []).length)
+        f.placeholder = SEL.default_keywords.join(', ');
+      const box = document.getElementById('auto-families');
+      if (box) box.innerHTML = selSummary();
+    }).catch(() => {});
+  }
+
+  function selSummary() {
+    const fams = (SEL.families || []).map(f => esc(f.label)).join(' · ');
+    const no = (SEL.rejects || []).map(r => esc(r.reason)).join(' · ');
+    if (!fams) return '';
+    return '<b>Only useful household items are harvested:</b> ' + fams +
+      '<br><span style="color:#b0bec5">Never published: ' + no +
+      ', anything outside those families, or a second item from a family already '
+      'going out in the same run.</span>';
+  }
+
+  function autoRender(s) {
+    const counts = s.counts || {};
+    const st = s.state || 'idle';
+    const lic = s.licence || {};
+    // the rows below are capped, so the true number of candidates the gate turned
+    // down is the larger of the listed rows and the run's own total
+    const filtered = Math.max(counts.rejected || 0, s.rejected_total || 0);
+    // Stop was pressed and the run has not ended yet: say so, every poll
+    const stopping = !!s.stop && (st === 'discovering' || st === 'running');
+    setStatus('auto-status',
+      stopping ? 'warn' : (st === 'discovering' ? 'info' : (st === 'running' ? 'info'
+        : (st === 'error' ? 'error' : 'ok'))),
+      (stopping ? 'Stop requested — ' + (st === 'discovering'
+        ? 'the listing scan ends at its next step'
+        : 'the run stops at its next checkpoint; a Submit already pressed still completes, nothing new is submitted') + '. ' : '') +
+      (st === 'discovering'
+        ? '<span class="spinner"></span>Finding models — searching “' +
+          esc((s.keywords || []).join(', ') || 'all models') +
+          '”' + (s.progress
+            ? ' — listing “' + esc(s.progress.keyword || 'all models') + '”, scroll ' +
+              s.progress.pass + ', ' + s.progress.cards + ' cards on the page, ' +
+              s.progress.found + ' of ' + s.progress.count + ' found'
+            : ', ticking the licence filter and reading it back…')
+        : st === 'running'
+          ? '<span class="spinner"></span>Publishing ' + (counts.published || 0) +
+            ' of ' + (s.discovered || 0) + ' — ' +
+            (counts.working || 0) + ' in progress, ' +
+            (counts.skipped || 0) + ' skipped, ' +
+            (counts.fetch_failed || 0) + ' could not be fetched, ' +
+            (counts.failed || 0) + ' failed, ' +
+            filtered + ' filtered out as not useful'
+          : st === 'done'
+            ? (counts.published || 0
+               ? 'Run finished — ' + (counts.published || 0) + ' published, '
+               : 'Run finished — nothing was published, ') +
+              (counts.skipped || 0) + ' skipped, ' +
+              (counts.fetch_failed || 0) + ' could not be fetched, ' +
+              (counts.duplicate || 0) +
+              ' already on Creality Cloud, ' + (counts.failed || 0) + ' failed, ' +
+              filtered + ' filtered out as not useful.'
+            : st === 'stopped'
+              ? 'Stopped — ' + (counts.published || 0) + ' published before you stopped it.'
+              : st === 'error' ? 'Run failed: ' + esc(s.note || 'unknown error')
+              : 'Ask me for a number of models and I will find them, then publish them.'));
+
+    const already = s.skipped_already || 0;
+    document.getElementById('auto-summary').innerHTML =
+      (lic.verified
+        ? 'Licence filter verified on the live listing — ticked: <b>' +
+          esc((lic.ticked_on || []).join(', ')) + '</b> · left unticked: <b>' +
+          esc((lic.ticked_off || []).join(', ')) + '</b>'
+        : (lic.opened === false && st !== 'idle'
+           ? '<span style="color:#ffcc80">The Filters panel did not open — nothing was ' +
+             'fetched from an unfiltered list.</span>'
+           : '')) +
+      (already
+        ? (lic.verified ? '<br>' : '') + '<span style="color:#b0bec5">' + already +
+          ' model(s) already published — skipped before queueing (the config knows them).</span>'
+        : '');
+
+    const list = document.getElementById('auto-list');
+    list.innerHTML = (s.items || []).map((it, i) => {
+      const st2 = esc(it.state || 'queued');
+      const nm = esc(it.name || it.url || 'model');
+      // the rule that decided it (creality_rules) — shown when one refused it
+      const rule = (it.policy && it.policy.allowed === false && it.policy.rule)
+        ? '<span class="arule" style="color:#ffcc80">[' + esc(it.policy.rule) + ']</span> '
+        : '';
+      const proofBad = (it.proof && it.proof.ok === false)
+        ? '<span style="color:#ef9a9a">[no proof]</span> ' : '';
+      return '<div class="autorow"><span class="aname">' + (i + 1) + '. ' +
+        '<a href="' + esc(it.url || '#') + '" target="_blank" rel="noopener">' + nm +
+        '</a></span><span class="astate ' + st2 + '">' + st2 + '</span>' +
+        '<span class="areason">' + rule + proofBad +
+        esc(it.reason || it.result || '') + '</span></div>';
+    }).join('');
+    document.getElementById('auto-stop').disabled =
+      !(st === 'discovering' || st === 'running');
+    document.getElementById('auto-start').disabled =
+      (st === 'discovering' || st === 'running');
+    return st;
+  }
+
+  async function autoPoll() {
+    try {
+      const r = await fetch('/auto/status');
+      const s = await r.json();
+      const st = autoRender(s);
+      if (st !== 'discovering' && st !== 'running') {
+        clearInterval(_autoTimer); _autoTimer = null;
+      }
+    } catch (e) { /* keep polling */ }
+  }
+
+  async function autoStart() {
+    const raw = document.getElementById('auto-count').value;
+    const count = parseInt(raw, 10);
+    if (!count || count < 1) {
+      setStatus('auto-status', 'error',
+        'Type how many models you want — a number, 1 or more (you typed “' + esc(raw) + '”).');
+      return;
+    }
+    const kw = (document.getElementById('auto-keywords').value || '')
+      .split(',').map(s => s.trim()).filter(Boolean);
+    setStatus('auto-status', 'info', '<span class="spinner"></span>Starting…');
+    autoRender({state: 'discovering', keywords: kw.length ? kw : SEL.default_keywords,
+                items: [], counts: {}, licence: {}});
+    try {
+      const r = await fetch('/auto/start', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({count: count, keywords: kw})
+      });
+      const j = await r.json();
+      if (!r.ok) { setStatus('auto-status', 'error', esc(j.detail || 'could not start')); return; }
+      if (_autoTimer) clearInterval(_autoTimer);
+      _autoTimer = setInterval(autoPoll, 3000);
+      autoPoll();
+    } catch (e) {
+      setStatus('auto-status', 'error', 'Could not start the run: ' + esc(String(e)));
+    }
+  }
+
+  async function autoStop() {
+    setStatus('auto-status', 'warn', 'Stop requested…');
+    try { await fetch('/auto/stop', {method: 'POST'}); } catch (e) {}
+    autoPoll();
   }
 
   async function discoverModels() {
@@ -749,77 +1326,20 @@
     if (e.key === 'Enter') fetchModel();
   });
 
-  // ── Make a file (STL generator) ───────────────────────────
-  let _genStlPath = null;
-  let _genResp = null;
+  // Enter in the "how many models" box starts the run — it's a number, not a picker
+  document.getElementById('auto-count').addEventListener('keydown', e => {
+    if (e.key === 'Enter') autoStart();
+  });
+  document.getElementById('auto-keywords').addEventListener('keydown', e => {
+    if (e.key === 'Enter') autoStart();
+  });
 
-  async function generateFile(withImage = false) {
-    const btn = document.getElementById(withImage ? 'generate-image-btn' : 'generate-btn');
-    const prompt = document.getElementById('generate-input').value.trim();
-    const imagePath = document.getElementById('generate-image').value.trim();
-    const status = 'generate-status';
-    if (!prompt && !withImage) { setStatus(status, 'warn', 'Describe what you want to make first.'); return; }
-    if (withImage && !imagePath) { setStatus(status, 'warn', 'Paste an image path under downloads/ first.'); return; }
-    btn.disabled = true;
-    setStatus(status, 'info', '<span class="spinner"></span>Designing → forging → verifying… (Kimi may think for a few seconds)');
-    try {
-      const res = await fetch('/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, image_path: withImage ? imagePath : '' })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Generation failed');
-      _genStlPath = data._raw_stl || data.stl_path;
-      _genResp = data;
-      const pv = document.getElementById('gen-previews');
-      pv.innerHTML = (data.preview_urls || []).map(u => `<img src="${u}" alt="geometry preview">`).join('');
-      pv.style.display = 'grid';
-      const v = data.verify || {};
-      const facts = document.getElementById('gen-facts');
-      facts.innerHTML =
-        `<span>Designed by <b>${data.used_fallback ? 'library fallback (Kimi unavailable: ' + esc((data.brain && data.brain.state) || 'offline') + ')' : 'Kimi 2.7'}</b></span>` +
-        `<span> watertight: <b>${v.watertight ? 'yes' : 'NO'}</b></span>` +
-        `<span> volume: <b>${fmtVol(v.volume_mm3)}</b></span>` +
-        `<span> size: <b>${(v.extents_mm || []).map(x => Math.round(x)).join(' × ')} mm</b></span>` +
-        `<span> triangles: <b>${v.tris}</b></span>`;
-      facts.style.display = 'flex';
-      const dl = document.getElementById('gen-download');
-      dl.href = data.stl_url || ('/file/' + (_genStlPath || '').split(/[\\/]/).pop());
-      dl.setAttribute('download', (_genStlPath || 'generated.stl').split(/[\\/]/).pop());
-      document.getElementById('gen-bar').style.display = 'flex';
-      setStatus(status, 'ok', '&#10003; <strong>' + esc(data.name || 'Model') + '</strong> forged and verified — preview above. Nothing is uploaded yet.');
-    } catch (err) {
-      document.getElementById('gen-previews').style.display = 'none';
-      document.getElementById('gen-facts').style.display = 'none';
-      document.getElementById('gen-bar').style.display = 'none';
-      setStatus(status, 'error', '&#10005; ' + err.message);
-    } finally {
-      btn.disabled = false;
-    }
-  }
+  // show a run that is already going (or its results) after a reload
+  selLoad();
+  policyLoad();
+  autoPoll();
+  _autoTimer = setInterval(autoPoll, 5000);
 
-  function fmtVol(v) {
-    if (v == null) return '?';
-    return v >= 1000 ? Math.round(v / 1000) + ' cm³' : Math.round(v) + ' mm³';
-  }
-
-  function acceptGenerated() {
-    if (!_genResp) return;
-    document.getElementById('model-name').value = _genResp.name || 'Generated model';
-    document.getElementById('model-desc').value =
-      (_genResp.description || '') +
-      (_genResp.design_notes ? '\n\nDesign notes: ' + _genResp.design_notes : '') +
-      '\n\nOriginal design: generated with Creality Pipeline (Kimi 2.7 designer).';
-    _stlPath = _genStlPath;
-    _sourceUrl = _genResp.source_url || '';
-    _imagePaths = data_preview_urls();
-    document.getElementById('upload-section').style.display = 'block';
-    document.getElementById('upload-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    setStatus('upload-status', 'info', 'Loaded from the generator — check the fields, then click Upload to Creality Cloud.');
-  }
-
-  function data_preview_urls() { return (_genResp && _genResp.preview_urls) || []; }
 </script>
 </body>
 </html>

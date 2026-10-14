@@ -1,0 +1,38 @@
+{
+    "ip": "81.96.235.62",
+    "success": true,
+    "type": "IPv4",
+    "continent": "Europe",
+    "continent_code": "EU",
+    "country": "United Kingdom",
+    "country_code": "GB",
+    "region": "England",
+    "region_code": "ENG",
+    "city": "London",
+    "latitude": 51.5156177,
+    "longitude": -0.0919983,
+    "is_eu": false,
+    "postal": "EC2R 5",
+    "calling_code": "44",
+    "capital": "London",
+    "borders": "IE",
+    "flag": {
+        "img": "https://cdn.ipwhois.io/flags/gb.svg",
+        "emoji": "🇬🇧",
+        "emoji_unicode": "U+1F1EC U+1F1E7"
+    },
+    "connection": {
+        "asn": 5089,
+        "org": "Virgin Media Limited",
+        "isp": "Virgin Media Limited",
+        "domain": "virginmedia.co.uk"
+    },
+    "timezone": {
+        "id": "Europe/London",
+        "abbr": "BST",
+        "is_dst": true,
+        "offset": 3600,
+        "utc": "+01:00"
+    },
+    "readme": "https://ipwhois.io/docs"
+}

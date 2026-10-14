@@ -1,0 +1,33 @@
+{
+ "job_id": "20261013-174242",
+ "requested": 50,
+ "keywords": [
+  "cable organizer",
+  "phone holder",
+  "cotton bud holder",
+  "water bottle holder",
+  "clothes pegs",
+  "wall hooks",
+  "desk organizer",
+  "storage box organizer"
+ ],
+ "licence": {
+  "opened": false,
+  "state": {},
+  "ticked_on": [],
+  "ticked_off": [],
+  "verified": false
+ },
+ "counts": {
+  "published": 0,
+  "skipped": 0,
+  "failed": 0,
+  "fetch_failed": 0,
+  "duplicate": 0,
+  "queued": 0,
+  "working": 0,
+  "rejected": 0
+ },
+ "items": [],
+ "finished": "2026-10-13 17:42:58"
+}

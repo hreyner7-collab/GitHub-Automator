@@ -1,0 +1,518 @@
+{
+ "version": 1,
+ "entries": [
+  {
+   "name": "Z-ORB Industrial",
+   "author": "",
+   "slug": "z-orb-industrial",
+   "source_url": "https://www.crealitycloud.com/model-detail/z-orb-industrial",
+   "published_url": "https://www.crealitycloud.com/model-detail/z-orb-industrial",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/z-orb-industrial",
+    "slug": "z-orb-industrial",
+    "name": "zorbindustrial",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "Data Cable Spool Storage Box",
+   "author": "",
+   "slug": "data-cable-spool-storage-box",
+   "source_url": "https://www.crealitycloud.com/model-detail/data-cable-spool-storage-box",
+   "published_url": "https://www.crealitycloud.com/model-detail/data-cable-spool-storage-box",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/data-cable-spool-storage-box",
+    "slug": "data-cable-spool-storage-box",
+    "name": "datacablespoolstoragebox",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "Spinning Fidget Ring",
+   "author": "",
+   "slug": "spinning-fidget-ring",
+   "source_url": "https://www.crealitycloud.com/model-detail/spinning-fidget-ring",
+   "published_url": "https://www.crealitycloud.com/model-detail/spinning-fidget-ring",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/spinning-fidget-ring",
+    "slug": "spinning-fidget-ring",
+    "name": "spinningfidgetring",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "Coolclip - Ice Pack Holder",
+   "author": "",
+   "slug": "coolclip-ice-pack-holder",
+   "source_url": "https://www.crealitycloud.com/model-detail/coolclip-ice-pack-holder",
+   "published_url": "https://www.crealitycloud.com/model-detail/coolclip-ice-pack-holder",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/coolclip-ice-pack-holder",
+    "slug": "coolclip-ice-pack-holder",
+    "name": "coolclipicepackholder",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "Chain lube tool",
+   "author": "",
+   "slug": "chain-lubrication-tool",
+   "source_url": "https://www.crealitycloud.com/model-detail/chain-lubrication-tool",
+   "published_url": "https://www.crealitycloud.com/model-detail/chain-lubrication-tool",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/chain-lubrication-tool",
+    "slug": "chain-lubrication-tool",
+    "name": "chainlubetool",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "Fitted Sheet Holder",
+   "author": "",
+   "slug": "fitted-sheet-holder",
+   "source_url": "https://www.crealitycloud.com/model-detail/fitted-sheet-holder",
+   "published_url": "https://www.crealitycloud.com/model-detail/fitted-sheet-holder",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/fitted-sheet-holder",
+    "slug": "fitted-sheet-holder",
+    "name": "fittedsheetholder",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "Q-tip travel case",
+   "author": "",
+   "slug": "q-tip-travel-case",
+   "source_url": "https://www.crealitycloud.com/model-detail/q-tip-travel-case",
+   "published_url": "https://www.crealitycloud.com/model-detail/q-tip-travel-case",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/q-tip-travel-case",
+    "slug": "q-tip-travel-case",
+    "name": "qtiptravelcase",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "Cable Organizer",
+   "author": "",
+   "slug": "cable-management-tool-3d-print",
+   "source_url": "https://www.crealitycloud.com/model-detail/cable-management-tool-3d-print",
+   "published_url": "https://www.crealitycloud.com/model-detail/cable-management-tool-3d-print",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/cable-management-tool-3d-print",
+    "slug": "cable-management-tool-3d-print",
+    "name": "cableorganizer",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "CubeMe Project(1)",
+   "author": "",
+   "slug": "69c7f1e19fd3af29288dcf28",
+   "source_url": "https://www.crealitycloud.com/model-detail/69c7f1e19fd3af29288dcf28",
+   "published_url": "https://www.crealitycloud.com/model-detail/69c7f1e19fd3af29288dcf28",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/69c7f1e19fd3af29288dcf28",
+    "slug": "69c7f1e19fd3af29288dcf28",
+    "name": "cubemeproject1",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "Shoe Organizer With Pull Tab.",
+   "author": "",
+   "slug": "shoe-organizer-with-pull-tab",
+   "source_url": "https://www.crealitycloud.com/model-detail/shoe-organizer-with-pull-tab",
+   "published_url": "https://www.crealitycloud.com/model-detail/shoe-organizer-with-pull-tab",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/shoe-organizer-with-pull-tab",
+    "slug": "shoe-organizer-with-pull-tab",
+    "name": "shoeorganizerwithpulltab",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "Universal Electric Toothbrush Holder",
+   "author": "",
+   "slug": "universal-electric-toothbrush-holder",
+   "source_url": "https://www.crealitycloud.com/model-detail/universal-electric-toothbrush-holder",
+   "published_url": "https://www.crealitycloud.com/model-detail/universal-electric-toothbrush-holder",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/universal-electric-toothbrush-holder",
+    "slug": "universal-electric-toothbrush-holder",
+    "name": "universalelectrictoothbrushholder",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "Vacuum Nozzle",
+   "author": "",
+   "slug": "nozzle-for-3d-print-vacuum",
+   "source_url": "https://www.crealitycloud.com/model-detail/nozzle-for-3d-print-vacuum",
+   "published_url": "https://www.crealitycloud.com/model-detail/nozzle-for-3d-print-vacuum",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/nozzle-for-3d-print-vacuum",
+    "slug": "nozzle-for-3d-print-vacuum",
+    "name": "vacuumnozzle",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "DJI Neo 2 The Box",
+   "author": "",
+   "slug": "6ac582af729f5ba4b345383e",
+   "source_url": "https://www.crealitycloud.com/model-detail/6ac582af729f5ba4b345383e",
+   "published_url": "https://www.crealitycloud.com/model-detail/6ac582af729f5ba4b345383e",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/6ac582af729f5ba4b345383e",
+    "slug": "6ac582af729f5ba4b345383e",
+    "name": "djineo2thebox",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "DJI+Neo+2+case",
+   "author": "",
+   "slug": "dji-neo2-case",
+   "source_url": "https://www.crealitycloud.com/model-detail/dji-neo2-case",
+   "published_url": "https://www.crealitycloud.com/model-detail/dji-neo2-case",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/dji-neo2-case",
+    "slug": "dji-neo2-case",
+    "name": "djineo2case",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "CAR",
+   "author": "",
+   "slug": "3d-printing-automotive-parts",
+   "source_url": "https://www.crealitycloud.com/model-detail/3d-printing-automotive-parts",
+   "published_url": "https://www.crealitycloud.com/model-detail/3d-printing-automotive-parts",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/3d-printing-automotive-parts",
+    "slug": "3d-printing-automotive-parts",
+    "name": "car",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "car",
+   "author": "",
+   "slug": "3d-printed-car-industry",
+   "source_url": "https://www.crealitycloud.com/model-detail/3d-printed-car-industry",
+   "published_url": "https://www.crealitycloud.com/model-detail/3d-printed-car-industry",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/3d-printed-car-industry",
+    "slug": "3d-printed-car-industry",
+    "name": "car",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "car",
+   "author": "",
+   "slug": "cars-3d-print",
+   "source_url": "https://www.crealitycloud.com/model-detail/cars-3d-print",
+   "published_url": "https://www.crealitycloud.com/model-detail/cars-3d-print",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/cars-3d-print",
+    "slug": "cars-3d-print",
+    "name": "car",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "Under-Sink Door Organiser - Kitchen Cabinet",
+   "author": "",
+   "slug": "under-sink-organiser-cabinet-storage",
+   "source_url": "https://www.crealitycloud.com/model-detail/under-sink-organiser-cabinet-storage",
+   "published_url": "https://www.crealitycloud.com/model-detail/under-sink-organiser-cabinet-storage",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/under-sink-organiser-cabinet-storage",
+    "slug": "under-sink-organiser-cabinet-storage",
+    "name": "undersinkdoororganiserkitchencabinet",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "Organizer Box XL",
+   "author": "",
+   "slug": "xl-organizer-box",
+   "source_url": "https://www.crealitycloud.com/model-detail/xl-organizer-box",
+   "published_url": "https://www.crealitycloud.com/model-detail/xl-organizer-box",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/xl-organizer-box",
+    "slug": "xl-organizer-box",
+    "name": "organizerboxxl",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "minimalist soap holder",
+   "author": "",
+   "slug": "minimalist-3d-printed-soap-holder",
+   "source_url": "https://www.crealitycloud.com/model-detail/minimalist-3d-printed-soap-holder",
+   "published_url": "https://www.crealitycloud.com/model-detail/minimalist-3d-printed-soap-holder",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/minimalist-3d-printed-soap-holder",
+    "slug": "minimalist-3d-printed-soap-holder",
+    "name": "minimalistsoapholder",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "Laundry Detergent Cup Drain - Tide",
+   "author": "",
+   "slug": "tide-laundry-detergent-drain-cup",
+   "source_url": "https://www.crealitycloud.com/model-detail/tide-laundry-detergent-drain-cup",
+   "published_url": "https://www.crealitycloud.com/model-detail/tide-laundry-detergent-drain-cup",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/tide-laundry-detergent-drain-cup",
+    "slug": "tide-laundry-detergent-drain-cup",
+    "name": "laundrydetergentcupdraintide",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "Toothbrush stand",
+   "author": "",
+   "slug": "6ac7b19bf5ed98d3279c96a7",
+   "source_url": "https://www.crealitycloud.com/model-detail/6ac7b19bf5ed98d3279c96a7",
+   "published_url": "https://www.crealitycloud.com/model-detail/6ac7b19bf5ed98d3279c96a7",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/6ac7b19bf5ed98d3279c96a7",
+    "slug": "6ac7b19bf5ed98d3279c96a7",
+    "name": "toothbrushstand",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "Stand for cleaning accessories",
+   "author": "",
+   "slug": "3d-printed-cleaning-stand",
+   "source_url": "https://www.crealitycloud.com/model-detail/3d-printed-cleaning-stand",
+   "published_url": "https://www.crealitycloud.com/model-detail/3d-printed-cleaning-stand",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/3d-printed-cleaning-stand",
+    "slug": "3d-printed-cleaning-stand",
+    "name": "standforcleaningaccessories",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 16:38:38",
+   "recorded_at": "2026-10-08 16:38:38",
+   "last_seen": "2026-10-08 16:38:38"
+  },
+  {
+   "name": "Clothespin",
+   "author": "AK3D",
+   "slug": "clothespin-3d-printing",
+   "source_url": "https://crealitycloud.com/model-detail/clothespin-3d-printing",
+   "published_url": "https://www.crealitycloud.com/model-detail/6ac7beab729f5ba4b3608c7b",
+   "outcome": "published",
+   "note": "run 20261008-165952",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/clothespin-3d-printing",
+    "slug": "",
+    "name": "clothespin",
+    "author": "ak3d",
+    "file": "sha256:96e6d5b9b60857944fcdcac76ee0fd3523ac8c1e6e8f79266312022fdc1d717a:531894"
+   },
+   "published_at": "2026-10-08 17:02:51",
+   "recorded_at": "2026-10-08 17:02:51",
+   "last_seen": "2026-10-08 17:02:51"
+  },
+  {
+   "name": "Домкрат для подъема поддонов 1/10-го масштаба",
+   "author": "",
+   "slug": "scale-model-pallet-jack",
+   "source_url": "https://www.crealitycloud.com/model-detail/scale-model-pallet-jack",
+   "published_url": "https://www.crealitycloud.com/model-detail/6ac7e100f5ed98d3279fc843",
+   "outcome": "published",
+   "note": "published by hand from the dashboard",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/scale-model-pallet-jack",
+    "slug": "scale-model-pallet-jack",
+    "name": "домкратдляподъемаподдонов110гомасштаба",
+    "author": "",
+    "file": "sha256:9d1e5a862fb8deac763eb8ed2afd35be38c60e9d70ab65df58748d4e2a8c3d53:236158"
+   },
+   "published_at": "2026-10-08 19:29:20",
+   "recorded_at": "2026-10-08 19:29:20",
+   "last_seen": "2026-10-08 19:29:20"
+  },
+  {
+   "name": "1/10 Scale Pallet Jack",
+   "author": "",
+   "slug": "scale-model-pallet-jack-1-10",
+   "source_url": "https://www.crealitycloud.com/model-detail/scale-model-pallet-jack-1-10",
+   "published_url": "https://www.crealitycloud.com/model-detail/scale-model-pallet-jack-1-10",
+   "outcome": "published",
+   "note": "already on your Creality Cloud account",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/scale-model-pallet-jack-1-10",
+    "slug": "scale-model-pallet-jack-1-10",
+    "name": "110scalepalletjack",
+    "author": "",
+    "file": ""
+   },
+   "published_at": "2026-10-08 19:49:49",
+   "recorded_at": "2026-10-08 19:49:49",
+   "last_seen": "2026-10-08 19:49:49"
+  },
+  {
+   "name": "dumpling squishy clicker",
+   "author": "",
+   "slug": "dumpling-squishy-clicker",
+   "source_url": "https://www.crealitycloud.com/model-detail/dumpling-squishy-clicker",
+   "published_url": "https://www.crealitycloud.com/model-detail/6ac7e7e6f5ed98d327a0425f",
+   "outcome": "published",
+   "note": "published by hand from the dashboard",
+   "fingerprints": {
+    "url": "crealitycloud.com/model-detail/dumpling-squishy-clicker",
+    "slug": "dumpling-squishy-clicker",
+    "name": "dumplingsquishyclicker",
+    "author": "",
+    "file": "sha256:dfc62b3796cb14ff96cd8b151a759f74bbe69c64a13456ad4678f1e9016d5f83:2071404"
+   },
+   "published_at": "2026-10-08 19:58:46",
+   "recorded_at": "2026-10-08 19:58:46",
+   "last_seen": "2026-10-08 19:58:46"
+  }
+ ]
+}

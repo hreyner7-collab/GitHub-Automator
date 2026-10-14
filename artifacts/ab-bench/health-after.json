@@ -1,0 +1,44 @@
+{
+  "capturedAt": "2026-10-01T12:58:34.877Z",
+  "applied": {
+    "Throughput Booster": {
+      "before": "Disabled",
+      "after": "Enabled",
+      "why": "Removes intermittent pausing between frames (Intel feature)",
+      "note": "verified applied (live value matches target)"
+    },
+    "MIMO Power Save Mode": {
+      "before": "Auto SMPS",
+      "after": "No SMPS",
+      "why": "Stops antenna power-saving that halves spatial streams",
+      "note": "verified applied (live value matches target)"
+    },
+    "Roaming Aggressiveness": {
+      "before": "3. Medium",
+      "after": "1. Lowest",
+      "why": "Desktop PC; stops pointless AP rescans that stall throughput",
+      "note": "verified applied (live value matches target)"
+    },
+    "Packet Coalescing": {
+      "before": "Enabled",
+      "after": "Disabled",
+      "why": "Reduces receive latency",
+      "note": "verified applied (live value matches target)"
+    },
+    "PowerPlan:WLAN Power Saving": {
+      "before": "Current AC Power Setting Index: 0x00000000 Current DC Power Setting Index: 0x00000002",
+      "after": "Current AC Power Setting Index: 0x00000000 Current DC Power Setting Index: 0x00000000",
+      "why": "Max-performance wireless power saving on AC/DC",
+      "note": "verified: Maximum Performance on AC and DC"
+    }
+  },
+  "manualOnly": {
+    "Adapter Power Management": {
+      "reason": "driver rejects the power-management WMI class: ERROR: Command failed: powershell -NoProfile -Command Get-NetAdapterPowerManagement -Name WiFi 2>&1 | Out-String; remains driver-managed"
+    }
+  },
+  "linkMbps": 1201000000,
+  "linkMbpsBefore": 1201000000,
+  "adapterAdvancedAfter": "[{\"DisplayName\":\"Sleep on WoWLAN Disconnect\",\"DisplayValue\":\"Disabled\"},{\"DisplayName\":\"Packet Coalescing\",\"DisplayValue\":\"Disabled\"},{\"DisplayName\":\"ARP offload for WoWLAN\",\"DisplayValue\":\"Disabled\"},{\"DisplayName\":\"NS offload for WoWLAN\",\"DisplayValue\":\"Disabled\"},{\"DisplayName\":\"GTK rekeying for WoWLAN\",\"DisplayValue\":\"Disabled\"},{\"DisplayName\":\"Wake on Magic Packet\",\"DisplayValue\":\"Disabled\"},{\"DisplayName\":\"Wake on Pattern Match\",\"DisplayValue\":\"Disabled\"},{\"DisplayName\":\"Channel Width for 2.4GHz\",\"DisplayValue\":\"Auto\"},{\"DisplayName\":\"Channel Width for 5GHz\",\"DisplayValue\":\"Auto\"},{\"DisplayName\":\"Mixed Mode Protection\",\"DisplayValue\":\"RTS/CTS Enabled\"},{\"DisplayName\":\"Fat Channel Intolerant\",\"DisplayValue\":\"Disabled\"},{\"DisplayName\":\"Transmit Power\",\"DisplayValue\":\"5. Highest\"},{\"DisplayName\":\"802.11n/ac/ax Wireless Mode\",\"DisplayValue\":\"4. 802.11ax\"},{\"DisplayName\":\"MIMO Power Save Mode\",\"DisplayValue\":\"No SMPS\"},{\"DisplayName\":\"Roaming Aggressiveness\",\"DisplayValue\":\"1. Lowest\"},{\"DisplayName\":\"Preferred Band\",\"DisplayValue\":\"1. No Preference\"},{\"DisplayName\":\"Throughput Booster\",\"DisplayValue\":\"Enabled\"},{\"DisplayName\":\"U-APSD support\",\"DisplayValue\":\"Disabled\"},{\"DisplayName\":\"802.11a/b/g Wireless Mode\",\"DisplayValue\":\"6. Dual Band 802.11a/b/g\"}]",
+  "wlanAfter": "There is 1 interface on the system: \r\n\r\n    Name                   : WiFi\r\n    Description            : Intel(R) Wi-Fi 6 AX201 160MHz\r\n    GUID                   : 3e424371-28cf-4405-8f69-90454edb36ce\r\n    Physical address       : 08:6a:c5:5b:ff:4a\r\n    Interface type         : Primary\r\n    State                  : connected\r\n    SSID                   : VM4847160\r\n    AP BSSID               : 64:7b:1e:91:e3:21\r\n    Band                   : 5 GHz\r\n    Channel                : 60\r\n    Connected Akm-cipher   : [ akm = 00-0f-ac:02, cipher =  00-0f-ac:04 ]\r\n    Network type           : Infrastructure\r\n    Radio type             : 802.11ax\r\n    Authentication         : WPA2-Personal\r\n    Cipher                 : CCMP\r\n    Connection mode        : Auto Connect\r\n    Receive rate (Mbps)    : 1201\r\n    Transmit rate (Mbps)   : 1201\r\n    Signal                 : 95% \r\n    Rssi                   : -39\r\n    Profile                : VM4847160 \r\n    QoS MSCS Configured         : 0\r\n    QoS Map Configured          : 0\r\n    QoS Map Allowed by Policy   : 0"
+}

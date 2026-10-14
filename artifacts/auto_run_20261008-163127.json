@@ -1,0 +1,65 @@
+{
+ "job_id": "20261008-163127",
+ "requested": 2,
+ "keywords": [
+  "household items",
+  "cable organizer",
+  "useful household"
+ ],
+ "licence": {
+  "opened": true,
+  "state": {
+   "CC BY": true,
+   "CC BY-SA": true,
+   "CC BY-NC": true,
+   "CC BY-NC-SA": true,
+   "CC BY-ND": false,
+   "CC BY-NC-ND": true,
+   "CC0": true,
+   "Standard License": false
+  },
+  "ticked_on": [
+   "CC BY",
+   "CC BY-NC",
+   "CC BY-NC-ND",
+   "CC BY-NC-SA",
+   "CC BY-SA",
+   "CC0"
+  ],
+  "ticked_off": [
+   "CC BY-ND",
+   "Standard License"
+  ],
+  "verified": true,
+  "applied_with": "Confirm"
+ },
+ "counts": {
+  "published": 2,
+  "skipped": 0,
+  "failed": 0,
+  "duplicate": 0,
+  "queued": 0,
+  "working": 0
+ },
+ "items": [
+  {
+   "name": "Stand for cleaning accessories",
+   "url": "https://www.crealitycloud.com/model-detail/cleaning-accessories-stand",
+   "keyword": "household items",
+   "state": "published",
+   "reason": "",
+   "result": "Published to your Creality Cloud account with 4 photo(s) in the creator's order \u2014 web cover stand_for_cleaning_accessories_img_0.webp, app cover stand_for_cleaning_accessories_img_1.webp, 4 in the gallery. Check 'My Designs'.",
+   "licence": "creativecommons.org/licenses/by-nc-sa/4 This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or for"
+  },
+  {
+   "name": "Toothbrush stand",
+   "url": "https://www.crealitycloud.com/model-detail/innovative-3d-toothbrush-stand",
+   "keyword": "household items",
+   "state": "published",
+   "reason": "",
+   "result": "Published to your Creality Cloud account with 5 photo(s) in the creator's order \u2014 web cover toothbrush_stand_img_0.webp, app cover toothbrush_stand_img_1.webp, 5 in the gallery. Check 'My Designs'.",
+   "licence": "creativecommons.org/licenses/by/4 This work is licensed under the Copyright License 4.0. This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format, s"
+  }
+ ],
+ "finished": "2026-10-08 16:33:51"
+}

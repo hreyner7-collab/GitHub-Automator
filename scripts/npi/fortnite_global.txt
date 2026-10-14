@@ -1,0 +1,8 @@
+Profile "global_profile"
+{
+	// NVIDIA global driver settings - Lecctron Fortnite guide 2026
+	SettingID_0x00AC8497 = 0x00002800 InternalSettingFlag=V0 // Shader Cache Size = 10GB
+	SettingID_0x00A879CF = 0x08416747 InternalSettingFlag=V0 // Vertical Sync = Force off
+	SettingID_0x1057EB71 = 0x00000001 InternalSettingFlag=V0 // Power management = Prefer maximum performance
+	SettingID_0x00CE2691 = 0x00000014 InternalSettingFlag=V0 // Texture Filtering Quality = High performance
+}
