@@ -6,6 +6,8 @@ thumbnail and stats. It does NOT download, edit, or upload anything.
 import json
 import random
 import re
+import time
+from pathlib import Path
 
 from playwright.async_api import async_playwright
 
@@ -387,6 +389,77 @@ def judge_card(name: str, url: str, used_families: set, is_done=None) -> dict:
 def _english_url(url: str) -> str:
     """The English form of a Creality model link (drops the /xx/ locale)."""
     return re.sub(r"(crealitycloud\.com)/[a-z]{2}(?=/|$)", r"\1", url or "")
+
+
+# Listings a run decided NOT to publish (refused by the licence/policy gate, no
+# model file, or a page that would not fetch) are written here, so the next Find
+# Models does not open them again. A refusal is re-checked once the cooldown ends.
+TRIED_PATH = Path(__file__).resolve().parent / "artifacts" / "tried_listings.json"
+TRIED_COOLDOWN_SECONDS = 7 * 24 * 3600
+
+
+def _seed_from_runs(runs_dir: Path) -> dict:
+    """First use of the record: remember what earlier runs decided, so the
+    listings they already refused are not opened again either."""
+    data: dict = {}
+    for run_file in sorted(runs_dir.glob("auto_run_*.json")):
+        try:
+            run = json.loads(run_file.read_text(encoding="utf-8"))
+            when = time.mktime(time.strptime(run.get("finished") or "",
+                                             "%Y-%m-%d %H:%M:%S"))
+        except (OSError, ValueError, TypeError):
+            continue
+        for it in run.get("items") or []:
+            # "fetch-failed" is main.FETCH_FAILED; kept as a literal so this
+            # module does not import the web app.
+            if it.get("state") in ("skipped", "fetch-failed") and it.get("url"):
+                data[_english_url(it["url"])] = {"name": it.get("name", ""),
+                                                 "reason": it.get("reason", ""),
+                                                 "when": when}
+    return data
+
+
+def _tried_store(path: Path) -> dict:
+    if not path.exists():
+        data = _seed_from_runs(path.parent)
+        _write_tried(path, data)
+        return data
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_tried(path: Path, data: dict) -> None:
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8")
+
+
+def remember_tried(url: str, name: str, reason: str, path=None, now=None) -> None:
+    """Record that this listing was decided NOT to publish. The first decision
+    keeps its date, so the cooldown is not pushed back on every run."""
+    if not url:
+        return
+    store = Path(path) if path else TRIED_PATH
+    data = _tried_store(store)
+    key = _english_url(url)
+    if key in data:
+        return
+    data[key] = {"name": name or "", "reason": (reason or "")[:200],
+                 "when": time.time() if now is None else now}
+    _write_tried(store, data)
+
+
+def was_tried_recently(url: str, path=None, now=None) -> bool:
+    """True while a listing's refusal is inside the cooldown, so Find Models
+    skips it without opening the page."""
+    if not url:
+        return False
+    entry = _tried_store(Path(path) if path else TRIED_PATH).get(_english_url(url))
+    if not entry:
+        return False
+    current = time.time() if now is None else now
+    return current - float(entry.get("when") or 0) < TRIED_COOLDOWN_SECONDS
 
 
 def find_creality(keywords: list[str] | None = None, count: int = 10,

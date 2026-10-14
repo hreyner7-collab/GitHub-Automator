@@ -13,7 +13,7 @@ from uploader import (upload as uploader_upload, _debug_port_up,
                       license_answer_indexes, expected_badge_token,
                       NO_COVERS_ERROR, usable_cover_images)
 from discover import discover as discover_models, find_creality, \
-    CREALITY_LICENCE_ALLOW, CREALITY_LICENCE_DENY
+    CREALITY_LICENCE_ALLOW, CREALITY_LICENCE_DENY, remember_tried, was_tried_recently
 import analytics
 import creality_rules
 import ledger
@@ -529,6 +529,15 @@ def _fetch_failure_is_recoverable(message: str) -> bool:
     return bool(FETCH_RETRYABLE_RE.search(message or ""))
 
 
+def _remember_outcomes() -> None:
+    """Write every listing that ended as a skip or a fetch failure into the tried
+    record. Called with each log write, so a run stopped midway keeps what it
+    decided. A listing already recorded keeps its first date."""
+    for it in AUTO.get("items") or []:
+        if it.get("state") in ("skipped", FETCH_FAILED):
+            remember_tried(it.get("url", ""), it.get("name", ""), it.get("reason", ""))
+
+
 async def _wait_between_fetch_tries(seconds: float) -> bool:
     """Wait between fetch attempts, waking up at once when Stop is pressed, so
     stopping never sits through the whole backoff. Returns True when the run was
@@ -604,6 +613,7 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
     import time as _time
 
     def _log() -> str:
+        _remember_outcomes()
         path = BASE_DIR / "artifacts" / ("auto_run_%s.json" % job_id)
         path.parent.mkdir(exist_ok=True)
         path.write_text(_json.dumps({
@@ -624,7 +634,8 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
         # DURING discovery (not queued and skipped later), so the run never
         # picks a model it has finished before.
         def _already_done(url: str, name: str) -> bool:
-            return ledger.find(source_url=url, name=name)["found"]
+            return bool(ledger.find(source_url=url, name=name)["found"]
+                        or was_tried_recently(url))
 
         def _on_progress(p: dict) -> None:
             AUTO["progress"] = p
