@@ -945,9 +945,12 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
             # real dead end, reported here instead of walking to the form.
             if not cover_ok:
                 it["state"] = FETCH_FAILED
-                it["reason"] = ("could not fetch this model's cover photos: the listing "
-                                "gave no usable cover photo of its own, so the run skipped it "
-                                "and moved on (the auto run has no Fetch & Edit step)")
+                g = res.get("gallery") or {}
+                first_drop = ((g.get("dropped") or [{}])[0]).get("reason", "")
+                it["reason"] = ("could not fetch this model's cover photos: the listing showed "
+                                "%d photo(s), %d usable" % (g.get("images", 0), g.get("downloaded", 0))
+                                + (("; first one dropped: " + first_drop) if first_drop else "")
+                                + " — the run skipped it and moved on")
                 continue
             if AUTO.get("stop"):
                 # Stop was pressed while this model was fetched: nothing has been

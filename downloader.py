@@ -456,7 +456,7 @@ def _background_reason(path: str) -> str:
 
 
 def _download_images(images: list[str], slug: str, limit: int = 12,
-                     strict: bool = True) -> list[str]:
+                     strict: bool = True, report: list | None = None) -> list[str]:
     """Download images and keep the usable ones, in the order given.
 
     strict=True applies the blur/size audit used for opportunistic scans.
@@ -467,35 +467,57 @@ def _download_images(images: list[str], slug: str, limit: int = 12,
     Every kept photo is converted to a format the upload form accepts, so the
     set handed to the uploader is exactly the set that can be published.
     """
+    import time
+
+    def _drop(img_url, why, sink):
+        if sink is not None:
+            sink.append({"url": img_url.split("?")[0][-90:], "reason": why})
+
     paths = []
     for i, img_url in enumerate(images[:limit]):
         ext = img_url.split("?")[0].split(".")[-1].lower()
         if not ext.isalpha() or len(ext) > 4:
             ext = "jpg"
         p = os.path.join(DOWNLOADS_DIR, f"{slug}_img_{i}.{ext}")
+        err = ""
+        for attempt in range(2):          # one retry: a CDN hiccup is not a missing photo
+            try:
+                _save(img_url, p)
+                err = ""
+                break
+            except Exception as e:
+                err = "download failed: %s: %s" % (type(e).__name__, str(e)[:120])
+                time.sleep(1.5) if attempt == 0 else None
+        if err:
+            _drop(img_url, err, report)
+            continue
         try:
-            _save(img_url, p)
-            ok = os.path.getsize(p) > 1024  # skip empty/broken
-            if ok and _ai_label_reason(p):
-                ok = False                  # labelled as AI-generated: never a listing photo
-            if ok and ext not in UPLOAD_IMAGE_EXTS:
+            why = ""
+            if os.path.getsize(p) <= 1024:
+                why = "empty or broken download (under 1 KB)"
+            elif _ai_label_reason(p):
+                why = "labelled AI-generated"   # never a listing photo
+            elif ext not in UPLOAD_IMAGE_EXTS:
                 # convert first, then audit the real pixels of the converted file
                 p = to_uploadable(p)
-                ok = bool(p)
-            if ok and strict:
-                ok = _image_quality_ok(p)     # tiny thumbnails & blurry blobs
-            elif ok:
-                ok = _image_quality_ok(p, min_side=200, min_sharpness=0.0)
-            if ok and _flat_render_reason(p):
-                ok = False                  # a CAD/slicer-style render, not the object
-            if ok and strict and _background_reason(p):
-                ok = False                  # opportunistic scans: not on a desk/table or black backdrop
-            if ok and p:
+                if not p:
+                    why = "could not convert to an uploadable format"
+            if not why and strict and not _image_quality_ok(p):
+                why = "too small or out of focus"
+            elif not why and not strict and not _image_quality_ok(p, min_side=200, min_sharpness=0.0):
+                why = "under 200 px, or not a readable image"
+            if not why:
+                why = _flat_render_reason(p) or ""   # a CAD/slicer-style render
+            if not why and strict:
+                why = _background_reason(p) or ""    # opportunistic scans: not on a desk or black backdrop
+            if why:
+                _drop(img_url, why, report)
+                if os.path.exists(p):
+                    os.remove(p)
+            else:
                 paths.append(p)
-            elif p and os.path.exists(p):
-                os.remove(p)
-        except Exception:
-            pass
+        except Exception as e:
+            _drop(img_url, "check failed: %s: %s" % (type(e).__name__, str(e)[:120]), report)
     return paths
 
 
@@ -1257,6 +1279,13 @@ def _fetch_creality(url: str) -> dict:
                     break                      # two identical reads — the set is stable
                 g = g2
 
+            if not gallery_imgs:
+                # an empty read is usually a page still rendering; give it one more
+                # full settle before concluding the listing has no photos
+                page.wait_for_timeout(5000)
+                g, _ = _grab("empty-retry")
+                gallery_scope = g.get("cls") or gallery_scope
+
             for _step in range(12):          # click the next-arrow through the set
                 gallery_scope = g.get("cls") or gallery_scope
                 if not g.get("next"):
@@ -1320,8 +1349,10 @@ def _fetch_creality(url: str) -> dict:
             description = (data["desc"] or "")[:500]
 
             # ---- original photos
-            image_paths = _download_images(gallery_imgs, slug, strict=False)
+            dropped: list = []
+            image_paths = _download_images(gallery_imgs, slug, strict=False, report=dropped)
             gallery_info["downloaded"] = len(image_paths)
+            gallery_info["dropped"] = dropped[:12]     # why each photo was not kept
             UPLOAD_VERIFY["gallery"] = gallery_info
 
             # ---- the real model file: split-button 'Download 3MF' (this
