@@ -512,7 +512,7 @@ def _download_images(images: list[str], slug: str, limit: int = 12,
                 why = _background_reason(p) or ""    # opportunistic scans: not on a desk or black backdrop
             if why:
                 _drop(img_url, why, report)
-                if os.path.exists(p):
+                if p and os.path.exists(p):
                     os.remove(p)
             else:
                 paths.append(p)
