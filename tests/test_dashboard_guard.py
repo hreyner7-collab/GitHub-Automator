@@ -176,6 +176,48 @@ def test_a_supervisor_next_to_a_running_dashboard_watches_it(monkeypatch):
     assert sup.server_pid == 5150
 
 
+def test_process_alive_compares_the_pid_column_exactly(monkeypatch):
+    """A substring test reads a dead PID as alive (tasklist prints memory sizes
+    like "<1,234 K", and Windows recycles PIDs). A phantom-alive PID blocks the
+    supervisor's lock, so the dashboard would never be started again."""
+    real = ('"python.exe","1234","Console","1","5,716 K"\r\n')
+    monkeypatch.setattr(guard.os, "name", "nt")
+    monkeypatch.setattr(guard, "_run", lambda *a, **k: real)
+    assert guard.process_alive(1234) is True, "the real PID must be found"
+    # a memory size that CONTAINS the digits must not be mistaken for the PID
+    other = ('"python.exe","99","Console","1","1,234 K"\r\n')
+    monkeypatch.setattr(guard, "_run", lambda *a, **k: other)
+    assert guard.process_alive(1234) is False
+
+
+def test_a_lock_held_by_a_recycled_pid_does_not_block_a_new_supervisor(monkeypatch):
+    """If the lock's PID now belongs to some other program, the lock is stale."""
+    import importlib
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(root / "scripts"))
+    try:
+        sup_mod = importlib.import_module("dashboard_supervisor")
+    finally:
+        sys.path.remove(str(root / "scripts"))
+
+    lock = root / "artifacts" / "dashboard_supervisor.lock"
+    lock.parent.mkdir(exist_ok=True)
+    lock.write_text("424242\n2026-10-15 10:00:00\n", encoding="utf-8")
+    monkeypatch.setattr(guard, "process_alive", lambda pid: True)   # PID reused
+    monkeypatch.setattr(guard, "process_detail",
+                        lambda pid: {"pid": pid, "image": "explorer.exe",
+                                     "ours": False})
+    try:
+        assert sup_mod.acquire_lock() is True, "a recycled PID must not block startup"
+        assert lock.read_text(encoding="utf-8").strip().split("\n")[0] == str(__import__("os").getpid())
+    finally:
+        lock.unlink(missing_ok=True)
+        sup_mod.release_lock()
+
+
 def test_no_answer_is_none_not_zero(monkeypatch):
     def refused(url, timeout=None):
         raise ConnectionRefusedError("nothing there")

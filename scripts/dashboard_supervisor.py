@@ -70,7 +70,12 @@ def acquire_lock(force: bool = False) -> bool:
                              .split()[0])
             except Exception:
                 holder = 0
-            if holder and holder != os.getpid() and guard.process_alive(holder) and not force:
+            # A live PID is not enough: Windows recycles PIDs, so the holder must
+            # still look like a supervisor (a python process) before its lock is
+            # respected. A phantom-alive lock would silently stop the dashboard
+            # from ever being started again.
+            if (holder and holder != os.getpid() and guard.process_alive(holder)
+                    and guard.process_detail(holder).get("ours") and not force):
                 log("another supervisor is already running (PID %d) — leaving it alone"
                     % holder)
                 return False

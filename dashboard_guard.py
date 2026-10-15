@@ -122,12 +122,24 @@ def port_holder_detail(pid: int | None) -> dict:
 
 
 def process_alive(pid: int | None) -> bool:
-    """True while `pid` exists. False for None/invalid."""
+    """True while `pid` exists. False for None/invalid.
+
+    The PID column is compared EXACTLY. A substring test ("is 123 in the output") 
+    is wrong: tasklist prints memory sizes like "<1,234 K", and Windows recycles
+    PIDs, so a dead PID could read as alive. That false positive is not cosmetic:
+    the supervisor's own lock and its "is my child still up?" check both use this,
+    and a phantom-alive PID silently stops the dashboard from ever being started
+    again -- the exact failure this file exists to prevent.
+    """
     if not pid:
         return False
     if os.name == "nt":
-        out = _run(["tasklist", "/FI", "PID eq %d" % pid, "/NH"])
-        return str(pid) in (out or "")
+        out = _run(["tasklist", "/FI", "PID eq %d" % pid, "/NH", "/FO", "CSV"])
+        for line in (out or "").splitlines():
+            fields = [f.strip().strip('"') for f in line.split(",")]
+            if len(fields) >= 2 and fields[1] == str(pid):
+                return True
+        return False
     try:
         os.kill(int(pid), 0)
         return True
