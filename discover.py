@@ -575,6 +575,7 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
     found: dict[str, dict] = {}
     skip_urls = {_english_url(u) for u in (exclude or ())}
     skipped_names: list[str] = []          # already-done models, never harvested
+    skipped_seen: set[str] = set()         # one entry per card, however many passes re-read it
     rejected: list[dict] = []              # judged not worth publishing, with why
     rejected_seen: set = set()
     used_families: set = set()             # one of each family per run (a preference)
@@ -650,7 +651,9 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
                         # reason they were turned down).
                         verdict = judge_card(name, url, used_families, is_done)
                         if verdict["state"] == "skipped":
-                            skipped_names.append(name or url)
+                            if url not in skipped_seen:
+                                skipped_seen.add(url)
+                                skipped_names.append(name or url)
                             continue
                         if verdict["state"] == "spare":
                             if url not in spare_seen and url not in found:

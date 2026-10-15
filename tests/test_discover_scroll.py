@@ -91,6 +91,8 @@ def test_scan_stops_at_end_of_listing_when_most_cards_are_already_done(monkeypat
                                     progress=lambda p: passes.append(p["pass"]))
 
     assert len(result["models"]) == 3
+    # each already-done card is counted ONCE, however many passes re-read it
+    assert result["skipped_done"] == len(done)
     assert "only 3 of the 50" in result["note"]
     # the scan ended at the end of the 60-card listing, far below the 200 ceiling
     assert max(passes) < 20
