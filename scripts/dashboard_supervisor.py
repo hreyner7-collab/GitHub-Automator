@@ -269,26 +269,25 @@ class Supervisor:
     def cycle(self) -> bool:
         """One pass. Returns False when the supervisor should stop."""
         action = self.probe()
-        status = self.last["http"]
         if action == guard.HEALTHY:
             self.silent_probes = 0
             return True
         if action == guard.ADOPT:
-            # Something answers but it is not our child. Starting a second copy
-            # would die on the port and leave you serving old code.
-            if status is not None and self.child_pid is None:
-                health = guard.health_json(guard.health_url(port=self.port))
-                log("a dashboard is already serving %s (build=%s pid=%s) — adopting it"
-                    % (self.url, health.get("build", "?"), health.get("pid", "?")))
-                return False
-            self.silent_probes += 1
-            if self.silent_probes < HUNG_PROBES:
-                return True
+            # Something answers but it is not our child: a dashboard that was
+            # already running (at logon, or started by hand). Starting a second
+            # copy would die on the port and leave you serving old code, and
+            # simply EXITING would leave a live server with nobody watching it.
+            # So adopt it: watch the process that /health names, and heal it like
+            # any other if it dies or hangs.
+            health = guard.health_json(guard.health_url(port=self.port))
+            pid = health.get("pid") or self.last.get("holder")
+            if pid and pid != self.server_pid:
+                self.server_pid = pid
+                log("adopting the dashboard already serving %s "
+                    "(build=%s pid=%s) — watching it, not starting a second copy"
+                    % (self.url, health.get("build", "?"), pid))
             self.silent_probes = 0
-            log("our child is gone but the port answers — restarting it")
-            if not self.note_restart():
-                return False
-            return self.start()
+            return True
         if action == guard.BLOCKED:
             detail = self.last["detail"]
             log("port %d is held by PID %s (%s) and is NOT answering"

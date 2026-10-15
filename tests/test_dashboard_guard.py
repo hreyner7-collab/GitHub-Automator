@@ -150,6 +150,32 @@ def test_a_wrapper_that_is_alive_keeps_the_child_alive(monkeypatch):
     assert sup.probe() == guard.RESTART
 
 
+def test_a_supervisor_next_to_a_running_dashboard_watches_it(monkeypatch):
+    """Started while a dashboard is already up (at logon, or by hand): it must
+    adopt that server and keep watching it. It must not start a second copy (which
+    dies on the port and leaves you serving old code) and it must not exit (which
+    would leave a live server with nobody watching it)."""
+    import importlib
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(root / "scripts"))
+    try:
+        sup_mod = importlib.import_module("dashboard_supervisor")
+    finally:
+        sys.path.remove(str(root / "scripts"))
+
+    monkeypatch.setattr(guard, "http_status", lambda url, timeout=None: 200)
+    monkeypatch.setattr(guard, "port_holder", lambda port: 5150)
+    monkeypatch.setattr(guard, "health_json",
+                        lambda url=None, timeout=None: {"pid": 5150, "build": "abc123"})
+    monkeypatch.setattr(guard, "process_alive", lambda pid: False)
+    sup = sup_mod.Supervisor(port=8000)
+    assert sup.cycle() is True, "adopting must not end the supervision"
+    assert sup.server_pid == 5150
+
+
 def test_no_answer_is_none_not_zero(monkeypatch):
     def refused(url, timeout=None):
         raise ConnectionRefusedError("nothing there")
