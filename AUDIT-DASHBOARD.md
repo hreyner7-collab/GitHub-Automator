@@ -135,6 +135,55 @@ judged by eye. Recorded here rather than edited blind.
   available to replace the *reading* of these; doing it blind, without a live run
   to confirm against the real form, is how a working publish gets broken.
 
+## Found by verifying on the real machine (not by reading)
+
+These four were invisible to every test the suite could run, and were found only
+by restarting the dashboard and killing it on purpose. They are the strongest
+argument for the plan's last step existing at all.
+
+### HIGH — the launched PID was not the serving process — FIXED
+
+On this venv `.venv/Scripts/python.exe` re-executes the real interpreter, so the
+PID `Popen` returns is a thin WRAPPER and the dashboard that actually serves port
+8000 is its child (observed: wrapper 11240 / server 11720). Stopping only the
+tracked PID left a live server orphaned on the port while the supervisor reported
+a dashboard it no longer owned. The supervisor now adopts the PID `/health`
+reports, tracks both, stops both, and refuses to touch a process that is not
+python/pythonw.
+
+### HIGH — a phantom-alive PID could block startup forever — FIXED
+
+`process_alive()` tested whether the PID's digits appeared *anywhere* in
+`tasklist` output. `tasklist` prints memory sizes ("<1,234 K") and Windows
+recycles PIDs, so a dead PID could read as alive. Both the supervisor's lock and
+its "is my child still up?" check depend on that answer, and the effect was
+reproduced: the supervisor refused to start and wrote nothing at all, while the
+lock kept naming a PID that was gone. The PID column is now compared exactly
+(`/FO CSV`), and a lock is respected only when its holder still looks like a
+supervisor.
+
+### HIGH — the launcher and the supervisor shared a log the server holds open — FIXED
+
+The autostart batch appended its console to `artifacts/dashboard.log`, which the
+running server holds as its stdout. `cmd`'s `>>` is denied while that handle is
+open ("The process cannot access the file because it is being used by another
+process"), so the launcher exited 1 inside a hidden window — the same class of
+silent failure this whole audit is about. The supervisor's own writes were being
+skipped on the same `except` path, so the decisions were missing from the log
+exactly when a human went looking for them. Now: supervisor decisions in
+`artifacts/dashboard_supervisor.log`, server output in `artifacts/dashboard.log`,
+launcher console in `artifacts/dashboard_autostart_console.log`.
+
+### MEDIUM — the tests wrote into the app's own artifacts — FIXED
+
+The supervisor tests instantiated the real `Supervisor`, so running the suite
+appended their fake decisions ("stopped PID 11720") to the real
+`artifacts/dashboard.log` — the file a human reads to diagnose a real restart —
+and took, then deleted, the real supervisor lock, which would let a second
+supervisor start and fight the first over the port. The paths are redirected into
+`tmp_path` by a fixture now, and the suite leaves the real artifacts
+byte-identical (asserted).
+
 ## What is proven, and what is not
 
 **Proven offline** (323 tests, no browser, no account): the port parser and the
@@ -143,7 +192,21 @@ including hidden, un-laid-out form controls; the post-condition checks and their
 ability to catch the injected faults; the harvest cost model; the diagnostics
 panel's checks and its promise never to start a browser on the fast path.
 
+**Proven on the real machine** (this PC, port 8000): a killed server comes back by
+itself with the current code in about 13 seconds; a supervisor started next to a
+running dashboard adopts it instead of exiting or starting a second copy; the
+launcher the Startup entry runs works while a server is up; `/diagnostics` reports
+11 of 11 checks passing on the live server; the page carries the panel and the
+build stamp.
+
 **Not proven, and needs your next run:** that the live Creality form's page model
 reads the way the checks expect, and that the step checks agree with the real site.
 The instrumentation for that is in place — `UPLOAD_VERIFY["step_checks"]`,
 `UPLOAD_VERIFY["page_model"]`, and the `timings` table in every run log.
+
+**Known limitation of the build stamp:** it compares git revisions, so a commit
+that changes only tests or scripts makes a running dashboard report "code changed
+on disk — RESTART NEEDED". It over-warns rather than under-warns, which is the
+safe direction for the question it answers ("is this process serving what I just
+changed?"), and the fix is a stamp over the Python files themselves rather than
+the revision.
