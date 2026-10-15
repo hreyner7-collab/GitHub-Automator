@@ -510,10 +510,15 @@ def test_points_store_and_stats(monkeypatch, tmp_path):
     assert st["totals"]["7d"] == 446
     assert st["totals"]["30d"] == 446
     assert st["totals"]["ytd"] == 446
-    # a points counter reset on the site clamps to 0, never negative
+    # a points counter reset on the site (a drop) keeps the gains on both sides
+    # of it: the 246 earned before the reset stays, the drop itself is not negative
     an.append_points(now, 1)
     st2 = an.points_stats(now=now + 60)
-    assert st2["totals"]["today"] == 0
+    assert st2["totals"]["today"] == 246
+    an.append_points(now + 120, 5)
+    st3 = an.points_stats(now=now + 180)
+    assert st3["totals"]["today"] == 250
+    assert all(v >= 0 for v in st3["totals"].values())
 
 
 def test_chart_series_includes_points(monkeypatch, tmp_path):

@@ -93,11 +93,22 @@ def points_stats(now: float | None = None) -> dict:
               "ytd": day0 - _days_since_jan1(now) * 86400}
     current = hist[-1]["points"]
 
-    def baseline(t0: float) -> int:
-        prior = [p for p in hist if p["ts"] <= t0]
-        return prior[-1]["points"] if prior else hist[0]["points"]
+    def earned_since(t0: float) -> int:
+        """Sum of the rises inside the window, starting from the baseline reading.
+        A drop is a counter reset on the site: it restarts the count from the new
+        value, so gains on either side of a reset are both kept."""
+        prior = [p for p in hist if p["ts"] < t0]
+        prev = prior[-1]["points"] if prior else hist[0]["points"]
+        earned = 0
+        for p in hist:
+            if p["ts"] < t0:
+                continue
+            if p["points"] >= prev:
+                earned += p["points"] - prev
+            prev = p["points"]
+        return earned
 
-    totals = {k: max(0, current - baseline(t0)) for k, t0 in starts.items()}
+    totals = {k: earned_since(t0) for k, t0 in starts.items()}
     return {"current": current, "totals": totals, "last_point": hist[-1]["ts"]}
 
 
