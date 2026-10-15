@@ -18,6 +18,12 @@
 - Every update to the dashboard bumps its version marker by one: the `<title>` and the `#ui-version` span in `creality/index.html` (currently V3). Do this in the same change as the update, so the number always shows the latest build.
 - Never skip a version or reuse one.
 
+## Reset the dashboard after every code change
+
+- Whenever code on disk changes, reset the dashboard so it serves the new code. The dashboard then shows the "code changed on disk — RESTART NEEDED" warning until it is reset.
+- Reset with `.venv/Scripts/python.exe scripts/dashboard_supervisor.py --restart --once`, then confirm with `--status` that it answers and shows the new build.
+- This restart is allowed by the user's explicit standing request. It does not open a browser or read the account.
+
 ## Known cause (fixed)
 
 - Earlier, `main.py` started the hourly `analytics._auto_loop` and ran `analytics.refresh()` at every startup, which drove the user's logged-in Chrome. Both are now disabled: startup only seeds the ledger from files on disk. The account is read only when the user clicks Refresh (`POST /analytics/refresh`). Do not re-enable the automatic reads.
