@@ -109,7 +109,7 @@ def test_download_keeps_the_desk_photo_and_drops_the_slicer_screenshot(tmp_path,
 
     monkeypatch.setattr(downloader, "_save", fake_save)
     urls = [str(FIXTURES / "slicer_render.jpg"), str(FIXTURES / "desk_stand.jpg")]
-    kept = downloader._download_images(urls, "e2e-check", strict=False)
+    kept = downloader._download_images(urls, "e2e-check", strict=True)
     assert len(kept) == 1
     assert kept[0].endswith("e2e-check_img_1.jpg")
 

@@ -488,8 +488,8 @@ def _download_images(images: list[str], slug: str, limit: int = 12,
                 ok = _image_quality_ok(p, min_side=200, min_sharpness=0.0)
             if ok and _flat_render_reason(p):
                 ok = False                  # a CAD/slicer-style render, not the object
-            if ok and _background_reason(p):
-                ok = False                  # not on a desk/table or a black backdrop
+            if ok and strict and _background_reason(p):
+                ok = False                  # opportunistic scans: not on a desk/table or black backdrop
             if ok and p:
                 paths.append(p)
             elif p and os.path.exists(p):
