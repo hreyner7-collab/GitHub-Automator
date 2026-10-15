@@ -45,6 +45,7 @@ import dashboard_guard as guard  # noqa: E402  (needs the path above)
 
 LOG_PATH = BASE_DIR / "artifacts" / "dashboard.log"
 REPORT_PATH = BASE_DIR / "artifacts" / "dashboard_supervisor_report.json"
+LOCK_PATH = BASE_DIR / "artifacts" / "dashboard_supervisor.lock"
 
 # How long a freshly started server may take to answer. Generous: the app
 # imports playwright and rembg, which are slow on a cold disk.
@@ -52,6 +53,47 @@ START_TIMEOUT_S = 60.0
 POLL_EVERY_S = 3.0
 # Consecutive failed probes before a live-but-silent server is called hung.
 HUNG_PROBES = 3
+
+
+def acquire_lock(force: bool = False) -> bool:
+    """Only one supervisor may run, or two of them fight over the port.
+
+    Two supervisors each see the other's server as "a dashboard I did not start"
+    and one of them kills the other's child in a loop. The lock names the PID that
+    holds it; a stale lock (its process is gone) is taken over silently, so a crash
+    never needs a manual cleanup.
+    """
+    try:
+        if LOCK_PATH.exists():
+            try:
+                holder = int((LOCK_PATH.read_text(encoding="utf-8") or "0").strip()
+                             .split()[0])
+            except Exception:
+                holder = 0
+            if holder and holder != os.getpid() and guard.process_alive(holder) and not force:
+                log("another supervisor is already running (PID %d) — leaving it alone"
+                    % holder)
+                return False
+            if holder and force and holder != os.getpid():
+                log("taking the lock by force from PID %d" % holder)
+        LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        LOCK_PATH.write_text("%d\n%s\n" % (os.getpid(),
+                                            time.strftime("%Y-%m-%d %H:%M:%S")),
+                             encoding="utf-8")
+        return True
+    except Exception as e:
+        log("could not take the supervisor lock (%s); continuing anyway" % e)
+        return True
+
+
+def release_lock() -> None:
+    try:
+        if LOCK_PATH.exists():
+            text = LOCK_PATH.read_text(encoding="utf-8") or ""
+            if text.strip().split("\n")[0] == str(os.getpid()):
+                LOCK_PATH.unlink()
+    except Exception:
+        pass
 
 
 def log(message: str) -> None:
@@ -79,6 +121,11 @@ class Supervisor:
         self.url = guard.dashboard_url(port=port)
         self.child = None
         self.child_pid: int | None = None
+        # The PID that /health reports, i.e. the process ACTUALLY serving. On a
+        # venv where python.exe re-execs, this is the real server while
+        # child_pid is only its wrapper -- so both are tracked and both are
+        # stopped. Trusting child_pid alone orphaned a live server on the port.
+        self.server_pid: int | None = None
         self.restart_times: list[float] = []
         self.silent_probes = 0
         self.gave_up_reason: str | None = None
@@ -87,7 +134,8 @@ class Supervisor:
     def probe(self) -> str:
         status = guard.http_status(self.url)
         holder = guard.port_holder(self.port)
-        alive = guard.process_alive(self.child_pid)
+        alive = (guard.process_alive(self.child_pid)
+                 or guard.process_alive(self.server_pid))
         detail = guard.port_holder_detail(holder)
         action = guard.decide(http_ok=status is not None, holder_pid=holder,
                               child_pid=self.child_pid, child_alive=alive,
@@ -129,9 +177,12 @@ class Supervisor:
             status = guard.http_status(self.url)
             if status is not None:
                 health = guard.health_json(guard.health_url(port=self.port))
+                # Adopt the serving PID: that, not the wrapper, is what has to be
+                # stopped when this child is replaced.
+                self.server_pid = health.get("pid") or None
                 log("answering on %s (HTTP %s) build=%s pid=%s uptime=%ss"
                     % (self.url, status, health.get("build", "?"),
-                       health.get("pid", "?"), health.get("uptime_s", "?")))
+                       self.server_pid or "?", health.get("uptime_s", "?")))
                 return True
             if not guard.process_alive(self.child_pid):
                 log("the child exited before it answered (see the log above this line)")
@@ -142,23 +193,20 @@ class Supervisor:
         return False
 
     def stop_child(self) -> None:
-        """Stop ONLY the child this supervisor started."""
-        if not self.child_pid or not guard.process_alive(self.child_pid):
-            self.child_pid = None
-            return
-        log("stopping child PID %d" % self.child_pid)
-        try:
-            if os.name == "nt":
-                guard._run(["taskkill", "/PID", str(self.child_pid), "/F"])
-            else:
-                self.child.terminate()
-        except Exception as e:
-            log("could not stop child PID %d: %s" % (self.child_pid, e))
-        for _ in range(20):
-            if not guard.process_alive(self.child_pid):
-                break
-            time.sleep(0.5)
+        """Stop the dashboard this supervisor started -- both processes of it.
+
+        The wrapper PID from Popen AND the PID that /health reported are stopped:
+        on this venv they are different processes, and stopping only the wrapper
+        leaves the real server alive on the port.
+        """
+        pids = [p for p in (self.server_pid, self.child_pid) if p]
+        for pid in pids:
+            if guard.stop_process(pid):
+                log("stopped PID %d" % pid)
+            elif guard.process_alive(pid):
+                log("could NOT stop PID %d (not ours, or still running)" % pid)
         self.child_pid = None
+        self.server_pid = None
 
     def clear_port_holder(self) -> bool:
         """Free the port when the holder is a stale process of ours.
@@ -175,7 +223,7 @@ class Supervisor:
             return False
         log("port %d is held by a stale dashboard (PID %s %s) — stopping it"
             % (self.port, holder, detail.get("image")))
-        guard._run(["taskkill", "/PID", str(holder), "/F"])
+        guard.stop_process(holder)
         for _ in range(20):
             if guard.port_holder(self.port) is None:
                 return True
@@ -270,6 +318,12 @@ class Supervisor:
         return self.start()
 
     def run(self) -> int:
+        try:
+            return self._run()
+        finally:
+            release_lock()
+
+    def _run(self) -> int:
         if self.replace:
             self.clear_port_holder()
         started = self.cycle()
@@ -324,9 +378,13 @@ def main(argv: list[str] | None = None) -> int:
                     help="start if down and verify, then exit")
     ap.add_argument("--no-supervise", action="store_true",
                     help="start if down and leave it running, do not watch it")
+    ap.add_argument("--force", action="store_true",
+                    help="take the supervisor lock from a running supervisor")
     args = ap.parse_args(argv)
     if args.status:
         return status(args.port)
+    if not acquire_lock(force=args.force):
+        return 4
     sup = Supervisor(port=args.port, replace=args.restart,
                      supervise=not (args.once or args.no_supervise))
     return sup.run()

@@ -80,6 +80,76 @@ def test_a_5xx_answer_still_counts_as_running(monkeypatch):
     assert guard.http_status("http://127.0.0.1:8000/") == 500
 
 
+def test_stop_process_refuses_a_process_that_is_not_ours(monkeypatch):
+    """Never kill by PID alone: the port could be held by somebody else's work.
+    Stopping is allowed only when the image name says it is ours."""
+    monkeypatch.setattr(guard, "process_alive", lambda pid: True)
+    monkeypatch.setattr(guard, "process_detail",
+                        lambda pid: {"pid": pid, "image": "explorer.exe",
+                                     "ours": False})
+    killed = []
+    monkeypatch.setattr(guard, "_run", lambda *a, **k: killed.append(a))
+    assert guard.stop_process(4321) is False
+    assert killed == [], "nothing may be terminated for a foreign image"
+
+
+def test_stop_process_is_a_no_op_for_a_process_that_is_already_gone(monkeypatch):
+    monkeypatch.setattr(guard, "process_alive", lambda pid: False)
+    assert guard.stop_process(999) is True
+    assert guard.stop_process(None) is True
+
+
+def test_the_supervisor_stops_both_the_wrapper_and_the_serving_process(monkeypatch):
+    """VERIFIED on this machine: `.venv/Scripts/python.exe` re-executes the real
+    interpreter, so Popen's PID is a thin WRAPPER and the dashboard serving the
+    port is its child. Stopping only the tracked PID orphaned a live server on
+    the port, so both are stopped."""
+    import importlib
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(root / "scripts"))
+    try:
+        sup_mod = importlib.import_module("dashboard_supervisor")
+    finally:
+        sys.path.remove(str(root / "scripts"))
+
+    stopped = []
+    monkeypatch.setattr(guard, "stop_process", lambda pid, **k: stopped.append(pid) or True)
+    sup = sup_mod.Supervisor(port=8000)
+    sup.child_pid = 11240     # the wrapper Popen handed back
+    sup.server_pid = 11720    # the PID /health reported: the real server
+    sup.stop_child()
+    assert stopped == [11720, 11240], stopped
+    assert sup.child_pid is None and sup.server_pid is None
+
+
+def test_a_wrapper_that_is_alive_keeps_the_child_alive(monkeypatch):
+    """Liveness must consider both PIDs: on a re-exec venv the wrapper can stay
+    up while the server is gone, and vice versa."""
+    import importlib
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(root / "scripts"))
+    try:
+        sup_mod = importlib.import_module("dashboard_supervisor")
+    finally:
+        sys.path.remove(str(root / "scripts"))
+
+    monkeypatch.setattr(guard, "http_status", lambda url, timeout=None: None)
+    monkeypatch.setattr(guard, "port_holder", lambda port: 4242)
+    monkeypatch.setattr(guard, "port_holder_detail",
+                        lambda pid: {"pid": pid, "image": "python.exe", "ours": True})
+    monkeypatch.setattr(guard, "process_alive", lambda pid: pid == 4242)
+    sup = sup_mod.Supervisor(port=8000)
+    sup.child_pid = 111
+    sup.server_pid = 4242
+    assert sup.probe() == guard.RESTART
+
+
 def test_no_answer_is_none_not_zero(monkeypatch):
     def refused(url, timeout=None):
         raise ConnectionRefusedError("nothing there")

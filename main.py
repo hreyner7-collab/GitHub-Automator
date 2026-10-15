@@ -1109,12 +1109,16 @@ async def diagnostics():
         checks.append({"name": name, "ok": bool(ok), "detail": detail,
                        "fix": fix})
 
-    status = guard.http_status(guard.dashboard_url(port=SERVER_PORT))
+    # NOT a self-probe. Asking this server to fetch its own URL from inside its
+    # own handler cannot be answered -- the request is holding the loop that would
+    # serve it -- so it always reported "nothing answered on port 8000" on a
+    # perfectly healthy server. Running this handler at all IS the proof, and the
+    # port owner below is the independent check.
     holder = guard.port_holder(SERVER_PORT)
     detail = guard.port_holder_detail(holder)
-    add("server is answering", status is not None,
-        "HTTP %s on port %d" % (status, SERVER_PORT) if status is not None
-        else "nothing answered on port %d" % SERVER_PORT,
+    add("server is answering", True,
+        "this reply came from port %d, PID %s — that is the proof"
+        % (SERVER_PORT, os.getpid()),
         "start it: .venv/Scripts/python.exe scripts/dashboard_supervisor.py")
     add("port owner", bool(holder) and detail.get("ours", False),
         ("PID %s (%s)" % (holder, detail.get("image") or "unknown")) if holder

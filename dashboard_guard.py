@@ -24,6 +24,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -156,6 +157,47 @@ def health_json(url: str | None = None, timeout: float = HTTP_TIMEOUT_S) -> dict
             return json.loads(resp.read().decode("utf-8", "replace"))
     except Exception:
         return {}
+
+
+def process_detail(pid: int | None) -> dict:
+    """The image name behind a PID, and whether we may treat it as ours.
+
+    Same lookup as `port_holder_detail`, named for the general question: this is
+    used to decide whether a process may be stopped, and the answer must come
+    from the image name, never from a guess.
+    """
+    return port_holder_detail(pid)
+
+
+def stop_process(pid: int | None, timeout_s: float = 10.0) -> bool:
+    """Stop a process, but ONLY when it is one of ours. True once it is gone.
+
+    VERIFIED BUG this exists for: on this machine `.venv/Scripts/python.exe`
+    re-executes the real interpreter, so the PID handed back by Popen is a thin
+    WRAPPER and the dashboard that actually serves the port is its child. Stopping
+    only the tracked PID left a live server orphaned on the port (and the
+    supervisor reporting a dashboard it no longer owned). Callers therefore stop
+    BOTH the tracked PID and the PID that /health reports -- the process actually
+    serving -- and this refuses to touch anything that is not python/pythonw.
+    """
+    if not pid or not process_alive(pid):
+        return True
+    if not process_detail(pid).get("ours"):
+        return False
+    if os.name == "nt":
+        _run(["taskkill", "/PID", str(pid), "/F"])
+    else:
+        import signal
+        try:
+            os.kill(int(pid), signal.SIGTERM)
+        except OSError:
+            return True
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        if not process_alive(pid):
+            return True
+        time.sleep(0.25)
+    return not process_alive(pid)
 
 
 def should_stop_restarting(restart_times: list[float], now: float,
