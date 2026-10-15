@@ -14,7 +14,7 @@ from downloader import fetch as dl_fetch, classify_license
 from editor import edit_all
 from uploader import (upload as uploader_upload, _debug_port_up,
                       license_answer_indexes, expected_badge_token,
-                      NO_COVERS_ERROR, usable_cover_images)
+                      usable_cover_images)
 from discover import discover as discover_models, find_creality, \
     CREALITY_LICENCE_ALLOW, CREALITY_LICENCE_DENY, listing_was_used, remember_tried, was_tried_recently
 import analytics
@@ -945,8 +945,9 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
             # real dead end, reported here instead of walking to the form.
             if not cover_ok:
                 it["state"] = FETCH_FAILED
-                it["reason"] = ("could not fetch this model's cover photos: "
-                                + NO_COVERS_ERROR)
+                it["reason"] = ("could not fetch this model's cover photos: the listing "
+                                "gave no usable cover photo of its own, so the run skipped it "
+                                "and moved on (the auto run has no Fetch & Edit step)")
                 continue
             if AUTO.get("stop"):
                 # Stop was pressed while this model was fetched: nothing has been
