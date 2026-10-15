@@ -97,6 +97,24 @@ def test_the_families_the_user_named_are_kept():
         assert v["family"] == family, (name, v["family"])
 
 
+def test_common_cable_and_phone_wording_is_kept():
+    # names the live run turned down as "not one of the useful household families"
+    cases = {
+        "Ender 3 Cable Chain": "cable-organizer",
+        "D Printed Usb Cable Reel": "cable-organizer",
+        "Cable Protection": "cable-organizer",
+        "Charging Cable Protector 01": "cable-organizer",
+        "Benchtop Zip Tie Holder": "cable-organizer",
+        "Organizador de cabos": "cable-organizer",
+        "Clip Cavi": "cable-organizer",
+        "Organizador de móviles modular": "phone-holder",
+    }
+    for name, family in cases.items():
+        v = selector.classify(name)
+        assert v["allowed"], (name, v["reason"])
+        assert v["family"] == family, (name, v["family"])
+
+
 def test_russian_titles_are_judged_the_same_way():
     """The account already holds Russian titles; the search returns them too."""
     kept = {"Ключница домой": "hook",

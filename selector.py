@@ -27,6 +27,7 @@ model themselves is the decision, not this module. This gate is what the machine
 is allowed to choose on its own.
 """
 import re
+import unicodedata
 
 # ── word matching ────────────────────────────────────────────────────────────
 # Matching is by WHOLE word, not substring: "car" never matches "card holder",
@@ -45,8 +46,12 @@ def _fold(w: str) -> str:
 
 def words(text: str) -> set:
     """The name as a set of whole words, each folded by _fold."""
-    return {_fold(w) for w in _WORD_RE.findall(
-        (text or "").lower().replace("ё", "е"))}
+    # Latin accents are dropped ("móviles" -> "moviles"): the word regex is
+    # ASCII-plus-Cyrillic, so an accented letter would otherwise split a word in two.
+    # Cyrillic is left alone on purpose (its й must not lose its breve).
+    latin = re.sub(r"[\u00c0-\u024f]", lambda m: unicodedata.normalize("NFD", m.group(0))[0],
+                   (text or "").lower().replace("ё", "е"))
+    return {_fold(w) for w in _WORD_RE.findall(latin)}
 
 
 # Russian families/rejects are written out in the forms real titles use
@@ -128,13 +133,21 @@ FAMILIES = {
         "matchers": [
             [{"cable", "cord", "wire", "charger", "usb", "headphone", "earphone",
               "кабель", "кабеля", "кабелей", "провод", "провода", "проводов",
-              "зарядка", "зарядки", "наушник", "наушники", "наушников"},
+              "зарядка", "зарядки", "наушник", "наушники", "наушников",
+              "cabos", "cabo", "cavi", "cavo"},
              {"organizer", "organiser", "tidy", "holder", "clip", "spool", "winder",
               "keeper", "management", "rack", "stand", "box", "case", "hanger",
+              "organizador",
               *RU_ORGANIZER, *RU_HOLDER, "катушка", "катушки", "хомут", "хомуты",
               "стяжка", "стяжки", "стакан", "стакана"}],
             [{"headphone", "earphone", "наушник", "наушники", "наушников"},
              {"stand", "holder", "hanger", "hook", *RU_STAND, *RU_HOLDER}],
+            # a zip tie or its holder
+            [{"zip"}, {"tie", "ties"}],
+            # a cable kept tidy by a guide, chain, protector, reel or tie
+            [{"cable", "cord", "cabos", "cabo", "cavi", "cavo", "usb", "charger"},
+             {"chain", "protector", "protection", "guide", "reel", "rollup", "roll",
+              "tie", "ties", "port", "channel", "duct", "sleeve", "clamp", "wrap"}],
         ],
     },
     "phone-holder": {
@@ -143,9 +156,10 @@ FAMILIES = {
         "matchers": [
             [{"phone", "iphone", "smartphone", "tablet", "mobile", "cell",
               "телефон", "телефона", "телефоны", "смартфон", "смартфона",
-              "планшет", "планшета"},
+              "планшет", "планшета",
+              "movil", "moviles", "celular"},
              {"holder", "stand", "mount", "dock", "docking", "cradle", "rack",
-              "rest", "support", "station", *RU_HOLDER, *RU_STAND}],
+              "rest", "support", "station", "organizador", *RU_HOLDER, *RU_STAND}],
         ],
     },
     "swab-holder": {
