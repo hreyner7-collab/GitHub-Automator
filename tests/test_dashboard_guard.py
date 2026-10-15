@@ -31,7 +31,8 @@ def supervisor(tmp_path, monkeypatch):
         sup_mod = importlib.import_module("dashboard_supervisor")
     finally:
         sys.path.remove(str(root / "scripts"))
-    monkeypatch.setattr(sup_mod, "LOG_PATH", tmp_path / "dashboard.log")
+    monkeypatch.setattr(sup_mod, "LOG_PATH", tmp_path / "dashboard_supervisor.log")
+    monkeypatch.setattr(sup_mod, "CHILD_LOG_PATH", tmp_path / "dashboard.log")
     monkeypatch.setattr(sup_mod, "REPORT_PATH", tmp_path / "report.json")
     monkeypatch.setattr(sup_mod, "LOCK_PATH", tmp_path / "supervisor.lock")
     return sup_mod

@@ -43,7 +43,15 @@ if str(BASE_DIR) not in sys.path:
 
 import dashboard_guard as guard  # noqa: E402  (needs the path above)
 
-LOG_PATH = BASE_DIR / "artifacts" / "dashboard.log"
+# The supervisor's DECISIONS and the SERVER's output are two different logs, in
+# two different files, and that separation is a bug fix rather than tidiness.
+# They used to share artifacts/dashboard.log, and the server holds that file open
+# as its stdout for as long as it runs: the supervisor's own appends were then
+# denied (silently, on the `except` path) while a dashboard was up, so the very
+# moment a human went looking for "why did it restart?" was the moment the
+# decisions were missing from it.
+LOG_PATH = BASE_DIR / "artifacts" / "dashboard_supervisor.log"
+CHILD_LOG_PATH = BASE_DIR / "artifacts" / "dashboard.log"
 REPORT_PATH = BASE_DIR / "artifacts" / "dashboard_supervisor_report.json"
 LOCK_PATH = BASE_DIR / "artifacts" / "dashboard_supervisor.lock"
 
@@ -159,11 +167,11 @@ class Supervisor:
                 % (self.port, holder, detail.get("image") or "unknown"))
             return False
         python = guard.python_executable()
-        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        CHILD_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         try:
-            logfh = LOG_PATH.open("a", encoding="utf-8", buffering=1)
+            logfh = CHILD_LOG_PATH.open("a", encoding="utf-8", buffering=1)
         except Exception as e:
-            log("cannot open the log file (%s); starting anyway" % e)
+            log("cannot open the server log (%s); starting anyway" % e)
             logfh = subprocess.DEVNULL
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
         log("starting: %s main.py (port %d)" % (python, self.port))
