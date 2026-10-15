@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Creality Pipeline</title>
+<title>Creality Pipeline V3</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -174,6 +174,10 @@
   /* ── Analytics ── */
   .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
   .topbar h1 { margin-bottom: 0; }
+  .build { margin-left: auto; margin-right: 16px; text-align: right; font-size: .72rem; line-height: 1.5; color: #888; }
+  .build b { color: #a5d6a7; font-weight: 600; }
+  .build.stale { color: #b0bec5; }
+  .build.stale b { color: #ffb300; }
   #analytics-section { display: none; }
   .an-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin: 16px 0; }
   .an-card { background: #111; border: 1px solid #2a2a2a; border-radius: 10px; padding: 14px 16px; }
@@ -228,7 +232,31 @@
 
 <div class="topbar">
   <h1>Creality <span>Pipeline</span></h1>
+  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V3</span>
+  <span class="build" id="build-stamp" title="Which code this dashboard process is serving"></span>
   <button id="analytics-btn" onclick="toggleAnalytics()">&#128202; Analytics</button>
+</div>
+
+<!-- Diagnostics: the dashboard checking itself -->
+<div class="card" id="diag-section">
+  <h2>Diagnostics</h2>
+  <div class="row">
+    <button id="diag-run-btn" onclick="runDiagnostics()">Run self-checks</button>
+    <button class="btn-outline" onclick="runBrowserCheck()">Test browser control</button>
+    <span class="spacer"></span>
+    <span class="count" id="diag-summary"></span>
+  </div>
+  <div id="diag-status" class="status"></div>
+  <div id="diag-list"></div>
+  <div class="note" style="margin-top:8px">
+    “Run self-checks” runs the same checks the tests cover, in the running app:
+    server answering, port owner, whether this process is serving the code on
+    disk, the ledger and the tried-listings record, the harvest rules, and
+    whether the step checks still catch a deliberately wrong page.
+    It opens nothing. “Test browser control” is the one check that starts a
+    browser (a throwaway headless one, no page, no account), so it runs only when
+    you ask for it.
+  </div>
 </div>
 
 <!-- Analytics (downloads / likes over time) -->
@@ -320,29 +348,12 @@
     <button id="fetch-btn" onclick="fetchModel()">Fetch from Creality Cloud</button>
   </div>
   <div id="fetch-status" class="status"></div>
-  <div id="policy-controls" style="margin-top:10px;border-top:1px solid #1e1e1e;padding-top:10px">
-    <div class="row">
-      <label for="photo-source" style="font-size:.85rem;color:#aaa;min-width:190px">Photos the listing carries</label>
-      <select id="photo-source" onchange="setPhotoSource(this.value)">
-        <option value="source">The creator's ORIGINAL photos from the original upload — default</option>
-      </select>
-      <span id="photo-source-note" class="note" style="margin:0"></span>
-    </div>
-    <div class="row" style="margin-top:8px">
-      <input type="text" id="auth-url" placeholder="Model link or slug to authorise (your own design, or with the creator's permission)">
-      <input type="text" id="auth-note" placeholder="why it is allowed (required)">
-      <button class="btn-outline" onclick="authorizeFromCard()">Authorise source</button>
-    </div>
-    <div id="auth-list" class="note" style="margin-top:8px"></div>
-    <div id="policy-status" class="status"></div>
-  </div>
 </div>
 
 <!-- Step 2: Preview -->
 <div class="card" id="preview-section" style="display:none">
   <h2>2 · Preview</h2>
   <div id="license-line" style="font-size:.85rem;color:#ccc;margin-bottom:10px;display:none"></div>
-  <div id="policy-line" style="font-size:.85rem;color:#ccc;margin-bottom:10px;display:none"></div>
   <div id="proof-line" style="font-size:.85rem;color:#ccc;margin-bottom:10px;display:none"></div>
   <div id="image-container"></div>
   <div style="margin-top:12px">
@@ -506,7 +517,7 @@
                 proof_ok: !!(data.proof || {}).ok,
                 proof_why: (data.proof || {}).why || ''};
       _proof = data.proof || null;
-      renderPolicyLine(data.policy || null, data.photo_source || '');
+      renderPolicyLine(data.policy || null);
       renderProofLine(_proof, data.photo_note || '');
 
       // Populate form
@@ -648,19 +659,10 @@
   // dashboard does not keep its own idea of what is worth publishing.
   let SEL = {default_keywords: [], families: [], rejects: []};
 
-  // Creality's published rules, straight from /policy (creality_rules.py): the
-  // dashboard keeps no copy of the licence lists, the not-eligible content
-  // classes, the proof requirement or the photo switch.
-  let POL = null;
   let _proof = null;            // the proof built at fetch time
-  let _policy = null;           // the verdict currently shown for this link
   let _model = {name: '', source_url: '', licence_raw: '',
                 proof_ok: false, proof_why: ''};
   let _licenseBlocked = false;  // the licence alone refuses this link
-
-  function photoSourceLabel(v) {
-    return "the source creator's original photos";
-  }
 
   // The ONE place that paints the preview tiles: the fetch, the AI re-edit and
   // the photo switch all come through here, so the tiles can never disagree
@@ -702,46 +704,10 @@
   // The per-link verdict: the one owner's checks, the photo choice this listing
   // will carry, and — when the only refusal is the source authorisation — the
   // one-click way to resolve it without leaving the dashboard.
-  function renderPolicyLine(pol, fetchPhotoSource) {
-    const polEl = document.getElementById('policy-line');
-    if (!pol || !pol.checks) {
-      polEl.style.display = 'none';
-      _policy = null;
-      return;
-    }
-    _policy = pol;
-    const bad = pol.allowed === false;
-    const choice = fetchPhotoSource || (POL && POL.photo_source) || '';
-    polEl.style.display = 'block';
-    polEl.innerHTML = '<strong>Creality\'s rules:</strong> ' +
-      (bad
-        ? '<span style="color:#ef5350"><b>⛔ Refused by rule “' +
-          esc(pol.rule || '?') + '”:</b> ' + esc(pol.reason || '') + '</span>'
-        : '<span style="color:#a5d6a7">allowed ✔</span>') +
-      '<br><span style="color:#b0bec5">' + (pol.checks || []).map(c =>
-        (c.allowed ? '✔ ' : '✗ ') + esc(c.check || '') +
-        (c.rule && !c.allowed ? ' <b>' + esc(c.rule) + '</b>' : '') +
-        (c.allowed ? '' : ' — ' + esc((c.reason || '').slice(0, 160)))
-      ).join('<br>') + '</span>' +
-      '<br><span style="color:#b0bec5">Photos this listing carries: <b>' +
-      esc(photoSourceLabel(choice)) +
-      '</b> — change it in the rules card above.</span>';
-    if (bad && pol.rule === 'source-not-authorized') {
-      const wrap = document.createElement('div');
-      wrap.style.marginTop = '6px';
-      const note = document.createElement('input');
-      note.type = 'text';
-      note.id = 'auth-note-inline';
-      note.placeholder = "why it is allowed (required — your own design, or the creator's permission)";
-      note.style.minWidth = '380px';
-      const b = document.createElement('button');
-      b.className = 'btn-outline';
-      b.textContent = 'Authorise this source';
-      b.onclick = () => authorizeSource(_model.source_url, note.value, b);
-      wrap.appendChild(note);
-      wrap.appendChild(b);
-      polEl.appendChild(wrap);
-    }
+  // A link Creality's published rules refuse keeps Upload disabled; the reason
+  // shows on the button tooltip, so the page carries no rules text.
+  function renderPolicyLine(pol) {
+    const bad = !!(pol && pol.checks && pol.allowed === false);
     const ub = document.getElementById('upload-btn');
     if (ub) {
       ub.disabled = bad || _licenseBlocked;
@@ -769,171 +735,79 @@
       '<br><span style="color:#b0bec5">' + esc(photoNote || '') + '</span>';
   }
 
-  // The two decisions the dashboard owns, both saved server-side (no env edit,
-  // no restart, no terminal): which photos a listing carries, and which sources
-  // this account may re-publish.
-  function policyControls() {
-    if (!POL) return;
-    const sel = document.getElementById('photo-source');
-    const note = document.getElementById('photo-source-note');
-    const env = POL.photo_source_env || '';
-    if (sel) {
-      sel.value = POL.photo_source || POL.photo_source_default || 'source';
-      sel.disabled = !!env;
-    }
-    if (note) {
-      note.innerHTML = env
-        ? 'locked by the <code>' + esc(POL.photo_source_env_name || 'CREALITY_PHOTO_SOURCE') +
-          '</code> environment override (“' + esc(env) + '”) — the dashboard cannot move it while that is set'
-        : 'the creator\'s ORIGINAL photos from the original upload are used; renders of the model file are never uploaded';
-    }
-    const list = document.getElementById('auth-list');
-    if (!list) return;
-    list.innerHTML = '';
-    const ents = POL.authorized || [];
-    const head = document.createElement('div');
-    head.innerHTML = '<b>Sources allowed to re-publish:</b> ' +
-      (ents.length ? ents.length + ' named — a re-upload of any other Creality listing is refused.'
-                   : 'none — every re-upload of another Creality listing is refused until one is named here.');
-    list.appendChild(head);
-    ents.forEach(e => {
-      const row = document.createElement('div');
-      row.style.marginTop = '4px';
-      row.innerHTML = '· <code>' + esc(e.source_url) + '</code> — ' +
-        esc(e.note || 'no reason given') + ' ';
-      const b = document.createElement('button');
-      b.className = 'btn-outline';
-      b.style.cssText = 'padding:2px 8px;font-size:.72rem';
-      b.textContent = 'Remove';
-      b.onclick = () => unauthorizeSource(e.source_url);
-      row.appendChild(b);
-      list.appendChild(row);
-    });
-  }
-
-  function policyLoad() {
-    fetch('/policy').then(r => r.json()).then(j => {
-      POL = j || null;
-      policyControls();
-    }).catch(() => {});
-  }
-
-  async function policyPost(url, body) {
-    const res = await fetch(url, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body || {})
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
-    if (data.licence_allow) {          // /policy-shaped responses
-      POL = data;
-      policyControls();
-    }
-    return data;
-  }
-
-  // Switch the photo source. Saved server-side and applied to THIS model
-  // immediately through /photo-plan (no second fetch of the live page).
-  async function setPhotoSource(v) {
-    if (POL && v === POL.photo_source) return;
+  // The dashboard's own self-test. Every failing check carries the exact command
+  // that fixes it: that is the whole point after seeing ERR_CONNECTION_REFUSED
+  // with no explanation at all.
+  async function runDiagnostics() {
+    const list = document.getElementById('diag-list');
+    const runBtn = document.getElementById('diag-run-btn');
+    if (runBtn.disabled) return;
+    runBtn.disabled = true;
+    setStatus('diag-status', 'info', '<span class="spinner"></span>Running the self-checks…');
     try {
-      await policyPost('/policy/photo-source', { value: v });
-      setStatus('policy-status', 'ok', 'Photos: ' + photoSourceLabel(v) + '.');
+      const r = await fetch('/diagnostics').then(x => x.json());
+      document.getElementById('diag-summary').textContent =
+        (r.ok ? 'all checks passed' : 'checks failed') + ' · ' + esc(r.build || '');
+      list.innerHTML = (r.checks || []).map(c =>
+        '<div class="autorow"><span class="astate ' + (c.ok ? 'published' : 'failed') + '">' +
+        (c.ok ? 'ok' : 'fail') + '</span><span class="aname">' + esc(c.name) +
+        '</span><span class="areason">' + esc(c.detail || '') +
+        (!c.ok && c.fix ? '<br><span style="color:#ffcc80">fix: ' + esc(c.fix) + '</span>' : '') +
+        '</span></div>').join('');
+      setStatus('diag-status', r.ok ? 'ok' : 'error', r.ok
+        ? 'All checks passed — the dashboard is healthy. Time so far: ' + esc(r.summary || '')
+        : 'Some checks failed — each row says what to do about it.');
     } catch (e) {
-      setStatus('policy-status', 'error', e.message);
-      policyControls();
-      return;
-    }
-    const sel = document.getElementById('photo-source');
-    if (sel) sel.disabled = true;          // no second change mid-rebuild
-    try {
-      if ((_origRaw && _origRaw.length) || _stlPath) await replanPhotos();
+      setStatus('diag-status', 'error',
+        'The diagnostics could not run: ' + esc(String(e)) +
+        ' — if the page itself loaded, the server is up but /diagnostics failed.');
     } finally {
-      policyControls();                    // re-enables unless the env locks it
-    }
-    if (_policy) renderPolicyLine(_policy, v);
-  }
-
-  async function replanPhotos() {
-    setStatus('fetch-status', 'info', '<span class="spinner"></span>Rebuilding the photo set for this model…');
-    try {
-      const res = await fetch('/photo-plan', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stl_path: _stlPath || '', images: _origRaw || [],
-                               name: _model.name || '', slug: '' })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'could not re-plan the photos');
-      _editedRaw = data._raw_images || [];
-      _imgUrls = data.image_urls || [];
-      _selected = new Set(_editedRaw.map((_, i) => i));
-      _imagePaths = _editedRaw.slice();
-      _usingEdited = false;
-      renderPhotoTiles(_editedRaw.map((p, i) => ({
-        url: _imgUrls[i] || ('/file/' + String(p).split(/[\\/]/).pop()),
-        alt: 'Photo ' + (i + 1)
-      })));
-      renderProofLine(_proof, data.photo_note || '');
-      setStatus('fetch-status', 'ok', esc(data.photo_note || '') +
-        ' — ' + _editedRaw.length + ' image(s) will be uploaded.');
-    } catch (e) {
-      setStatus('fetch-status', 'warn', 'The photo set was not rebuilt: ' + e.message);
+      runBtn.disabled = false;
     }
   }
 
-  function authorizeFromCard() {
-    const url = (document.getElementById('auth-url').value || '').trim();
-    const note = (document.getElementById('auth-note').value || '').trim();
-    authorizeSource(url, note, null);
-  }
-
-  // Authorise a source to be re-published — the dashboard's version of
-  // scripts/authorize_source.py. The reason is required: a re-upload is only
-  // legitimate when the user designed it or the creator allowed it.
-  async function authorizeSource(url, note, btn) {
-    url = (url || '').trim();
-    note = (note || '').trim();
-    if (!url) { setStatus('policy-status', 'warn', 'Paste the model link (or its slug) to authorise.'); return; }
-    if (!note) { setStatus('policy-status', 'warn', 'Say why it is allowed — your own design, or the creator\'s permission. An unexplained authorisation is not one.'); return; }
-    if (btn) btn.disabled = true;
+  // The ONE check that starts a browser, run only because you clicked.
+  async function runBrowserCheck() {
+    setStatus('diag-status', 'info',
+      '<span class="spinner"></span>Starting a throwaway headless browser to test Playwright…');
     try {
-      await policyPost('/policy/authorize', { url, note });
-      setStatus('policy-status', 'ok', 'Authorised: ' + esc(url));
-      const a = document.getElementById('auth-url'); if (a) a.value = '';
-      const n = document.getElementById('auth-note'); if (n) n.value = '';
+      const r = await fetch('/diagnostics/browser').then(x => x.json());
+      setStatus('diag-status', r.ok ? 'ok' : 'error', esc(r.check || 'browser check') +
+        ' — ' + esc(r.detail || '') + (!r.ok && r.fix ? ' · fix: ' + esc(r.fix) : ''));
     } catch (e) {
-      setStatus('policy-status', 'error', e.message);
-      if (btn) btn.disabled = false;
-      return;
+      setStatus('diag-status', 'error', 'The browser check could not run: ' + esc(String(e)));
     }
-    await recheckVerdict();
   }
 
-  async function unauthorizeSource(url) {
+  // Which code is this page actually talking to?
+  // The dashboard had no version anywhere, so "I restarted it but nothing
+  // changed" could not be checked. The stamp comes from /health, which is cheap
+  // and starts nothing, so this can run on every page load.
+  async function loadBuild() {
+    const el = document.getElementById('build-stamp');
+    if (!el) return;
     try {
-      const data = await policyPost('/policy/unauthorize', { url });
-      setStatus('policy-status', 'ok', (data.removed ? 'Authorisation removed: ' : 'Was not authorised: ') + esc(url));
+      const h = await fetch('/health').then(r => r.json());
+      const up = Math.round(h.uptime_s || 0);
+      const mins = Math.floor(up / 60);
+      const ago = mins ? (mins + 'm ' + (up % 60) + 's') : (up + 's');
+      el.innerHTML =
+        'serving <b>' + esc(h.build || 'unknown') + '</b>' +
+        '<br>up ' + ago + ' &middot; pid ' + esc(String(h.pid || '?')) +
+        '<br><span style="color:#666">started ' + esc(h.started_at || '?') + '</span>';
+      if (h.build_is_current === false) {
+        el.classList.add('stale');
+        el.innerHTML += '<br><b>code changed on disk &mdash; RESTART NEEDED</b>';
+        el.title = 'This process started from ' + (h.build || '?') +
+          ' but the code on disk is now ' + (h.head_rev || '?') +
+          '. Run scripts/dashboard_supervisor.py --restart to load it.';
+      } else if (!h.build || h.build === 'unknown') {
+        el.classList.add('stale');
+        el.title = 'This process could not identify the code it is running.';
+      }
     } catch (e) {
-      setStatus('policy-status', 'error', e.message);
-      return;
-    }
-    await recheckVerdict();
-  }
-
-  // Re-judge the link already loaded (same one owner) after an authorisation
-  // change — no second fetch of the live page.
-  async function recheckVerdict() {
-    if (!_model.source_url && !_model.name) return;
-    try {
-      const res = await fetch('/policy/verdict', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(_model)
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'could not re-check');
-      renderPolicyLine(data.policy || null, (POL && POL.photo_source) || '');
-    } catch (e) {
-      setStatus('policy-status', 'warn', 'The verdict was not re-checked: ' + e.message);
+      el.classList.add('stale');
+      el.textContent = 'no answer from /health';
     }
   }
 
@@ -956,6 +830,13 @@
       '<br><span style="color:#b0bec5">Never published: ' + no +
       ', anything outside those families, or a second item from a family already '
       'going out in the same run.</span>';
+  }
+
+  // Seconds the way a human reads them: 42.5s, 3m 05s.
+  function fmtSec(v) {
+    const n = Number(v || 0);
+    if (n >= 60) return Math.floor(n / 60) + 'm ' + String(Math.round(n % 60)).padStart(2, '0') + 's';
+    return n.toFixed(n < 10 ? 2 : 1) + 's';
   }
 
   function autoRender(s) {
@@ -1018,6 +899,16 @@
           ' model(s) already published — skipped before queueing (the config knows them).</span>'
         : '');
 
+    // Where the time actually went. The pipeline recorded no timings at all
+    // before, so "it is faster now" had no number to check; this is that number,
+    // straight from the run's own table (see /timings for the full list).
+    const ph = (s.timings && s.timings.phases) || [];
+    const slow = ph.slice(0, 5).map(r =>
+      esc(r.phase) + ' ' + fmtSec(r.total_s) + (r.count > 1 ? ' \u00d7' + r.count : '')
+    ).join(' \u00b7 ');
+    document.getElementById('auto-summary').innerHTML +=
+      (slow ? '<br><span style="color:#b0bec5">Time: ' + slow + '</span>' : '');
+
     const list = document.getElementById('auto-list');
     list.innerHTML = (s.items || []).map((it, i) => {
       const st2 = esc(it.state || 'queued');
@@ -1057,7 +948,7 @@
     const count = parseInt(raw, 10);
     if (!count || count < 1) {
       setStatus('auto-status', 'error',
-        'Type how many models you want — a number, 1 or more (you typed “' + esc(raw) + '”).');
+        'Enter how many models to find: a whole number, 1 or more.');
       return;
     }
     const kw = (document.getElementById('auto-keywords').value || '')
@@ -1231,7 +1122,7 @@
       const t = sum.totals || {};
       const per = (d, l) => `<b>+${fmt(d)}</b> dl · <b>+${fmt(l)}</b> likes`;
       const updated = sum.last_scrape
-        ? 'updated ' + new Date(sum.last_scrape * 1000).toLocaleString()
+        ? 'stored data, last saved ' + new Date(sum.last_scrape * 1000).toLocaleString()
         : 'no data yet — click Refresh now';
       const card = (lbl, num, sub) =>
         `<div class="an-card"><div class="lbl">${lbl}</div><div class="num">${num}</div><div class="sub">${sub}</div></div>`;
@@ -1243,14 +1134,14 @@
         card('Totals now', `${fmt(cur.downloads)} dl`, `${fmt(cur.likes)} likes · ${esc(updated)}`);
       const p = sum.points || { current: 0, totals: {} };
       const pt = p.totals || {};
-      const pcard = (lbl, val) =>
-        `<div class="an-card points"><div class="lbl">${lbl}</div><div class="num">${fmt(val)}</div><div class="sub">points earned</div></div>`;
+      const pcard = (lbl, val, sub) =>
+        `<div class="an-card points"><div class="lbl">${lbl}</div><div class="num">${fmt(val)}</div><div class="sub">${sub || 'points earned'}</div></div>`;
       document.getElementById('an-points').innerHTML =
         pcard('Points · Today', pt.today) +
         pcard('Points · 7 days', pt['7d']) +
         pcard('Points · 30 days', pt['30d']) +
         pcard('Points · This year', pt.ytd) +
-        pcard('Points · Total', p.current);
+        pcard('Points · Balance now', p.current, 'current balance, not earned');
       document.getElementById('an-updated').textContent = updated;
       renderModels(sum);
     } catch (err) {
@@ -1335,8 +1226,8 @@
   });
 
   // show a run that is already going (or its results) after a reload
+  loadBuild();
   selLoad();
-  policyLoad();
   autoPoll();
   _autoTimer = setInterval(autoPoll, 5000);
 
