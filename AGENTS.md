@@ -13,6 +13,11 @@
 - Stage only the files that this work changed, by name. Never use `git add -A` or `git commit -a`, and never commit or push files you did not change: run logs under `artifacts/`, `published_models.json`, or other pending edits.
 - If the commit or push fails, say so. Do not report the work as done.
 
+## Version marker on every update
+
+- Every update to the dashboard bumps its version marker by one: the `<title>` and the `#ui-version` span in `creality/index.html` (currently V3). Do this in the same change as the update, so the number always shows the latest build.
+- Never skip a version or reuse one.
+
 ## Known cause (fixed)
 
 - Earlier, `main.py` started the hourly `analytics._auto_loop` and ran `analytics.refresh()` at every startup, which drove the user's logged-in Chrome. Both are now disabled: startup only seeds the ledger from files on disk. The account is read only when the user clicks Refresh (`POST /analytics/refresh`). Do not re-enable the automatic reads.
