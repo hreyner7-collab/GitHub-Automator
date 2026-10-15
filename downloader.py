@@ -130,6 +130,7 @@ LICENSE_JS = r"""
 FIND_JS = r"""
     (reStr) => {
         const re = new RegExp(reStr, 'i');
+        const collect = () => {
         const hits = [];
         for (const el of document.querySelectorAll('button,div,a,span,[role=button]')) {
             const t = (el.innerText||'').trim();
@@ -159,6 +160,22 @@ FIND_JS = r"""
             if (!top || (top !== el && !el.contains(top) && !top.contains(el)))
                 continue;
             hits.push({x: cx, y: cy, t, area: r.width * r.height});
+        }
+        return hits;
+        };
+        // The control can sit below the fold (on a short window the 'Download 3MF'
+        // action box is under the viewport), so nothing is visible until it is
+        // scrolled into view. Scroll the first matching control into view, then search again.
+        let hits = collect();
+        if (!hits.length) {
+            for (const el of document.querySelectorAll('button,div,a,span,[role=button]')) {
+                const t = (el.innerText||'').trim();
+                if (t && t.length <= 60 && re.test(t) && el.getBoundingClientRect().width >= 20) {
+                    el.scrollIntoView({block: 'center'});
+                    break;
+                }
+            }
+            hits = collect();
         }
         if (!hits.length) return null;
         hits.sort((a, b) => a.area - b.area);        // the control itself
