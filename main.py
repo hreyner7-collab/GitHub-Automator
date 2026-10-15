@@ -1,7 +1,10 @@
 import asyncio
+import json
 import os
 import re
 from pathlib import Path
+import subprocess
+import time
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
@@ -19,6 +22,7 @@ import creality_rules
 import ledger
 import proof
 import selector
+import timing
 
 load_dotenv()
 
@@ -28,6 +32,55 @@ DOWNLOADS_DIR = BASE_DIR / "downloads"
 app = FastAPI(title="Creality Pipeline")
 
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+
+# ── Which code is this process actually serving? ────────────────────────────
+# The dashboard had no version anywhere, so "I restarted it but nothing changed"
+# could not be checked by anyone -- not you, and not the supervisor. The stamp is
+# read once, at import, from the checkout the process was started in.
+STARTED_AT = time.time()
+
+
+def _write_run_log(path: Path, body: dict) -> None:
+    """Write a run log atomically: temp file first, then swap it in.
+
+    A plain write_text can be truncated by a crash mid-write, and this file is
+    what seeds "already published" on the next start -- a half-written one
+    silently loses that memory. Serializing BEFORE the swap also means a body
+    that cannot be written leaves the previous good log untouched.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(body, indent=1, ensure_ascii=False)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
+def _git(*args: str) -> str:
+    """Best-effort git output: "" when git is missing or this is not a checkout."""
+    try:
+        out = subprocess.run(["git", *args], cwd=str(BASE_DIR), capture_output=True,
+                             text=True, timeout=10)
+        return (out.stdout or "").strip() if out.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def _build_stamp() -> str:
+    """The commit this process was started from, marked when the tree has edits.
+
+    `+edits` matters: the dashboard is usually restarted while the working tree
+    still holds uncommitted work, and a bare hash would claim the running code is
+    the committed code when it is not.
+    """
+    rev = _git("rev-parse", "--short", "HEAD")
+    if not rev:
+        return "unknown"
+    return rev + ("+edits" if _git("status", "--porcelain", "--untracked-files=no") else "")
+
+
+BUILD = _build_stamp()
+
+SERVER_PORT = 8000
 
 
 @app.on_event("startup")
@@ -562,7 +615,8 @@ async def _fetch_with_retries(it: dict):
     attempts, last = [], ""
     for attempt in range(1, FETCH_ATTEMPTS + 1):
         try:
-            res = await asyncio.to_thread(dl_fetch, it["url"])
+            with timing.phase("fetch"):
+                res = await asyncio.to_thread(dl_fetch, it["url"])
             if attempts:
                 it["fetch_attempts"] = attempts
             it["reason"] = ""
@@ -610,21 +664,24 @@ def _auto_counts() -> dict:
 
 
 async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
-    import json as _json
     import time as _time
 
     def _log() -> str:
         _remember_outcomes()
         path = BASE_DIR / "artifacts" / ("auto_run_%s.json" % job_id)
         path.parent.mkdir(exist_ok=True)
-        path.write_text(_json.dumps({
+        body = {
             "job_id": job_id, "requested": AUTO["requested"],
             "keywords": AUTO["keywords"], "licence": AUTO["licence"],
             "counts": _auto_counts(), "items": AUTO["items"],
+            "timings": timing.snapshot(),
             "finished": _time.strftime("%Y-%m-%d %H:%M:%S"),
-        }, indent=1), encoding="utf-8")
+        }
+        _write_run_log(path, body)
         return str(path)
 
+    timing.reset()
+    _run_t0 = _time.perf_counter()
     try:
         AUTO["state"] = "discovering"
         # a run starts with an empty queue and empty counters, even when the
@@ -708,7 +765,8 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
             return {it.get("url") for it in AUTO.get("items") or []
                     if it.get("url")}
 
-        first = await asyncio.to_thread(_discover, count, set())
+        with timing.phase("discovery"):
+            first = await asyncio.to_thread(_discover, count, set())
         _absorb(first)
         disc = first["disc"]
         if AUTO.get("stop") or disc.get("stopped"):
@@ -735,7 +793,8 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                     break
                 topups += 1
                 AUTO["state"] = "discovering"
-                more = await asyncio.to_thread(_discover, need, _attempted())
+                with timing.phase("discovery"):
+                    more = await asyncio.to_thread(_discover, need, _attempted())
                 _absorb(more)
                 AUTO["log_path"] = _log()
                 if more["disc"].get("stopped") or AUTO.get("stop"):
@@ -846,8 +905,10 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
             # The proof of creation, built from the file being uploaded, and the
             # photos the listing will carry (the creator's originals, or our own
             # renders when the switch says so) — both from one place.
-            proof_info = _build_proof(res.get("stl_path"), res.get("name") or it["name"],
-                                      res.get("slug") or "")
+            with timing.phase("proof"):
+                proof_info = _build_proof(res.get("stl_path"),
+                                          res.get("name") or it["name"],
+                                          res.get("slug") or "")
             gate = creality_rules.check(name=res.get("name") or it["name"],
                                         source_url=res.get("source_url") or it["url"],
                                         licence=lic, proof=proof_info)
@@ -860,10 +921,11 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                 it["state"] = "skipped"
                 it["reason"] = gate["reason"]
                 continue
-            upload_images, photo_note, cover_ok = _upload_images(
-                res.get("image_paths") or [], proof_info,
-                res.get("stl_path") or "", res.get("name") or it["name"],
-                res.get("slug") or "")
+            with timing.phase("images"):
+                upload_images, photo_note, cover_ok = _upload_images(
+                    res.get("image_paths") or [], proof_info,
+                    res.get("stl_path") or "", res.get("name") or it["name"],
+                    res.get("slug") or "")
             it["photo_note"] = photo_note
             # Already published — never twice. The ledger is consulted BEFORE
             # the form is touched, so a repeat costs nothing (no browser, no
@@ -899,14 +961,15 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                 description = (description.rstrip() + "\n\nOriginal design: "
                                + it["url"]).strip()
             try:
-                async with UPLOAD_LOCK:
-                    up = await uploader_upload(res.get("name") or it["name"],
-                                               description,
-                                               res.get("stl_path"),
-                                               upload_images,
-                                               it["url"], dry_run=False,
-                                               license_raw=lic.get("raw", ""),
-                                               should_stop=_stop_requested)
+                with timing.phase("publish"):
+                    async with UPLOAD_LOCK:
+                        up = await uploader_upload(res.get("name") or it["name"],
+                                                   description,
+                                                   res.get("stl_path"),
+                                                   upload_images,
+                                                   it["url"], dry_run=False,
+                                                   license_raw=lic.get("raw", ""),
+                                                   should_stop=_stop_requested)
             except Exception as e:
                 it["state"] = "failed"
                 it["reason"] = str(e)[:200]
@@ -971,6 +1034,15 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
             AUTO["log_path"] = _log()
         except Exception:
             pass
+    finally:
+        # The run's own timing table, recorded even when the run FAILED: a phase
+        # that fails slowly is exactly the one worth seeing.
+        timing.record("run", _time.perf_counter() - _run_t0)
+        AUTO["timings"] = timing.snapshot()
+        try:
+            _log()          # re-write the log so the timings are in the file
+        except Exception:
+            pass
 
 
 @app.post("/auto/start")
@@ -1014,7 +1086,186 @@ async def auto_status():
     out["licence_deny"] = CREALITY_LICENCE_DENY
     out["already_published"] = ledger.count()
     out["selector"] = selector.policy()
+    out["timings"] = timing.snapshot()
     return out
+
+
+# ── Diagnostics: the dashboard checking itself ──────────────────────────────
+@app.get("/diagnostics")
+async def diagnostics():
+    """The dashboard's own self-test, using the SAME code the tests use.
+
+    Fast and side-effect free: it starts no browser and reads no account, so it
+    is safe to run whenever. Every failing check carries the exact command that
+    fixes it -- the whole point after seeing ERR_CONNECTION_REFUSED with no
+    explanation. The one check that DOES start a browser is behind
+    /diagnostics/browser, because that one costs a real browser launch.
+    """
+    import dashboard_guard as guard
+
+    checks: list[dict] = []
+
+    def add(name: str, ok: bool, detail: str, fix: str = "") -> None:
+        checks.append({"name": name, "ok": bool(ok), "detail": detail,
+                       "fix": fix})
+
+    status = guard.http_status(guard.dashboard_url(port=SERVER_PORT))
+    holder = guard.port_holder(SERVER_PORT)
+    detail = guard.port_holder_detail(holder)
+    add("server is answering", status is not None,
+        "HTTP %s on port %d" % (status, SERVER_PORT) if status is not None
+        else "nothing answered on port %d" % SERVER_PORT,
+        "start it: .venv/Scripts/python.exe scripts/dashboard_supervisor.py")
+    add("port owner", bool(holder) and detail.get("ours", False),
+        ("PID %s (%s)" % (holder, detail.get("image") or "unknown")) if holder
+        else "nobody is listening",
+        "if a stale copy holds it: scripts/dashboard_supervisor.py --restart")
+
+    head = _git("rev-parse", "--short", "HEAD")
+    add("running the code on disk", (not head) or head == BUILD.split("+")[0],
+        "running %s, disk is %s, up %ss" % (BUILD, head or "unknown",
+                                            round(time.time() - STARTED_AT)),
+        "code changed since this process started: scripts/dashboard_supervisor.py --restart")
+
+    try:
+        n = ledger.count()
+        add("ledger readable", True, "%d model(s) already published" % n)
+    except Exception as e:
+        add("ledger readable", False, str(e)[:160],
+            "the ledger is what stops a double publish; check artifacts/")
+
+    try:
+        import discover as _disc
+        tried = _disc._tried_store(_disc.TRIED_PATH)
+        corrupt = _disc.TRIED_PATH.with_name(_disc.TRIED_PATH.stem + ".corrupt.json")
+        add("tried-listings record readable", True,
+            "%d listing(s) remembered" % len(tried)
+            + ("; a corrupt copy is kept as %s" % corrupt.name if corrupt.exists() else ""),
+            "a corrupt record is moved aside, never overwritten -- see discover.py")
+    except Exception as e:
+        add("tried-listings record readable", False, str(e)[:160],
+            "without it, Find Models reopens pages a run already refused")
+
+    art = BASE_DIR / "artifacts"
+    try:
+        art.mkdir(parents=True, exist_ok=True)
+        probe = art / ".diagnostics-probe"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        add("artifacts writable", True, str(art))
+    except Exception as e:
+        add("artifacts writable", False, str(e)[:160],
+            "run logs and the run history live here")
+
+    try:
+        pol = selector.policy()
+        add("harvest policy loads", bool(pol.get("families")),
+            "%d families, %d reject rules" % (len(pol.get("families") or []),
+                                              len(pol.get("rejects") or [])))
+    except Exception as e:
+        add("harvest policy loads", False, str(e)[:160])
+
+    try:
+        rules = creality_rules.policy()
+        add("Creality's rules load", bool(rules.get("licence_allow")),
+            "allow: %s" % ", ".join(rules.get("licence_allow") or []))
+    except Exception as e:
+        add("Creality's rules load", False, str(e)[:160])
+
+    cdp = await asyncio.to_thread(_debug_port_up)   # blocking probe: keep it off the loop
+    add("Chrome debug port (publishing)", True,
+        "up on 9222" if cdp else
+        "not up -- it starts by itself when you publish or fetch",
+        "" if cdp else "publishing will launch Chrome automatically")
+
+    autostart = _autostart_entry()
+    add("starts with Windows", autostart is not None,
+        str(autostart) if autostart else "no Startup entry -- a reboot leaves it down",
+        "install it: powershell -File scripts/install_dashboard_autostart.ps1")
+
+    # The step checks themselves, proven here on a fixture: the same assertions
+    # the tests cover, so "the dashboard always gets it right" is checked in the
+    # dashboard and not only in pytest.
+    try:
+        faults = _step_check_self_test()
+        add("step checks catch faults", not faults,
+            "all 3 injected faults were caught" if not faults
+            else "NOT caught: %s" % "; ".join(faults),
+            "verify.py is the one owner; a check that cannot fail is not a check")
+    except Exception as e:
+        add("step checks catch faults", False, str(e)[:160])
+
+    ok = all(c["ok"] for c in checks)
+    return {"ok": ok, "build": BUILD, "pid": os.getpid(),
+            "checks": checks, "summary": timing.summary_line(),
+            "timings": timing.process_snapshot()}
+
+
+def _autostart_entry():
+    """Path of the per-user Startup entry, or None when it is not installed."""
+    base = os.environ.get("APPDATA")
+    if not base:
+        return None
+    entry = (Path(base) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
+             / "Startup" / "Creality-Dashboard.vbs")
+    return entry if entry.exists() else None
+
+
+def _step_check_self_test() -> list:
+    """Run the step checks against deliberately WRONG pages, and report any that
+    failed to notice. A check that cannot fail proves nothing.
+
+    Pure and offline: it builds the pages in memory, so it never touches the site.
+    """
+    import page_model as _pm
+    import verify as _verify
+
+    def page(controls=(), images=()):
+        return _pm.normalize_report({"url": "fixture", "controls": list(controls),
+                                     "images": list(images), "texts": []})
+
+    def field(**kw):
+        base = {"tag": "input", "type": "text", "id": "", "name": "", "cls": "",
+                "label": "", "value": "", "checked": None, "disabled": False,
+                "required": False, "text": "", "box": [1, 1, 5, 5], "visible": True}
+        base.update(kw)
+        return base
+
+    faults = []
+    stuck = page(controls=[field(label="model name", visible=False, box=None)])
+    if _verify.step_two_open(stuck).ok:
+        faults.append("a form stuck on step 1 was accepted")
+    wrong_name = page(controls=[field(label="model name", value="something else")])
+    if _verify.name_applied(wrong_name, "the name we set").ok:
+        faults.append("a name that was never applied was accepted")
+    unticked = page(controls=[field(type="checkbox", label="CC BY-SA",
+                                    checked=False)])
+    if _verify.licence_rows_ticked(unticked, ("CC BY-SA",)).ok:
+        faults.append("an unticked licence row was accepted")
+    return faults
+
+
+@app.get("/diagnostics/browser")
+async def diagnostics_browser():
+    """The ONE check that starts a browser, so it runs only when asked.
+
+    Headless and throwaway: it proves Playwright can launch Chromium at all. It
+    opens no page and touches no account, but it does cost a real browser start,
+    which is why it is not part of /diagnostics.
+    """
+    ok = await asyncio.to_thread(_chromium_available)
+    return {"ok": ok, "check": "Playwright can launch Chromium",
+            "detail": "launched and closed a headless browser" if ok
+                      else "could not launch -- playwright install may be needed",
+            "fix": "" if ok else ".venv/Scripts/python.exe -m playwright install chromium"}
+
+
+@app.get("/timings")
+async def timings():
+    """Where the time goes: this run's table plus everything since the server
+    started. Read-only and cheap — it starts nothing and touches no account."""
+    return {"run": timing.snapshot(), "process": timing.process_snapshot(),
+            "summary": timing.summary_line()}
 
 
 @app.get("/selector")
@@ -1127,15 +1378,47 @@ async def serve_file(filename: str):
 
 @app.get("/health")
 async def health():
-    """Quick self-check: is the app configured and its dependencies reachable?"""
+    """Fast self-check. It must never start anything.
+
+    This used to launch a headless Chromium through asyncio.to_thread just to
+    answer, so every poll of a health endpoint spawned a browser: slow for the
+    supervisor and for the dashboard. The browser check now runs only when you
+    explicitly ask for it, at GET /diagnostics/browser.
+    """
     checks = {
         "image_editor": "local (no API key needed)",
-        "browser_debug_port_up": _debug_port_up(),
+        # A blocking probe (2s timeout), so it must not run on the event loop:
+        # a health check that freezes every other request is not a health check.
+        "browser_debug_port_up": await asyncio.to_thread(_debug_port_up),
         "downloads_dir": str(DOWNLOADS_DIR),
-        # Launching Chromium is slow and blocking — keep it off the event loop
-        "playwright_chromium": await asyncio.to_thread(_chromium_available),
+        "playwright_importable": _playwright_importable(),
+        "browser_probe": "not run here — use the Diagnostics panel's browser check",
     }
-    return {"status": "ok", "checks": checks}
+    head = _git("rev-parse", "--short", "HEAD")
+    return {"status": "ok", "build": BUILD, "pid": os.getpid(),
+            "started_at": time.strftime("%Y-%m-%d %H:%M:%S",
+                                      time.localtime(STARTED_AT)),
+            "uptime_s": round(time.time() - STARTED_AT, 1),
+            "port": SERVER_PORT,
+            # Is the code ON DISK what this process is running? A server keeps
+            # serving the code it started with, which is why a "restart" could
+            # look like it did nothing. This makes that answerable.
+            "head_rev": head,
+            "build_is_current": bool(head) and head == BUILD.split("+")[0],
+            "checks": checks}
+
+
+def _playwright_importable() -> bool:
+    """Is the library present? Cheap, and it starts nothing.
+
+    find_spec only asks the import system -- it does not import the package, and
+    it starts no driver, which is the whole requirement for a fast health check.
+    """
+    import importlib.util
+    try:
+        return importlib.util.find_spec("playwright") is not None
+    except Exception:
+        return False
 
 
 def _chromium_available() -> bool:
@@ -1149,10 +1432,43 @@ def _chromium_available() -> bool:
         return False
 
 
+def _port_holder_pid(port: int) -> int | None:
+    """PID listening on `port`, or None. Reuses the supervisor's own parser, so
+    "who holds the port" has exactly one implementation in this project."""
+    try:
+        import dashboard_guard
+        return dashboard_guard.port_holder(port)
+    except Exception:
+        return None
+
+
 if __name__ == "__main__":
     import uvicorn
-    print("=" * 60)
-    print("  Creality Pipeline dashboard:  http://localhost:8000")
-    print("  Health check:                 http://localhost:8000/health")
-    print("=" * 60)
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, log_level="info")
+
+    # Fail loudly and usefully instead of dying invisibly on "address already in
+    # use". That silent death is what produced ERR_CONNECTION_REFUSED while an old
+    # copy kept serving old code, so a restart could look like it did nothing.
+    holder = _port_holder_pid(SERVER_PORT)
+    if holder:
+        detail = {}
+        try:
+            import dashboard_guard
+            detail = dashboard_guard.port_holder_detail(holder)
+        except Exception:
+            pass
+        print("=" * 68)
+        print("  Port %d is already in use by PID %s (%s)."
+              % (SERVER_PORT, holder, detail.get("image") or "unknown"))
+        print("  If that is the dashboard, it is already up: http://localhost:%d"
+              % SERVER_PORT)
+        print("  If it is a stale copy, it is serving OLD code. Replace it with:")
+        print("      .venv/Scripts/python.exe scripts/dashboard_supervisor.py --restart")
+        print("  Nothing was started, so no second half-broken copy exists.")
+        print("=" * 68)
+        raise SystemExit(2)
+    print("=" * 68)
+    print("  Creality Pipeline dashboard:  http://localhost:%d" % SERVER_PORT)
+    print("  Health check:                 http://localhost:%d/health" % SERVER_PORT)
+    print("  This code:                    %s" % BUILD)
+    print("=" * 68)
+    uvicorn.run("main:app", host="127.0.0.1", port=SERVER_PORT, log_level="info")

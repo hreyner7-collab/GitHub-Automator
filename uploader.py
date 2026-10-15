@@ -24,6 +24,13 @@ import zipfile
 
 from playwright.async_api import async_playwright
 
+import page_model
+# Imported under an alias ON PURPOSE: `upload()` has a long-standing local named
+# `verify` (the dict of evidence it returns), and a plain `import verify` would be
+# shadowed by it -- making every step_verify call below a silent AttributeError
+# that the surrounding try/except would swallow. pyflakes found this.
+import verify as step_verify
+
 BASE = os.path.dirname(__file__)
 DOWNLOADS = os.path.join(BASE, "downloads")
 MODEL_DIR = os.path.join(DOWNLOADS, "model_files")
@@ -1104,8 +1111,11 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                  license_raw: str = "", should_stop=None) -> dict:
     # Auto-launch Chrome with the debug port if it isn't already running, so
     # the user never has to start it by hand (and never sees ECONNREFUSED).
-    if not _debug_port_up():
-        if not ensure_browser():
+    # Both calls BLOCK (a 2s port probe; up to 20s while Chrome is launched).
+    # Awaiting them from this async function froze the entire dashboard -- every
+    # request, not only the publish -- for as long as Chrome took to come up.
+    if not await asyncio.to_thread(_debug_port_up):
+        if not await asyncio.to_thread(ensure_browser):
             return {"success": False, "error": "Could not start Chrome automatically. "
                     "Open Chrome once via the debug launcher, log into MakerWorld + Creality, then retry."}
         # give the freshly-launched browser a moment to settle
@@ -1587,6 +1597,18 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                                   || document.querySelector('.second-step');
                         return !!s && s.offsetParent !== null;
                     }""")
+                if not sec_visible:
+                    # ONE read can answer "is step 2 laid out?", and if it says yes
+                    # the three 2.5s waits below are skipped entirely. When the read
+                    # is unavailable the old loop runs exactly as it did, so this
+                    # can only be faster or identical -- never worse.
+                    try:
+                        _pm = await step_verify.observe(work)
+                        if _pm and step_verify.step_two_open(_pm).ok:
+                            sec_visible = True
+                            UPLOAD_VERIFY["step2_seen_by"] = "one page read"
+                    except Exception:
+                        pass
                 if not sec_visible:
                     for _ in range(3):
                         try:
@@ -2203,6 +2225,30 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
             return {"success": True, "no_submit": True, "url": page.url,
                     "verify": dict(UPLOAD_VERIFY),
                     "message": "Filled everything but did NOT submit (CREALITY_NO_SUBMIT=1)."}
+        # ── the last chance to catch a wrong form, from ONE read ────────────
+        # Read the whole form back before pressing Submit and record what it says
+        # (name applied, licence rows ticked, consent, covers on the form).
+        # This is a RECORD, not a new hard gate: a check that fails here is
+        # written into the upload's evidence, and the submit proceeds exactly as
+        # before, so adding the check cannot break a publish that works today.
+        try:
+            _pm_pre = await step_verify.observe(work)
+        except Exception:
+            _pm_pre = None
+        try:
+            _checks = {
+                "step2_open": step_verify.step_two_open(_pm_pre),
+                "name_applied": step_verify.name_applied(_pm_pre, name),
+                "covers_present": step_verify.covers_present(_pm_pre,
+                                                             len(image_paths or [])),
+                "consent": step_verify.consent_ticked(_pm_pre),
+            }
+            UPLOAD_VERIFY["step_checks"] = step_verify.record(_checks)
+            UPLOAD_VERIFY["step_checks_summary"] = step_verify.summarise(_checks)
+            UPLOAD_VERIFY["page_model"] = page_model.summary(_pm_pre)
+        except Exception as e:
+            UPLOAD_VERIFY["step_checks"] = {"error": str(e)[:160]}
+
         try:
             try:
                 target = await work.evaluate(SUBMIT_JS)   # module-level constant

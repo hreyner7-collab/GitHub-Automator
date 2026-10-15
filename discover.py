@@ -12,6 +12,7 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 import selector
+import timing
 # The licence lists have ONE owner (creality_rules) — these names are kept
 # because the finder, main.py, the gate scripts and the tests read them from
 # here. They ARE that module's lists, not a second copy of them.
@@ -257,6 +258,47 @@ def _reveal_licences(page, tries: int = 14, should_stop=None) -> dict:
             pass
         page.wait_for_timeout(350)
     return boxes
+
+
+def _wait_for_more_cards(page, before: int, budget_ms: int = 2500,
+                         step_ms: int = 150, should_stop=None) -> int:
+    """Wait until the listing GROWS, instead of always sleeping 2.5s and asking.
+
+    The listing lazy-loads as it is scrolled, so it does have to be scrolled --
+    no amount of reading can make the browser fetch the next batch. What was
+    wasteful was the FIXED wait: every pass slept the full 2500ms and only then
+    counted the cards, so a page that had already finished loading still cost
+    2.5s, and the listing is walked up to 200 times per keyword.
+
+    This returns the moment the count grows, and gives up after the same budget
+    as before, so the worst case is identical while the common case (the page
+    responds in a few hundred ms, or is already at the end) is far cheaper.
+    It also notices Stop, which the fixed sleep could not.
+    """
+    def count() -> int:
+        try:
+            return len(json.loads(page.evaluate(CREALITY_CARDS_JS) or "[]"))
+        except Exception:
+            return before          # a read that fails is not a reason to spin
+
+    if should_stop and should_stop():
+        return before
+    # One early probe catches the common case: the next batch was already in
+    # flight and lands in a few hundred ms. If it has not grown by then, wait the
+    # rest of the old budget and look once more -- so the WORST case is exactly
+    # the old behaviour (one 2.5s wait and one read), never more round-trips.
+    page.wait_for_timeout(step_ms)
+    after = count()
+    if after > before:
+        return after
+    remaining = budget_ms - step_ms
+    while remaining > 0:
+        if should_stop and should_stop():
+            return after
+        chunk = min(step_ms, remaining)
+        page.wait_for_timeout(chunk)
+        remaining -= chunk
+    return count()
 
 
 def _scroll_to_licences(page) -> None:
@@ -522,6 +564,8 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
     from browser_opener import sync_playwright_auto
     from uploader import ensure_browser, CDP_URL
 
+    t_total = time.perf_counter()
+
     keywords = [k.strip() for k in (keywords or []) if k and k.strip()]
     # the account's Chrome renders /fr/ pages; drive the ENGLISH site so the
     # listing and its Filters panel speak the language the rest reads
@@ -556,16 +600,19 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
             page = browser.contexts[0].new_page()
             page.set_viewport_size({"width": 1440, "height": 900})
             try:
-                page.goto(entry, wait_until="domcontentloaded", timeout=90000)
-                page.wait_for_timeout(6000)
+                with timing.phase("listing.open"):
+                    page.goto(entry, wait_until="domcontentloaded", timeout=90000)
+                    page.wait_for_timeout(6000)
                 if should_stop and should_stop():
                     stopped = True        # Stop pressed: end the scan before the sort
                     break
-                _sort_by_downloads(page)
+                with timing.phase("listing.sort"):
+                    _sort_by_downloads(page)
                 if should_stop and should_stop():
                     stopped = True        # Stop pressed during the sort
                     break
-                rep = filter_creality_licences(page, should_stop=should_stop)
+                with timing.phase("licence.filter"):
+                    rep = filter_creality_licences(page, should_stop=should_stop)
                 if should_stop and should_stop():
                     stopped = True        # Stop pressed during the licence filter
                     break
@@ -586,7 +633,8 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
                     if should_stop and should_stop():
                         stopped = True     # Stop pressed: end the scan at this pass
                         break
-                    cards = json.loads(page.evaluate(CREALITY_CARDS_JS) or "[]")
+                    with timing.phase("harvest.read"):
+                        cards = json.loads(page.evaluate(CREALITY_CARDS_JS) or "[]")
                     for c in cards:
                         url = c.get("url") or ""
                         if not url or url in found or _english_url(url) in skip_urls:
@@ -639,12 +687,13 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
                     # already-done cards never reach `found`, so comparing against
                     # it never saw the end and the scan ran all 200 passes.
                     before = len(cards)
-                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    page.wait_for_timeout(2500)
-                    try:
-                        after = len(json.loads(page.evaluate(CREALITY_CARDS_JS) or "[]"))
-                    except Exception:
-                        after = before
+                    with timing.phase("harvest.scroll"):
+                        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        after = _wait_for_more_cards(page, before,
+                                                     should_stop=should_stop)
+                        if should_stop and should_stop():
+                            stopped = True
+                            break
                     empty_scrolls = empty_scrolls + 1 if after <= before else 0
                     if empty_scrolls >= 2:
                         break
@@ -667,6 +716,10 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
     if len(found) < count and not note and not stopped:
         note = ("only %d of the %d models asked for were found in the listings"
                 % (len(found), count))
+    # The whole scan's wall-clock, recorded next to its parts: this is the phase
+    # that dominates a run (one fixed 6s wait per keyword, a 2.5s wait per scroll
+    # pass, up to 200 passes), so it has to be in the table, not guessed at.
+    timing.record("discover.total", time.perf_counter() - t_total)
     return {"models": list(found.values())[:count], "licence": licence_report,
             "keywords": keywords, "note": note, "count": count,
             "skipped_done": len(skipped_names),

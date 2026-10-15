@@ -49,13 +49,27 @@ taskkill //F //IM python.exe   # (kills ALL python — use carefully)
 ### Reading `/health`
 
 ```json
-{"status":"ok","checks":{
+{"status":"ok", "build":"72a64db", "pid":1234, "started_at":"...",
+ "uptime_s": 42.0, "port":8000, "head_rev":"72a64db", "build_is_current": true,
+ "checks":{
   "image_editor": "local (no API key needed)",  // always available
   "browser_debug_port_up": false,  // false is fine until you publish; auto-launches then
   "downloads_dir": "...",          // where fetched models/images land
-  "playwright_chromium": true      // must be true for discover/fetch
+  "playwright_importable": true,   // cheap: the import system is asked, not started
+  "browser_probe": "not run here — use the Diagnostics panel's browser check"
 }}
 ```
+
+`build_is_current: false` means this process started from older code than what is
+on disk — restart it (`.venv/Scripts/python.exe scripts/dashboard_supervisor.py
+--restart`). That check exists because a running server keeps serving the code it
+started with, which made a restart look like it did nothing.
+
+The `GET /health` endpoint no longer launches Chromium to test Playwright: a
+health check that spawns a browser is not a health check. That probe now lives at
+`GET /diagnostics/browser` and runs only when you click **Test browser control**.
+`GET /diagnostics` runs the rest of the self-checks and starts nothing.
+`GET /timings` shows where the time went, per phase, for this run and the process.
 
 ## 4. End-to-end smoke test (manual, ~5 min)
 

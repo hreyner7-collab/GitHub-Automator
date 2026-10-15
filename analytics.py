@@ -222,8 +222,13 @@ async def open_signin() -> dict:
     """Open the OFFICIAL Creality sign-in page in the user's debug Chrome (the
     profile that uploads and analytics share — one login, remembered forever)."""
     from uploader import CDP_URL, _debug_port_up, ensure_browser
-    if not _debug_port_up():
-        if not ensure_browser():
+    # Both of these BLOCK (up to 2s for the port probe and 20s while Chrome is
+    # launched). Calling them straight from an async def freezes the whole
+    # dashboard for that long -- every request waits, not just this one. This is
+    # the same defect class the project hit before (see PLAN.md: "/fetch and
+    # /health blocked the event loop").
+    if not await asyncio.to_thread(_debug_port_up):
+        if not await asyncio.to_thread(ensure_browser):
             return {"ok": False, "error": "Could not start Chrome automatically."}
         await asyncio.sleep(2)
     from playwright.async_api import async_playwright
@@ -281,7 +286,7 @@ async def login_status() -> dict:
     if now - _login_cache["ts"] < 45 and _login_cache["result"]:
         return _login_cache["result"]
     from uploader import CDP_URL, _debug_port_up
-    if not _debug_port_up():
+    if not await asyncio.to_thread(_debug_port_up):   # blocking probe: keep it off the loop
         result = {"logged_in": False, "browser_up": False}
         _login_cache.update(ts=now, result=result)
         return result
@@ -342,7 +347,7 @@ async def fetch_download_counts(max_models: int = 0) -> dict:
     at ~119 models and ~3.5s per page, a full pass costs ~7min — done at most
     once per hour and parallelized 3 tabs at a time."""
     from uploader import CDP_URL, _debug_port_up
-    if not _debug_port_up():
+    if not await asyncio.to_thread(_debug_port_up):   # blocking probe: keep it off the loop
         return {"ok": False, "read": 0, "error": "Chrome not running"}
     snaps = load_snapshots()
     latest: dict[str, tuple[str, float]] = {}
@@ -421,8 +426,8 @@ async def refresh() -> dict:
     append a snapshot. Returns {ok, added, models, error?}."""
     from uploader import CDP_URL, _debug_port_up, ensure_browser
 
-    if not _debug_port_up():
-        if not ensure_browser():
+    if not await asyncio.to_thread(_debug_port_up):
+        if not await asyncio.to_thread(ensure_browser):
             return {"ok": False, "error": "Chrome is not running with the debug port. "
                     "Click 'Sign in to Creality Cloud' once — after that, updates "
                     "are read automatically from your logged-in Chrome session."}
@@ -609,7 +614,7 @@ async def _auto_loop():
     while True:
         try:
             from uploader import _debug_port_up
-            if _debug_port_up():
+            if await asyncio.to_thread(_debug_port_up):
                 r = await refresh()
                 if not r.get("ok"):
                     _note_refresh(False, error=r.get("error"))

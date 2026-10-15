@@ -496,9 +496,15 @@ def build(model_path: str | Path, name: str = "",
         return {"ok": False, "why": "could not render the proof: %s" % str(e)[:160],
                 "png": "", "params": params, "sha256": sha}
     side = png.with_suffix(".json")
-    side.write_text(json.dumps({"name": name or p.stem, "params": params,
-                                "source_file": str(p), "png": str(png)},
-                               ensure_ascii=False, indent=1), encoding="utf-8")
+    # Written through a temp file and swapped in: this sidecar is the machine-
+    # readable half of the proof, and a crash mid-write would leave a truncated
+    # JSON next to a perfectly good PNG. Same pattern as the ledger and the
+    # tried-listings record.
+    side_tmp = side.with_name(side.name + ".tmp")
+    side_tmp.write_text(json.dumps({"name": name or p.stem, "params": params,
+                                    "source_file": str(p), "png": str(png)},
+                                   ensure_ascii=False, indent=1), encoding="utf-8")
+    side_tmp.replace(side)
     return {"ok": True, "png": str(png), "params": params, "sha256": sha,
             "why": ""}
 
