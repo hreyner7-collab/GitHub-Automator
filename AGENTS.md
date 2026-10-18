@@ -18,11 +18,12 @@
 - Every update to the dashboard bumps its version marker by one: the `<title>` and the `#ui-version` span in `creality/index.html` (currently V3). Do this in the same change as the update, so the number always shows the latest build.
 - Never skip a version or reuse one.
 
-## Reset the dashboard after every code change
+## Keep the dashboard serving current code
 
-- Whenever code on disk changes, reset the dashboard so it serves the new code. The dashboard then shows the "code changed on disk — RESTART NEEDED" warning until it is reset.
-- Reset with `.venv/Scripts/python.exe scripts/dashboard_supervisor.py --restart --once`, then confirm with `--status` that it answers and shows the new build.
+- The supervisor now auto-resets the dashboard on its own when the code on disk changes (skipping the reset while an auto run is in progress), so no manual restart is needed as long as it is running.
+- When a manual reset is still needed: `.venv/Scripts/python.exe scripts/dashboard_supervisor.py --restart --once`, then confirm with `--status` that it answers and shows the new build.
 - This restart is allowed by the user's explicit standing request. It does not open a browser or read the account.
+- Do not restart the dashboard server beyond this rule — see the first section.
 
 ## Known cause (fixed)
 

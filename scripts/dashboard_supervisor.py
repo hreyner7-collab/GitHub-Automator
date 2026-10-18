@@ -328,7 +328,10 @@ class Supervisor:
                     "(build=%s pid=%s) — watching it, not starting a second copy"
                     % (self.url, health.get("build", "?"), pid))
             self.silent_probes = 0
-            return True
+            # A fresh supervisor has no child of its own, so this branch is its
+            # steady state: the stale check must live here too, not only under
+            # HEALTHY, or an adopted dashboard never auto-resets.
+            return self.auto_reset()
         if action == guard.BLOCKED:
             detail = self.last["detail"]
             log("port %d is held by PID %s (%s) and is NOT answering"
