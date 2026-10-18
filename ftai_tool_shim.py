@@ -33,7 +33,7 @@ Known limits (measured, not guesswork):
 Key: reads FTAI_CHAT_KEY env var, falls back to FTAI_API_KEY (Windows
 registry via setx is fine). Run:  python ftai_tool_shim.py  (port 4010)
 """
-import ast, html, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request, uuid
+import ast, html, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request, uuid, winreg
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("FTAI_SHIM_PORT", "4010"))
@@ -197,7 +197,20 @@ def auto_tool_flow(req_body, key):
     return collected
 
 def get_key():
-    return os.environ.get("FTAI_CHAT_KEY") or os.environ.get("FTAI_API_KEY") or ""
+    key = os.environ.get("FTAI_CHAT_KEY") or os.environ.get("FTAI_API_KEY") or ""
+    if key:
+        return key
+    if os.name == "nt":  # registry fallback (setx): kept for logon autostart
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as k:
+                for name in ("FTAI_CHAT_KEY", "FTAI_API_KEY"):
+                    try:
+                        return str(winreg.QueryValueEx(k, name)[0])
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+    return ""
 
 def upstream_req(path, body_bytes, key, headers_extra=None):
     return urllib.request.Request(
