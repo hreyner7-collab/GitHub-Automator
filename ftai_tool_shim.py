@@ -184,6 +184,9 @@ def auto_tool_flow(req_body, key):
             raise ShimUpstream(502, b'{"error":{"message":"planner: unusable upstream shape"}}')
         m = ch[0].get("message") or {}
         tcs = m.get("tool_calls") or []
+        if not isinstance(tcs, list):
+            raise ShimUpstream(502, b'{"error":{"message":"planner: unusable tool_calls shape"}}')
+        tcs = [t for t in tcs if isinstance(t, dict)]  # junk entries -> skipped
         if not tcs:
             break  # planner has all it needs
         planner["messages"] = planner["messages"] + [

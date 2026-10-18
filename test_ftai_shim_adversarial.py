@@ -24,6 +24,7 @@ os.environ["FTAI_CHAT_KEY"] = "test-key"
 # distinct fake-model names; each model maps to a FIFO of (status, payload)
 DEFAULT = {"choices": [{"message": {"content": None, "tool_calls": []}}]}
 QUEUE = {}
+CAPTURE = {}  # model -> last incoming request body (json-decoded)
 
 
 class _FakeUpstream(http.server.BaseHTTPRequestHandler):
@@ -45,7 +46,9 @@ class _FakeUpstream(http.server.BaseHTTPRequestHandler):
         raw = self.rfile.read(n) if n else b"{}"
         model = ""
         try:
-            model = str(json.loads(raw).get("model") or "")
+            payload = json.loads(raw)
+            model = str(payload.get("model") or "")
+            CAPTURE[model] = payload
         except Exception:
             pass
         if QUEUE.get(model):
@@ -82,6 +85,7 @@ class AdversarialShimTest(unittest.TestCase):
 
     def setUp(self):
         QUEUE.clear()
+        CAPTURE.clear()
 
     def _post(self, body, headers=None, raw=None):
         data = raw if raw is not None else json.dumps(body).encode()
@@ -184,6 +188,69 @@ class AdversarialShimTest(unittest.TestCase):
                          "I cannot access that information.")
 
     # positive control: retry with a genuinely good fresh sample still swaps
+    def _planner_tool_call(self, tid, name, args_json):
+        return {"id": tid, "type": "function",
+                "function": {"name": name, "arguments": args_json}}
+
+    def _planner_resp(self, calls):
+        return (200, {"choices": [{"message": {
+            "role": "assistant", "content": "",
+            "tool_calls": calls}, "finish_reason": "tool_calls"}]})
+
+    # 7. ordering and cap boundary of the handover across a 5-record chain ---
+    # five real deterministic records (calc via local builtin, no network):
+    # planner round 1 emits calls 1-3, round 2 emits calls 4-5. The handover
+    # must contain records 1-4 in call order and NOT the 5th.
+    def test_chain_ordering_and_cap_four_records(self):
+        calls1 = [self._planner_tool_call("c%d" % i, "calc_%d" % i,
+                                          json.dumps({"expression": str(i)}))
+                  for i in (1, 2, 3)]
+        calls2 = [self._planner_tool_call("c%d" % i, "calc_%d" % i,
+                                          json.dumps({"expression": str(i)}))
+                  for i in (4, 5)]
+        QUEUE["z/planner"] = [self._planner_resp(calls1), self._planner_resp(calls2)]
+        QUEUE["rail/lion/cat"] = [self._resident("done")]
+        st, body = self._chat(messages=[{"role": "user", "content": "summarize."}],
+                              tools=self._dummy_tool())
+        self.assertEqual(st, 200)
+        got = json.loads(body)
+        self.assertEqual(got["choices"][0]["message"]["content"], "done")
+        resreq = CAPTURE.get("rail/lion/cat") or {}
+        txt = (resreq.get("messages") or [{}])[0].get("content") or ""
+        self.assertTrue(txt.startswith("Quick context: the data I have on hand says "), txt[:300])
+        self.assertIn("calc_1: 1 = 1 | calc_2: 2 = 2 | calc_3: 3 = 3 | calc_4: 4 = 4", txt)
+        self.assertNotIn("calc_5", txt)
+        self.assertTrue(txt.endswith(". Given that, summarize."), txt[-200:])
+
+    def test_chain_all_four_records_kept(self):
+        calls1 = [self._planner_tool_call("c%d" % i, "calc_%d" % i,
+                                          json.dumps({"expression": str(i)}))
+                  for i in (1, 2, 3)]
+        calls2 = [self._planner_tool_call("c4", "calc_4",
+                                          json.dumps({"expression": "4"}))]
+        QUEUE["z/planner"] = [self._planner_resp(calls1), self._planner_resp(calls2)]
+        QUEUE["rail/lion/cat"] = [self._resident("done")]
+        st, _ = self._chat(messages=[{"role": "user", "content": "summarize."}],
+                           tools=self._dummy_tool())
+        self.assertEqual(st, 200)
+
+    # 8. planner 200 with malformed tool_calls shapes must not crash --------
+    def test_planner_tool_calls_string_is_honest_502(self):
+        QUEUE["z/planner"] = [(200, {"choices": [{"message": {
+            "content": None, "tool_calls": "yes"}}]})]
+        st, body = self._chat(messages=[{"role": "user", "content": "hi"}],
+                              tools=self._dummy_tool())
+        self.assertEqual(st, 502)
+        self.assertIn(b"planner", body)
+
+    def test_planner_tool_calls_non_dict_entries_do_not_crash(self):
+        QUEUE["z/planner"] = [(200, {"choices": [{"message": {
+            "content": None, "tool_calls": [42, "x"]}}]})]
+        QUEUE["rail/lion/cat"] = [self._resident("ok")]
+        st, _ = self._chat(messages=[{"role": "user", "content": "hi"}],
+                           tools=self._dummy_tool())
+        self.assertEqual(st, 200)
+
     def test_retry_adopts_usable_fresh_sample(self):
         QUEUE["rail/lion/cat"] = [
             self._resident("I do not have access to that."),
