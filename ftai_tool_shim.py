@@ -215,6 +215,11 @@ def forward(path, body_bytes, key):
         return r.status, r.read(), dict(r.headers)
     except urllib.error.HTTPError as e:
         return e.code, e.read(), dict(e.headers)
+    except (urllib.error.URLError, OSError) as e:
+        # timeout / connection refused / reset: the client still deserves a
+        # response, not a dropped connection
+        return 502, ("{\"error\":{\"message\":\"shim: upstream unreachable: "
+                     + str(e).replace("\"", "'")[:160] + "\"}}").encode(), {}
 
 def recap_of_history(messages):
     """Prior tool results rendered as plain I3-style facts; prior plain turns
@@ -286,7 +291,10 @@ class Handler(BaseHTTPRequestHandler):
         self._copy(st, body, hdrs)
 
     def do_POST(self):
-        n = int(self.headers.get("Content-Length", 0) or 0)
+        try:
+            n = int(self.headers.get("Content-Length", 0) or 0)
+        except (TypeError, ValueError):
+            n = 0
         raw = self.rfile.read(n) if n else b"{}"
         if not self.path.startswith("/v1/chat/completions"):
             st, body, hdrs = forward(self.path, raw, self._key())
@@ -307,7 +315,10 @@ class Handler(BaseHTTPRequestHandler):
             self._copy(st, body, hdrs)
             return
 
-        req_max = int(req_body.get("max_tokens") or 4096)
+        try:
+            req_max = int(req_body.get("max_tokens") or 4096)
+        except (TypeError, ValueError):
+            req_max = 4096
         # AUTO TOOL MODE: native planner decides calls with the real tools,
         # the shim executes them locally, then the resident model answers
         # from 'data in hand'. Never stops: fall back to no-tools answer if
@@ -338,7 +349,12 @@ class Handler(BaseHTTPRequestHandler):
             self._reply(502, {"error": {"message": "shim: unreadable upstream"}})
             return
         final["model"] = model
-        txt = (final.get("choices", [{}])[0].get("message") or {}).get("content") or ""
+        ch0 = (final.get("choices") or [{}])[0]
+        if not isinstance(ch0, dict) or (st == 200 and not ch0.get("message") and not ch0.get("delta")):
+            # 200 payload the SSE/answer paths cannot use -> honest 502, no crash
+            self._reply(502, {"error": {"message": "shim: unusable upstream completion shape"}})
+            return
+        txt = (ch0.get("message") or {}).get("content") or ""
         n_refuse = len(re.findall(r"cannot (?:provide|access)|do not have access|no access to", txt, re.I))
         if n_refuse:  # persona refusal ~2/5 measured; a fresh sample usually complies
             try:
@@ -358,7 +374,7 @@ class Handler(BaseHTTPRequestHandler):
             chunk = {"id": cid, "object": "chat.completion.chunk",
                      "created": created, "model": final.get("model", model),
                      "choices": [{"index": 0, "delta": {}, "finish_reason": None}]}
-            d = final["choices"][0]["message"]
+            d = final["choices"][0].get("message") or {}
             chunk["choices"][0]["delta"] = ({k: v for k, v in d.items() if v}) if d else {}
             sse = (f"data: {json.dumps(chunk)}\n\n"
                    f'data: {json.dumps({**chunk, "choices": [{"index": 0, "delta": {}, "finish_reason": final["choices"][0]["finish_reason"]}]})}\n\n'

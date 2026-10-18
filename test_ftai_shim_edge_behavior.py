@@ -61,6 +61,9 @@ class Mock(BaseHTTPRequestHandler):
             return
         if model == LION:
             content = body.get("messages", [{}])[0].get("content") or ""
+            if "EMPTYCHOICESMARKER" in content:
+                self._send(200, {"object": "chat.completion", "model": model, "choices": []})
+                return
             self._send(200, {"object": "chat.completion", "model": model, "choices": [{
                 "index": 0, "finish_reason": "stop",
                 "message": {"role": "assistant", "content": "RESIDENT SAW: " + content}}],
@@ -147,6 +150,40 @@ with urllib.request.urlopen(f"http://127.0.0.1:{SHIM_PORT}/v1/models", timeout=1
 check("E4 GET relays status+body",
       st == 203 and body == {"object": "list", "data": [{"id": "edge-mock"}]},
       f"st={st} body={json.dumps(body)[:80]}")
+
+# E5: malformed client fields degrade instead of crashing the handler
+garbage_ok = False
+try:
+    req = urllib.request.Request(f"http://127.0.0.1:{SHIM_PORT}/v1/chat/completions",
+        data=json.dumps({"model": LION, "max_tokens": "not-a-number",
+            "messages": [{"role": "user", "content": "weather in 'Cape Town' right now?"}],
+            "tools": [TOOL]}).encode(), headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        garbage_ok = resp.status == 200
+except (urllib.error.HTTPError, urllib.error.URLError, ConnectionError):
+    garbage_ok = False
+check("E5 bad max_tokens still completes", garbage_ok)
+
+# E6: unreachable upstream -> footed 502 JSON from forward(), never a raise
+mod.UPSTREAM = "http://127.0.0.1:1"  # closed port -> URLError/OSError path
+st, body, hdrs = mod.forward("/v1/chat/completions", b"{}", "k")
+check("E6 transport failure -> 502 JSON", st == 502 and b"upstream unreachable" in body,
+      f"st={st} body={body[:90]}")
+mod.UPSTREAM = f"http://127.0.0.1:{MOCK_PORT}"  # restore for any later use
+
+# E7: resident 200 with an unusable shape -> footed 502, not a handler crash
+mod.UPSTREAM = f"http://127.0.0.1:{MOCK_PORT}"
+req = urllib.request.Request(f"http://127.0.0.1:{SHIM_PORT}/v1/chat/completions",
+    data=json.dumps({"model": LION, "max_tokens": 300,
+        "messages": [{"role": "user", "content": "EMPTYCHOICESMARKER weather in Tokyo right now?"}],
+        "tools": [TOOL]}).encode(), headers={"Content-Type": "application/json"})
+try:
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        e7 = (resp.status, resp.read().decode()[:120])
+except urllib.error.HTTPError as e:
+    e7 = (e.code, e.read().decode()[:120])
+check("E7 unusable completion -> 502", e7[0] == 502 and "unusable upstream" in e7[1],
+      f"st={e7[0]} {e7[1]}")
 
 print()
 if fails:
