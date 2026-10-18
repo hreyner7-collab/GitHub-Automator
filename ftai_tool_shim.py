@@ -530,8 +530,10 @@ class Handler(BaseHTTPRequestHandler):
                 pass
 
         if req_body.get("stream"):
-            chunk = {"id": final["id"], "object": "chat.completion.chunk",
-                     "created": final["created"], "model": final["model"],
+            cid = final.get("id") or ("chatcmpl-shim-" + uuid.uuid4().hex[:12])
+            created = final.get("created") or int(time.time())
+            chunk = {"id": cid, "object": "chat.completion.chunk",
+                     "created": created, "model": final.get("model", model),
                      "choices": [{"index": 0, "delta": {}, "finish_reason": None}]}
             d = final["choices"][0]["message"]
             chunk["choices"][0]["delta"] = ({k: v for k, v in d.items() if v}) if d else {}
