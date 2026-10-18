@@ -252,10 +252,7 @@ def recap_of_history(messages):
     """Prior tool results rendered as plain I3-style facts; prior plain turns
     condensed. Returns a short recap paragraph (may be empty)."""
     asks, facts = [], []
-    msgs = list(messages)
-    while msgs and msgs[-1].get("role") == "user":
-        break  # last user message stays the live request
-    for m in msgs:
+    for m in messages:
         if not isinstance(m, dict):
             continue  # malformed history entries never crash the answer round
         role = m.get("role")
@@ -285,7 +282,9 @@ def build_final_messages(req_body, collected):
         body = ("Quick context: the data I have on hand says "
                 + " | ".join(collected) + ". Given that, " + task)
     else:
-        recap = recap_of_history(msgs[:-1] if last_user and msgs and
+        # last_user truthy guarantees non-empty msgs and that the last user
+        # message stays the live request (recap excludes it)
+        recap = recap_of_history(msgs[:-1] if last_user and
                                  msgs[-1].get("role") == "user" else msgs)
         body = ("Quick context: " + recap.rstrip(". ") + ". Given that, " + task) if recap.strip() else task
     return [{"role": "user", "content": body}]
@@ -397,8 +396,8 @@ class Handler(BaseHTTPRequestHandler):
                     chs = final2.get("choices") if isinstance(final2, dict) else None
                     ch2 = chs[0] if chs and isinstance(chs[0], dict) else {}
                     t2 = (ch2.get("message") or {}).get("content") or ""
-                    # adopt only a usable, non-refusing fresh sample: never swap a
-                    # good answer for an empty/unshaped one
+                    # adopt only a usable, non-refusing fresh sample: an empty
+                    # content passes the refusal regex and would blank a good answer
                     if t2 and not re.search(r"cannot (?:provide|access)|do not have access|no access to", t2, re.I):
                         final, txt = final2, t2
                         final["model"] = model

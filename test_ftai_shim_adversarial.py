@@ -198,11 +198,11 @@ class AdversarialShimTest(unittest.TestCase):
             "role": "assistant", "content": "",
             "tool_calls": calls}, "finish_reason": "tool_calls"}]})
 
-    # 7. ordering and cap boundary of the handover across a 5-record chain ---
+    # 7. ordering and completeness of the handover across a 5-record chain ---
     # five real deterministic records (calc via local builtin, no network):
     # planner round 1 emits calls 1-3, round 2 emits calls 4-5. The handover
-    # must contain records 1-4 in call order and NOT the 5th.
-    def test_chain_ordering_and_cap_four_records(self):
+    # must contain all five records in call order.
+    def test_chain_ordering_all_records_in_handover(self):
         calls1 = [self._planner_tool_call("c%d" % i, "calc_%d" % i,
                                           json.dumps({"expression": str(i)}))
                   for i in (1, 2, 3)]
