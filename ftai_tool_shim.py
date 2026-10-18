@@ -325,7 +325,7 @@ class Handler(BaseHTTPRequestHandler):
             n = int(self.headers.get("Content-Length", 0) or 0)
         except (TypeError, ValueError):
             n = 0
-        raw = self.rfile.read(n) if n else b"{}"
+        raw = self.rfile.read(n) if n > 0 else b"{}"
         if not self.path.startswith("/v1/chat/completions"):
             st, body, hdrs = forward(self.path, raw, self._key())
             self._copy(st, body, hdrs)

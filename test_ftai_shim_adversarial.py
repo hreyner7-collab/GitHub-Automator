@@ -68,6 +68,7 @@ def _start(server_cls, handler):
     return srv, t
 
 
+
 class AdversarialShimTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -235,6 +236,58 @@ class AdversarialShimTest(unittest.TestCase):
         self.assertEqual(st, 200)
 
     # 8. planner 200 with malformed tool_calls shapes must not crash --------
+    # 9. passthrough surface: GET forward, non-chat POST, junk lengths ------
+    def test_get_forwarded_verbatim(self):
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/v1/models")
+        with urllib.request.urlopen(req, timeout=30) as r:
+            st, body = r.status, r.read()
+        self.assertEqual(st, 200)
+        self.assertEqual(json.loads(body), {"object": "list", "data": []})
+
+    def test_non_chat_post_forwarded_verbatim(self):
+        st, body = self._post({"ping": 1})
+        self.assertEqual(st, 200)
+        self.assertIn(b"choices", body)
+
+    def test_bad_content_length_values_do_not_reset(self):
+        for junk in (b"abc", b"-5"):
+            with self.subTest(junk=junk):
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:{self.port}/v1/chat/completions",
+                    data=b"{}", method="POST",
+                    headers={"Content-Type": "application/json",
+                             "Content-Length": junk.decode()})
+                try:
+                    with urllib.request.urlopen(req, timeout=30) as r:
+                        st = r.status
+                except urllib.error.HTTPError as e:
+                    st = e.code
+                # must produce an HTTP status (not a dropped connection)
+                self.assertTrue(100 <= st < 600, st)
+
+    # 10. handover fallback paths through the real handler ------------------
+    def test_no_messages_completes_with_fallback_task(self):
+        QUEUE["rail/lion/cat"] = [self._resident("done")]
+        st, _ = self._chat(messages=[], tools=self._dummy_tool())
+        self.assertEqual(st, 200)
+        resreq = CAPTURE.get("rail/lion/cat") or {}
+        self.assertEqual(resreq.get("messages"),
+                         [{"role": "user", "content": "answer the request."}])
+
+    def test_prior_tool_history_rendered_as_facts(self):
+        QUEUE["rail/lion/cat"] = [self._resident("done")]
+        st, _ = self._chat(messages=[
+            {"role": "user", "content": "My form?"},
+            {"role": "tool", "content": "record: ok"}],
+            tools=self._dummy_tool())
+        self.assertEqual(st, 200)
+        resreq = CAPTURE.get("rail/lion/cat") or {}
+        txt = (resreq.get("messages") or [{}])[0].get("content") or ""
+        self.assertTrue(txt.startswith("Quick context: I asked: My form?"), txt[:300])
+        self.assertIn("Then the record for the filled form came back: record: ok", txt)
+        self.assertTrue(txt.endswith(". Given that, my form?"), txt[-200:])
+
     def test_planner_tool_calls_string_is_honest_502(self):
         QUEUE["z/planner"] = [(200, {"choices": [{"message": {
             "content": None, "tool_calls": "yes"}}]})]
