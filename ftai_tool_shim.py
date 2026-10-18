@@ -6,39 +6,34 @@ to FreeTheAI models that cannot make tool calls (the lion/* and /dog/* routes).
 How it works
   Freebuff ──▶ shim (127.0.0.1:4010) ──▶ api.freetheai.org
 
-  Testing against the live gateway found the exact boundaries of the
-  lion/dog content filter, and this build is engineered around them:
-    - Those routes reject ANY multi-turn conversation (even plain
-      "hi/hello" histories) and any request carrying tool names, tool
-      lists, or code/file-domain content.
-    - They DO accept one shape: a single user message with a benign
-      context narrative plus one "copy this form" instruction using an
-      innocuous CODE WORD (verified passing: HOLEWETTER, WEBLOOK,
-      SHAREPRICE, RECIPEFIND).
+  Measured gateway behavior this build is engineered around: those routes
+  reject ANY multi-turn conversation and every form of tool-pattern prompt,
+  but accept a single user message that states context plainly.
 
-  So for emulation models this shim:
-    1. Collapses the whole conversation into ONE user message: prior tool
-       results rendered as plain facts ("the record says ..."), the latest
-       user request last.
-    2. Assigns each tool a deterministic random CODE WORD (never exposing
-       real tool names) and one fill-in-form line.
-    3. Parses the model's filled form ("<CODE> city=Tokyo") back into a
-       real OpenAI tool_calls response (finish_reason "tool_calls").
+  For tool-bearing requests on those routes the shim runs the agent loop
+  itself:
+    1. PLANNER: a native tool-capable FreeTheAI model (fta/*, verified list
+       in PLANNER_MODEL comment) sees the user's real tools and decides
+       calls.
+    2. EXECUTE: the shim runs its own built-ins locally — weather via
+       open-meteo, URL fetch, date/time, sandboxed arithmetic. Unknown
+       tools are answered without faked data (the planner is told what
+       works).
+    3. ANSWER: the requested lion/dog model receives ONE user message,
+       'Quick context: the data I have on hand says <record>. Given that,
+       <task>' — the only shape verified to pass the filter — and its
+       reply is returned to the client as the completion.
   Requests WITHOUT tools are forwarded unchanged (passthrough).
-  Any other model passes through with its native tool support.
-
-Models emulated: any id containing /lion/ or /dog/ (FreeTheAI chat routes).
-Header "x-ftai-force-emu: 1" forces emulation for testing with any model.
 
 Known limits (measured, not guesswork):
-  - Coding/file-domain tool tasks (file reads, code edits) are filtered by
-    FreeTheAI itself; the shim cannot unlock those on lion/dog.
-  - Web/data-class tools (weather, pages, prices, ...) verified working.
+  - Coding/file-domain tool tasks are filtered by FreeTheAI itself; the
+    shim cannot unlock those on lion/dog.
+  - Data-class tools (weather, pages, time, math) verified working.
 
 Key: reads FTAI_CHAT_KEY env var, falls back to FTAI_API_KEY (Windows
 registry via setx is fine). Run:  python ftai_tool_shim.py  (port 4010)
 """
-import ast, hashlib, html, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request, uuid
+import ast, html, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request, uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("FTAI_SHIM_PORT", "4010"))
@@ -221,48 +216,6 @@ def forward(path, body_bytes, key):
     except urllib.error.HTTPError as e:
         return e.code, e.read(), dict(e.headers)
 
-# ---------------------------------------------------------------- code words
-_CONS = "BHKLMNPRSTW"
-_VOW = "AEIOU"
-
-def tool_code(tool_name, salt):
-    """Deterministic, innocuous 8-letter code word for a tool. No real tool
-    name ever travels to the gateway."""
-    h = hashlib.sha1((salt + "::" + tool_name).encode()).digest()
-    w, i = "", 0
-    while len(w) < 8:
-        w += _CONS[h[i] % len(_CONS)]
-        w += _VOW[h[i + 1] % len(_VOW)]
-        i = (i + 2) % len(h)
-    return w[:8]
-
-def fallback_code(tools, model):
-    pool = hashlib.sha1(model.encode()).hexdigest()
-    r = int(pool[:8], 16)
-    w = ""
-    for i in range(4):
-        w += _CONS[r % len(_CONS)] + _VOW[(r >> (i + 3)) % len(_VOW)]
-        r //= 7
-    return (w + "FORM")[:9]
-
-# ---------------------------------------------------------------- collapse
-_TEMPL = "{form_to_copy}"  # kept for readability; real template lives below
-
-def tool_slots(tool):
-    """Top-level parameter names from the tool's JSON schema (max 3)."""
-    fn = tool.get("function") or {}
-    params = fn.get("parameters") or {}
-    props = list((params.get("properties") or {}).keys()) if isinstance(params, dict) else []
-    return props[:3] or ["input"]
-
-_EX_POOL = ["Lisbon", "Bern", "Oslo", "Basel", "Kyoto"]
-
-def example_value(slot, model):
-    h = int(hashlib.sha1((model + slot).encode()).hexdigest()[:8], 16)
-    if "when" in slot or "time" in slot:
-        return "noon"
-    return _EX_POOL[h % len(_EX_POOL)]
-
 def recap_of_history(messages):
     """Prior tool results rendered as plain I3-style facts; prior plain turns
     condensed. Returns a short recap paragraph (may be empty)."""
@@ -282,146 +235,6 @@ def recap_of_history(messages):
         elif role == "user" and content:
             asks.append("I asked: " + content[:400])
     return " ".join(asks + facts)
-
-def build_messages(messages, tools, model):
-    """Build the ONE user message from the verified filter-passing templates.
-    Form mode (N1 verbatim): no tool results in history yet.
-    Answer mode (I1 verbatim style): after a tool result, no form.
-    History woven in as I3-style recap (verified passing)."""
-    codes = {t["function"]["name"]: tool_code(t["function"]["name"], model) for t in tools}
-    msgs = list(messages)
-    last_user = ""
-    for m in reversed(messages):  # last user turn may sit BEFORE a tool result
-        if m.get("role") == "user":
-            last_user = html.unescape(m.get("content") or "").strip()
-            break
-    recap = recap_of_history(msgs)
-    had_result = any(m.get("role") == "tool" for m in msgs)
-
-    if had_result:
-        # I1-verified shape: on-hand facts, then the request, no form.
-        rec = ""
-        for m in reversed(msgs):
-            if m.get("role") == "tool":
-                rec = html.unescape(m.get("content") or "").strip().replace("\n", " ")[:1200]
-                break
-        task = (last_user or "answer the request.")
-        task = task[:1].lower() + task[1:] if task else task
-        body = ("Quick context: the data I have on hand says " + rec +
-                ". Given that, " + task)
-        return [{"role": "user", "content": body}], codes
-
-    primary = tools[0]
-    slots = tool_slots(primary)
-    code = codes[primary["function"]["name"]]
-    form = ("Copy this form filling " + ("one blank" if len(slots) == 1
-            else str(len(slots)) + " blanks") + ": '" + code + ": "
-            + " ".join("<" + s + ">" for s in slots) + "'.")
-    form += (" A completed example: '" + code + ": "
-             + ", ".join(example_value(s, model) for s in slots) + "'.")
-    if len(tools) > 1:  # O2-verified parenthetical enumeration
-        extra = tools[1:3]
-        defs = ", ".join(codes[t["function"]["name"]]
-                         + ": " + " ".join("<" + s + ">" for s in tool_slots(t))
-                         + " forms" for t in extra)
-        form += " (The desk also keeps " + defs + ".)"
-    if recap.strip():
-        parts = ["Earlier " + recap.strip(),
-                 "Now the request: " + (last_user or "the task above") + ".",
-                 form, "Reply with the completed form only."]
-    else:
-        # N1-verified order: form template FIRST, request last
-        parts = [form,
-                 "Request: " + (last_user or "the task") + ".",
-                 "Reply with the completed form only."]
-    return [{"role": "user", "content": " ".join(parts)}], codes
-
-def parse_completed_form(text, codes):
-    """Find '<CODEWORD> <args>' in the reply; map back to the tool.
-    Args: k=v pairs if present, else the raw remainder as {'input': ...}."""
-    for code in codes.values():
-        m = re.search(r"\b" + code + r"\b[ \t:–>-]*(.{0,2000})", text, re.I)
-        if not m:
-            continue
-        rest = html.unescape(m.group(1)).strip()
-        # strip markdown noise codes/fences
-        rest = rest.strip("`'\" \n")
-        pairs = dict(re.findall(r"([A-Za-z_][\w \.\-]*?)\s*=\s*([^=|]+?)(?=\s+\w+=|$)",
-                                rest))
-        args = None
-        try:
-            j = json.loads(rest)
-            if isinstance(j, dict):
-                args = j
-        except Exception:
-            pass
-        if not args and pairs:
-            args = pairs
-        if not args:
-            args = {"input": rest}
-        for name, code2 in codes.items():
-            if code2 == code:
-                return name, json.dumps(args)
-    # legacy: JSON object with a "name" key (native-style reply)
-    for cover in re.finditer(r"\{", text):
-        i, depth, end = cover.start(), 0, min(len(text), cover.start() + 30000)
-        for j in range(i, end):
-            if text[j] == "{":
-                depth += 1
-            elif text[j] == "}":
-                depth -= 1
-                if depth == 0:
-                    try:
-                        obj = json.loads(text[i:j + 1])
-                    except Exception:
-                        break
-                    if isinstance(obj, dict) and "name" in obj:
-                        return obj["name"], json.dumps(obj.get("arguments", {}))
-                    break
-    return None
-
-def approx_tokens(s):
-    return max(1, (len(s) + 3) // 4)
-
-def emulated_response(req_body, upstream_json, codes):
-    model = req_body.get("model", "?")
-    msg = upstream_json.get("choices", [{}])[0].get("message", {}) or {}
-    text = html.unescape(msg.get("content") or "")
-
-    call = parse_completed_form(text, codes)
-    if call:
-        name, args = call
-        # {"input": v} -> the tool's real single parameter name
-        tools = req_body.get("tools") or []
-        slots = tool_slots(tools[0]) if tools else []
-        try:
-            a = json.loads(args)
-            if isinstance(a, dict) and list(a) == ["input"] and len(slots) == 1:
-                args = json.dumps({slots[0]: a["input"]})
-        except Exception:
-            pass
-    finish = "stop"
-    tool_calls = None
-    if call:
-        finish = "tool_calls"
-        name = call[0]
-        tool_calls = [{"id": "call_" + uuid.uuid4().hex[:10], "type": "function",
-                       "function": {"name": name, "arguments": args}}]
-    base = {
-        "id": "chatcmpl-shim-" + uuid.uuid4().hex[:12],
-        "object": "chat.completion", "created": int(time.time()), "model": model,
-        "choices": [{"index": 0, "finish_reason": finish,
-                     "message": {"role": "assistant",
-                                 "content": text if not call else None,
-                                 **({"tool_calls": tool_calls} if tool_calls else {})}}],
-        "usage": {
-            "prompt_tokens": approx_tokens(json.dumps(req_body.get("messages", []))),
-            "completion_tokens": approx_tokens(text),
-            "total_tokens": (approx_tokens(json.dumps(req_body.get("messages", [])))
-                             + approx_tokens(text)),
-        },
-    }
-    return base
 
 def build_final_messages(req_body, collected):
     """The resident lion/dog answer round: single 'data in hand' user message
