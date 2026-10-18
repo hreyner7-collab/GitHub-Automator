@@ -61,7 +61,7 @@ class Mock(BaseHTTPRequestHandler):
             return
         if model == LION:
             content = body.get("messages", [{}])[0].get("content") or ""
-            if "EMPTYCHOICESMARKER" in content:
+            if "999empty" in content.lower():
                 self._send(200, {"object": "chat.completion", "model": model, "choices": []})
                 return
             self._send(200, {"object": "chat.completion", "model": model, "choices": [{
@@ -175,7 +175,7 @@ mod.UPSTREAM = f"http://127.0.0.1:{MOCK_PORT}"  # restore for any later use
 mod.UPSTREAM = f"http://127.0.0.1:{MOCK_PORT}"
 req = urllib.request.Request(f"http://127.0.0.1:{SHIM_PORT}/v1/chat/completions",
     data=json.dumps({"model": LION, "max_tokens": 300,
-        "messages": [{"role": "user", "content": "EMPTYCHOICESMARKER weather in Tokyo right now?"}],
+        "messages": [{"role": "user", "content": "999EMPTY weather in Tokyo right now?"}],
         "tools": [TOOL]}).encode(), headers={"Content-Type": "application/json"})
 try:
     with urllib.request.urlopen(req, timeout=60) as resp:
