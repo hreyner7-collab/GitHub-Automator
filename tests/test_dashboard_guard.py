@@ -37,6 +37,40 @@ def supervisor(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_mod, "LOCK_PATH", tmp_path / "supervisor.lock")
     return sup_mod
 
+class TestIsStaleBuild:
+    def test_explicitly_current_is_not_stale(self):
+        assert guard.is_stale_build({"build_is_current": True}) is False
+
+    def test_explicitly_not_current_is_stale(self):
+        assert guard.is_stale_build({"build_is_current": False}) is True
+
+    @pytest.mark.parametrize("body", [{}, None, {"build": "unknown"}])
+    def test_shy_of_information_is_not_stale(self, body):
+        # A dashboard old enough to lack the stamp must not be killed for it.
+        assert guard.is_stale_build(body) is False
+
+
+class TestRunInProgress:
+    def test_discovering_and_running_are_active(self):
+        assert guard.run_in_progress({"state": "discovering"})
+        assert guard.run_in_progress({"state": "running"})
+
+    def test_a_midway_item_blocks_the_restart(self):
+        # The run may already be done/errored while its last item still uploads.
+        assert guard.run_in_progress(
+            {"state": "done", "counts": {"working": 1}}) is True
+
+    def test_idle_with_no_working_items_is_free(self):
+        assert guard.run_in_progress(
+            {"state": "idle", "counts": {"working": 0}}) is False
+
+    def test_unreadable_answers_wait(self):
+        # The cost of waiting a cycle is small; the cost of guessing wrong
+        # is a killed publish, so an unreadable /auto/status means wait.
+        assert guard.run_in_progress({}) is True
+        assert guard.run_in_progress(None) is True
+
+
 # Real `netstat -ano` shapes: an IPv4 listener, an IPv6 listener on another
 # port, a client connection on the SAME port, and a listener we do not care
 # about. Only the first row may ever be read as "the dashboard's PID".

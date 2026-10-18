@@ -279,12 +279,40 @@ class Supervisor:
             log("could not write the report: %s" % e)
 
     # ── the loop ─────────────────────────────────────────────────────────────
+    def auto_reset(self) -> bool:
+        """Restart a stale dashboard on its own, unless a run is in flight.
+
+        The user's standing request: an update on disk is served without being
+        asked for, so "code changed on disk — RESTART NEEDED" should not sit
+        there waiting for a human. The one time a restart must NOT happen is
+        mid-run: killing the dashboard leaves a half-published model behind, so
+        when /auto/status reads busy, the restart is deferred to a later cycle
+        and the stale warning stays up until the run settles.
+        """
+        health = guard.health_json(guard.health_url(port=self.port))
+        if not guard.is_stale_build(health):
+            return True
+        auto = guard.health_json(guard.auto_status_url(port=self.port))
+        if guard.run_in_progress(auto):
+            log("build %s is stale but an auto run is in progress — "
+                "the reset waits until it finishes" % health.get("build", "?"))
+            return True
+        log("code changed on disk since build %s (pid %s) — auto-resetting"
+            % (health.get("build", "?"), health.get("pid", "?")))
+        self.stop_child()
+        if not self.clear_port_holder():
+            self.write_report("auto-reset could not free port %d" % self.port)
+            return False
+        if not self.note_restart():
+            return False
+        return self.start()
+
     def cycle(self) -> bool:
         """One pass. Returns False when the supervisor should stop."""
         action = self.probe()
         if action == guard.HEALTHY:
             self.silent_probes = 0
-            return True
+            return self.auto_reset()
         if action == guard.ADOPT:
             # Something answers but it is not our child: a dashboard that was
             # already running (at logon, or started by hand). Starting a second

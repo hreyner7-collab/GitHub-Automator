@@ -60,6 +60,11 @@ def health_url(host: str = HOST, port: int = PORT) -> str:
     return dashboard_url(host, port) + "health"
 
 
+def auto_status_url(host: str = HOST, port: int = PORT) -> str:
+    """The run-state endpoint, read before a stale restart is allowed."""
+    return dashboard_url(host, port) + "auto/status"
+
+
 def parse_netstat_pid(text: str, port: int = PORT) -> int | None:
     """The PID LISTENING on `port` inside `netstat -ano` output, or None.
 
@@ -218,6 +223,38 @@ def should_stop_restarting(restart_times: list[float], now: float,
     """True when folding more restarts in would just be thrashing."""
     recent = [t for t in restart_times if now - t <= window]
     return len(recent) >= limit
+
+
+def is_stale_build(health: dict) -> bool:
+    """True when /health says this process is running older code than the disk.
+
+    A missing or unknown build is NOT stale: an old dashboard without the
+    build stamp in /health must not be killed just because we cannot tell.
+    Only an explicit ``build_is_current: false`` counts.
+    """
+    return isinstance(health, dict) and health.get("build_is_current") is False
+
+
+def run_in_progress(auto_status: dict) -> bool:
+    """True while an auto run is active, from /auto/status.
+
+    Killing the dashboard mid-run leaves a half-published model behind, so a
+    stale restart must wait until the run is over. The run is active while the
+    top-level state is discovering/running, and an item mid-way (fetching or
+    uploading) counts too: the state flips back to done only after the last
+    item settles. An empty or unreadable body answers True (wait), because the
+    cost of waiting one more cycle is a restart a few seconds later, while the
+    cost of guessing wrong is a killed publish.
+    """
+    if not isinstance(auto_status, dict) or not auto_status:
+        return True
+    if auto_status.get("state") in ("discovering", "running"):
+        return True
+    ing = (auto_status.get("counts") or {}).get("working", 0)
+    try:
+        return int(ing) > 0
+    except (TypeError, ValueError):
+        return True
 
 
 def decide(http_ok: bool, holder_pid: int | None, child_pid: int | None,
