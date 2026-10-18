@@ -179,8 +179,10 @@ def auto_tool_flow(req_body, key):
             resp = json.loads(body.decode())
         except Exception:
             raise ShimUpstream(502, b'{"error":{"message":"planner: unreadable upstream"}}')
-        ch = resp.get("choices", [{}])[0]
-        m = ch.get("message") or {}
+        ch = resp.get("choices") or []
+        if not isinstance(ch, list) or not ch or not isinstance(ch[0], dict):
+            raise ShimUpstream(502, b'{"error":{"message":"planner: unusable upstream shape"}}')
+        m = ch[0].get("message") or {}
         tcs = m.get("tool_calls") or []
         if not tcs:
             break  # planner has all it needs
@@ -234,6 +236,15 @@ def forward(path, body_bytes, key):
         return 502, ("{\"error\":{\"message\":\"shim: upstream unreachable: "
                      + str(e).replace("\"", "'")[:160] + "\"}}").encode(), {}
 
+def _msg_text(m):
+    """Best-effort plain text from a message dict: plain string content, or
+    the text parts of a multimodal (list) content. Non-text -> ''."""
+    c = m.get("content")
+    if isinstance(c, list):
+        return " ".join(str(p.get("text") or "") for p in c
+                        if isinstance(p, dict))
+    return str(c or "")
+
 def recap_of_history(messages):
     """Prior tool results rendered as plain I3-style facts; prior plain turns
     condensed. Returns a short recap paragraph (may be empty)."""
@@ -242,8 +253,10 @@ def recap_of_history(messages):
     while msgs and msgs[-1].get("role") == "user":
         break  # last user message stays the live request
     for m in msgs:
+        if not isinstance(m, dict):
+            continue  # malformed history entries never crash the answer round
         role = m.get("role")
-        content = html.unescape(m.get("content") or "").strip().replace("\n", " ")
+        content = html.unescape(_msg_text(m)).strip().replace("\n", " ")
         if role == "assistant" and not m.get("tool_calls"):
             if content:
                 asks.append("I then replied: " + content[:400])
@@ -257,11 +270,11 @@ def recap_of_history(messages):
 def build_final_messages(req_body, collected):
     """The resident lion/dog answer round: single 'data in hand' user message
     (I1-verified passing shape). No tool pattern ever reaches the gateway."""
-    msgs = list(req_body.get("messages", []))
+    msgs = [m for m in req_body.get("messages", []) if isinstance(m, dict)]
     last_user = ""
     for m in reversed(msgs):
         if m.get("role") == "user":
-            last_user = html.unescape(m.get("content") or "").strip()
+            last_user = html.unescape(_msg_text(m)).strip()
             break
     task = (last_user or "answer the request.")
     task = task[:1].lower() + task[1:]
@@ -269,7 +282,8 @@ def build_final_messages(req_body, collected):
         body = ("Quick context: the data I have on hand says "
                 + " | ".join(collected[:4]) + ". Given that, " + task)
     else:
-        recap = recap_of_history(msgs[:-1] if last_user and msgs[-1].get("role") == "user" else msgs)
+        recap = recap_of_history(msgs[:-1] if last_user and msgs and
+                                 msgs[-1].get("role") == "user" else msgs)
         body = ("Quick context: " + recap.rstrip(". ") + ". Given that, " + task) if recap.strip() else task
     return [{"role": "user", "content": body}]
 
@@ -318,6 +332,9 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self._reply(400, {"error": {"message": "bad JSON"}})
             return
+        if not isinstance(req_body, dict):
+            self._reply(400, {"error": {"message": "bad JSON: expected an object"}})
+            return
 
         model = req_body.get("model", "")
         tools = req_body.get("tools") or []
@@ -361,12 +378,12 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self._reply(502, {"error": {"message": "shim: unreadable upstream"}})
             return
-        final["model"] = model
-        ch0 = (final.get("choices") or [{}])[0]
-        if not isinstance(ch0, dict) or (st == 200 and not ch0.get("message") and not ch0.get("delta")):
+        ch0 = ((final.get("choices") if isinstance(final, dict) else None) or [{}])[0]
+        if not isinstance(ch0, dict) or not isinstance(final, dict) or (st == 200 and not ch0.get("message") and not ch0.get("delta")):
             # 200 payload the SSE/answer paths cannot use -> honest 502, no crash
             self._reply(502, {"error": {"message": "shim: unusable upstream completion shape"}})
             return
+        final["model"] = model
         txt = (ch0.get("message") or {}).get("content") or ""
         n_refuse = len(re.findall(r"cannot (?:provide|access)|do not have access|no access to", txt, re.I))
         if n_refuse:  # persona refusal ~2/5 measured; a fresh sample usually complies
@@ -374,8 +391,12 @@ class Handler(BaseHTTPRequestHandler):
                 st2, body2, _ = forward(self.path, payload, self._key())
                 if st2 == 200:
                     final2 = json.loads(body2.decode())
-                    t2 = (final2.get("choices", [{}])[0].get("message") or {}).get("content") or ""
-                    if not re.search(r"cannot (?:provide|access)|do not have access|no access to", t2, re.I):
+                    chs = final2.get("choices") if isinstance(final2, dict) else None
+                    ch2 = chs[0] if chs and isinstance(chs[0], dict) else {}
+                    t2 = (ch2.get("message") or {}).get("content") or ""
+                    # adopt only a usable, non-refusing fresh sample: never swap a
+                    # good answer for an empty/unshaped one
+                    if t2 and not re.search(r"cannot (?:provide|access)|do not have access|no access to", t2, re.I):
                         final, txt = final2, t2
                         final["model"] = model
             except Exception:
@@ -390,7 +411,7 @@ class Handler(BaseHTTPRequestHandler):
             d = final["choices"][0].get("message") or {}
             chunk["choices"][0]["delta"] = ({k: v for k, v in d.items() if v}) if d else {}
             sse = (f"data: {json.dumps(chunk)}\n\n"
-                   f'data: {json.dumps({**chunk, "choices": [{"index": 0, "delta": {}, "finish_reason": final["choices"][0]["finish_reason"]}]})}\n\n'
+                   f'data: {json.dumps({**chunk, "choices": [{"index": 0, "delta": {}, "finish_reason": final["choices"][0].get("finish_reason")}]})}\n\n'
                    "data: [DONE]\n\n").encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
