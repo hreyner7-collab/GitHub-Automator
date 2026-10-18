@@ -15,14 +15,15 @@ real HTTP calls — asserting actual state transitions, not code text:
   A6 filter retry:   first resident call 400 content_filter -> retry succeeds
   A7 error relay:    upstream 429 passes through with the real message
 """
-import importlib.util, json, re, sys, threading, time, urllib.request, urllib.error
+import importlib.util, json, os, re, sys, threading, time, urllib.request, urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+MOCK_PORT, SHIM_PORT = 4199, 4011
+os.environ["FTAI_UPSTREAM"] = f"http://127.0.0.1:{MOCK_PORT}"  # shim reads it once at startup
 spec = importlib.util.spec_from_file_location("shimmod", "ftai_tool_shim.py")
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 
-MOCK_PORT, SHIM_PORT = 4199, 4011
 PLANNER = mod.PLANNER_MODEL  # e.g. fta/meow/gpt-4o-mini
 LION = "fta/lion/claude-opus-5-5"
 
@@ -117,8 +118,6 @@ def start_server(port, handler):
     return srv
 
 start_server(MOCK_PORT, Mock)
-# point the shim's UPSTREAM at the mock, then run a REAL shim handler
-mod.UPSTREAM = f"http://127.0.0.1:{MOCK_PORT}"
 start_server(SHIM_PORT, mod.Handler)
 
 SHIM = f"http://127.0.0.1:{SHIM_PORT}/v1/chat/completions"

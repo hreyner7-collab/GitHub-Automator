@@ -37,7 +37,7 @@ import ast, html, json, os, re, sys, time, urllib.error, urllib.parse, urllib.re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("FTAI_SHIM_PORT", "4010"))
-UPSTREAM = "https://api.freetheai.org"
+UPSTREAM = os.environ.get("FTAI_UPSTREAM") or "https://api.freetheai.org"
 EMU_MARKER = ("/lion/", "/dog/")
 
 # ub.shim-owned builtin tools + native-planner auto mode ----------------------

@@ -12,11 +12,12 @@
 import importlib.util, json, os, subprocess, sys, threading, urllib.request, urllib.error, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+MOCK_PORT, SHIM_PORT = 4299, 4013
+os.environ["FTAI_UPSTREAM"] = f"http://127.0.0.1:{MOCK_PORT}"  # shim reads it once at startup
 spec = importlib.util.spec_from_file_location("shimmod", "ftai_tool_shim.py")
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 
-MOCK_PORT, SHIM_PORT = 4299, 4013
 PLANNER, LION = mod.PLANNER_MODEL, "fta/lion/claude-opus-5-5"
 TOOL = {"type": "function", "function": {"name": "get_weather",
         "description": "Get current weather",
@@ -78,7 +79,6 @@ def start(port, handler):
 
 import http.client
 start(MOCK_PORT, Mock)
-mod.UPSTREAM = f"http://127.0.0.1:{MOCK_PORT}"
 start(SHIM_PORT, mod.Handler)
 
 fails = []
@@ -165,14 +165,21 @@ except (urllib.error.HTTPError, urllib.error.URLError, ConnectionError):
 check("E5 bad max_tokens still completes", garbage_ok)
 
 # E6: unreachable upstream -> footed 502 JSON from forward(), never a raise
-mod.UPSTREAM = "http://127.0.0.1:1"  # closed port -> URLError/OSError path
-st, body, hdrs = mod.forward("/v1/chat/completions", b"{}", "k")
-check("E6 transport failure -> 502 JSON", st == 502 and b"upstream unreachable" in body,
-      f"st={st} body={body[:90]}")
-mod.UPSTREAM = f"http://127.0.0.1:{MOCK_PORT}"  # restore for any later use
+#     (fresh interpreter: the shim's UPSTREAM seam is env-set at startup, so the
+#     closed-port endpoint is plumbed in a subprocess, like E1)
+_r = subprocess.run([sys.executable, "-c",
+    "import ftai_tool_shim as m\n"
+    "st, body, _ = m.forward('/v1/chat/completions', b'{}', 'k')\n"
+    "print(st)\nprint(body.decode(), end='')\n"],
+    capture_output=True, text=True, timeout=60,
+    env={**os.environ, "FTAI_UPSTREAM": "http://127.0.0.1:1"})  # closed port
+_lines = _r.stdout.splitlines(keepends=False)
+_st = int(_lines[0])
+_body = _r.stdout[len(_lines[0]) + 1:]
+check("E6 transport failure -> 502 JSON", _st == 502 and "upstream unreachable" in _body,
+      f"st={_st} body={_body[:90]}")
 
 # E7: resident 200 with an unusable shape -> footed 502, not a handler crash
-mod.UPSTREAM = f"http://127.0.0.1:{MOCK_PORT}"
 req = urllib.request.Request(f"http://127.0.0.1:{SHIM_PORT}/v1/chat/completions",
     data=json.dumps({"model": LION, "max_tokens": 300,
         "messages": [{"role": "user", "content": "999EMPTY weather in Tokyo right now?"}],
