@@ -67,11 +67,21 @@ _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 def _norm_args(raw):
     if isinstance(raw, dict):
         return raw
-    try:
-        v = json.loads(raw) if isinstance(raw, str) and raw.strip() else {}
-    except Exception:
-        v = {"input": raw} if isinstance(raw, str) and raw.strip() else {}
-    return v if isinstance(v, dict) else {"input": str(v)}
+    if isinstance(raw, str) and raw.strip():
+        try:
+            v = json.loads(raw)
+            if isinstance(v, dict):
+                return v
+        except Exception:
+            pass
+        # models sometimes emit 'city=Berlin' or 'city = Berlin, units = metric'
+        pairs = {k.strip(): v.strip().strip("\"'")
+                 for k, v in re.findall(r"([A-Za-z_][\w -]*?)\s*=\s*([^,;]+)", raw)
+                 if k.strip()}
+        if pairs:
+            return pairs
+        return {"input": raw}
+    return {"input": str(raw)}
 
 def _http_json(url, timeout=15):
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
@@ -553,6 +563,10 @@ if __name__ == "__main__":
         print("No FTAI_CHAT_KEY / FTAI_API_KEY found in environment", file=sys.stderr)
         sys.exit(1)
     try:
+        # Windows: without this, SO_REUSEADDR lets a second instance bind the
+        # same port successfully and two shims race on it (measured). Disabling
+        # reuse makes the bind fail for real, so the graceful exit below fires.
+        ThreadingHTTPServer.allow_reuse_address = False
         srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     except OSError:
         # already running (e.g. autostart while a manual instance lives) — exit quietly
