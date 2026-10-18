@@ -283,7 +283,7 @@ def build_final_messages(req_body, collected):
     task = task[:1].lower() + task[1:]
     if collected:
         body = ("Quick context: the data I have on hand says "
-                + " | ".join(collected[:4]) + ". Given that, " + task)
+                + " | ".join(collected) + ". Given that, " + task)
     else:
         recap = recap_of_history(msgs[:-1] if last_user and msgs and
                                  msgs[-1].get("role") == "user" else msgs)

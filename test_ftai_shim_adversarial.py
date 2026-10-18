@@ -220,7 +220,7 @@ class AdversarialShimTest(unittest.TestCase):
         txt = (resreq.get("messages") or [{}])[0].get("content") or ""
         self.assertTrue(txt.startswith("Quick context: the data I have on hand says "), txt[:300])
         self.assertIn("calc_1: 1 = 1 | calc_2: 2 = 2 | calc_3: 3 = 3 | calc_4: 4 = 4", txt)
-        self.assertNotIn("calc_5", txt)
+        self.assertIn("calc_5: 5 = 5", txt)
         self.assertTrue(txt.endswith(". Given that, summarize."), txt[-200:])
 
     def test_chain_all_four_records_kept(self):
