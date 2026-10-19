@@ -31,7 +31,9 @@ How it works
   reliably rejected the resident leg on unknown-tool handovers (measured);
   the fast path serves honest text without faking data. Such answers are
   non-streaming JSON completions, even when the client asked stream:true.
-  Requests WITHOUT tools are forwarded unchanged (passthrough).
+  Requests WITHOUT tools are forwarded unchanged (passthrough) — except
+  GET /v1/models, which is filtered to the explicitly exposed allowlist
+  (EXPOSED_MODELS) so clients only ever see those models listed.
 
 Known limits (measured, not guesswork):
   - Coding/file-domain tool tasks are filtered by FreeTheAI itself; the
@@ -48,6 +50,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PORT = int(os.environ.get("FTAI_SHIM_PORT", "4010"))
 UPSTREAM = os.environ.get("FTAI_UPSTREAM") or "https://api.freetheai.org"
 EMU_MARKER = ("/lion/", "/dog/")
+
+# Models exposed to clients on GET /v1/models (user-chosen allowlist, kept in
+# the user's requested order). Everything else the upstream lists is hidden
+# from the listing; chat requests to other routes still forward unchanged.
+EXPOSED_MODELS = (
+    "fta/lion/claude-opus-5-5",   # strongest proven-with-tools resident (G5 composite)
+    "fta/lion/gpt-6-astra",       # newest flagship tier on the catalog
+    "fta/lion/claude-fable-5.1",  # Fable 5.1
+)
 
 # Measured-won policy constants: each value here is verified working
 # behavior, not a tuning knob. Renaming is free; changing a value is not
@@ -209,6 +220,20 @@ def build_final_messages(req_body, collected):
         body = ("Quick context: " + recap.rstrip(". ") + ". Given that, " + task) if recap.strip() else task
     return [{"role": "user", "content": body}]
 
+def _filter_models_list(raw):
+    """GET /v1/models filtering: serve only the exposed models from an
+    upstream listing. Unparseable or non-listing bodies pass through
+    unchanged."""
+    try:
+        listing = json.loads(raw.decode())
+    except Exception:
+        return raw
+    if not (isinstance(listing, dict) and isinstance(listing.get("data"), list)):
+        return raw
+    listing["data"] = [m for m in listing["data"]
+                       if isinstance(m, dict) and m.get("id") in EXPOSED_MODELS]
+    return json.dumps(listing).encode()
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -237,6 +262,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         st, body, hdrs = forward(self.path, None, self._key())
+        if self.path.split("?", 1)[0].rstrip("/") == "/v1/models":
+            # filter on any status: the helper itself passes through bodies
+            # that are not parseable model listings (errors, HTML, etc.)
+            body = _filter_models_list(body)
         self._copy(st, body, hdrs)
 
     def do_POST(self):

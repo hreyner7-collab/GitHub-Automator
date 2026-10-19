@@ -40,7 +40,11 @@ class FifoPolicy:
             "message": {"role": "assistant", "content": "", "tool_calls": []}}]}
 
     def serve_get(self):
-        return 200, {"object": "list", "data": []}
+        # one exposed id + one junk id: makes the shim's GET /v1/models
+        # exposed-model allowlist filter positively observable
+        return 200, {"object": "list",
+                     "data": [{"id": "fta/lion/claude-opus-5-5"},
+                              {"id": "not-exposed-junk"}]}
 
     def serve(self, model, body, raw):
         if isinstance(body, dict):
@@ -270,13 +274,17 @@ class AdversarialShimTest(unittest.TestCase):
 
     # 8. planner 200 with malformed tool_calls shapes must not crash --------
     # 9. passthrough surface: GET forward, non-chat POST, junk lengths ------
-    def test_get_forwarded_verbatim(self):
+    def test_get_models_listing_filtered_to_exposed(self):
         req = urllib.request.Request(
             f"http://127.0.0.1:{self.port}/v1/models")
         with urllib.request.urlopen(req, timeout=30) as r:
             st, body = r.status, r.read()
         self.assertEqual(st, 200)
-        self.assertEqual(json.loads(body), {"object": "list", "data": []})
+        # exposed-model allowlist filter: only the opus entry survives;
+        # the junk id is stripped from the client-visible listing
+        self.assertEqual(json.loads(body),
+                         {"object": "list",
+                          "data": [{"id": "fta/lion/claude-opus-5-5"}]})
 
     def test_non_chat_post_forwarded_verbatim(self):
         st, body = self._post({"ping": 1})
