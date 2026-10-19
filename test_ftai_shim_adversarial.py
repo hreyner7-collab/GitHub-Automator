@@ -10,73 +10,54 @@ non-dict history entries, missing finish_reason on the SSE path, and the
 refusal-retry adopting an unusable fresh sample.
 """
 import json
-import http.server
 import os
-import threading
 import unittest
 import urllib.request
 import urllib.error
 
 import ftai_tool_shim as shim
+from ftai_test_support import (planner_tool_call, planner_tool_calls_reply,
+                               start_mock, start_server)
 
 os.environ["FTAI_CHAT_KEY"] = "test-key"
 
 # distinct fake-model names; each model maps to a FIFO of (status, payload)
-DEFAULT = {"choices": [{"message": {"content": None, "tool_calls": []}}]}
 QUEUE = {}
 CAPTURE = {}  # model -> last incoming request body (json-decoded)
 
 
-class _FakeUpstream(http.server.BaseHTTPRequestHandler):
-    protocol_version = "HTTP/1.1"
+class FifoPolicy:
+    """Adversarial's genuinely distinct recording model, expressed on the
+    shared mock-gateway envelope (ftai_test_support): each model maps to a
+    FIFO of (status, payload) served from the front, else the canonical
+    planner-idle reply; every parsed body is captured under its model name
+    so handover asserts can inspect what the shim actually sent."""
 
-    def log_message(self, *a):
-        pass
+    def __init__(self):
+        self.queue, self.capture = QUEUE, CAPTURE
+        self.idle = {"object": "chat.completion", "choices": [{
+            "finish_reason": "stop",
+            "message": {"role": "assistant", "content": "", "tool_calls": []}}]}
 
-    def _send(self, st, obj):
-        body = json.dumps(obj).encode()
-        self.send_response(st)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+    def serve_get(self):
+        return 200, {"object": "list", "data": []}
 
-    def do_POST(self):
-        n = int(self.headers.get("Content-Length", 0) or 0)
-        raw = self.rfile.read(n) if n else b"{}"
-        model = ""
-        try:
-            payload = json.loads(raw)
-            model = str(payload.get("model") or "")
-            CAPTURE[model] = payload
-        except Exception:
-            pass
-        if QUEUE.get(model):
-            st, obj = QUEUE[model].pop(0)
-        else:
-            st, obj = 200, DEFAULT
-        self._send(st, obj)
-
-    def do_GET(self):
-        self._send(200, {"object": "list", "data": []})
-
-
-def _start(server_cls, handler):
-    srv = server_cls(("127.0.0.1", 0), handler)
-    t = threading.Thread(target=srv.serve_forever, daemon=True)
-    t.start()
-    return srv, t
+    def serve(self, model, body, raw):
+        if isinstance(body, dict):
+            self.capture[model] = body
+        if self.queue.get(model):
+            return self.queue[model].pop(0)
+        return 200, self.idle
 
 
 
 class AdversarialShimTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.fake, _ = _start(http.server.ThreadingHTTPServer, _FakeUpstream)
+        cls.fake = start_mock(FifoPolicy())
         shim.UPSTREAM = f"http://127.0.0.1:{cls.fake.server_address[1]}"
         shim.PLANNER_MODEL = "z/planner"
-        cls.shim_srv, _ = _start(
-            shim.ThreadingHTTPServer, shim.Handler)
+        cls.shim_srv = start_server(shim.Handler)
         cls.port = cls.shim_srv.server_address[1]
 
     @classmethod
@@ -190,13 +171,13 @@ class AdversarialShimTest(unittest.TestCase):
 
     # positive control: retry with a genuinely good fresh sample still swaps
     def _planner_tool_call(self, tid, name, args_json):
-        return {"id": tid, "type": "function",
-                "function": {"name": name, "arguments": args_json}}
+        return planner_tool_call(tid, name, args_json)
 
     def _planner_resp(self, calls):
-        return (200, {"choices": [{"message": {
-            "role": "assistant", "content": "",
-            "tool_calls": calls}, "finish_reason": "tool_calls"}]})
+        # converged planner shape (shared builder): identical effect through
+        # the shim — no test inspects the raw planner envelope, only the
+        # handover via CAPTURE of the resident leg
+        return (200, planner_tool_calls_reply(calls, content=""))
 
     # 7. ordering and completeness of the handover across a 5-record chain ---
     # five real deterministic records (calc via local builtin, no network):

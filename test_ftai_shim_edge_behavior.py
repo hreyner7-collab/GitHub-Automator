@@ -9,82 +9,53 @@
                      (ThreadingHTTPServer under real concurrent load)
   E4 GET passthrough: /v1/models relays upstream status and body unchanged
 """
-import importlib.util, json, os, subprocess, sys, threading, urllib.request, urllib.error, time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import http.client
+import json, os, re, subprocess, sys, threading, urllib.request, urllib.error
+
+import ftai_test_support as sup
+from ftai_test_support import (LION, planner_tool_call,
+                               planner_tool_calls_reply, planner_stop_reply,
+                               resident_reply, Checker)
 
 MOCK_PORT, SHIM_PORT = 4299, 4013
-os.environ["FTAI_UPSTREAM"] = f"http://127.0.0.1:{MOCK_PORT}"  # shim reads it once at startup
-spec = importlib.util.spec_from_file_location("shimmod", "ftai_tool_shim.py")
-mod = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(mod)
+spec = sup.load_shim(env_upstream=f"http://127.0.0.1:{MOCK_PORT}")
+mod = spec
+PLANNER = mod.PLANNER_MODEL
 
-PLANNER, LION = mod.PLANNER_MODEL, "fta/lion/claude-opus-5-5"
 TOOL = {"type": "function", "function": {"name": "get_weather",
         "description": "Get current weather",
         "parameters": {"type": "object", "properties": {"city": {"type": "string"}}}}}
 
 seen_cities = []
 
-class Mock(BaseHTTPRequestHandler):
-    protocol_version = "HTTP/1.1"
-    def log_message(self, *a): pass
-    def _send(self, code, obj):
-        b = json.dumps(obj).encode()
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(b)))
-        self.end_headers()
-        self.wfile.write(b)
-    def do_GET(self):
-        self._send(203, {"object": "list", "data": [{"id": "edge-mock"}]})
-    def do_POST(self):
-        n = int(self.headers.get("Content-Length", 0) or 0)
-        body = json.loads(self.rfile.read(n) if n else b"{}")
-        model = body.get("model", "")
+class EdgePolicy:
+    """Scenario logic only; the HTTP envelope lives in ftai_test_support."""
+    def serve_get(self):
+        return 203, {"object": "list", "data": [{"id": "edge-mock"}]}
+
+    def serve(self, model, body, raw):
         if model == PLANNER:
             msgs = body.get("messages", [])
             if any(m.get("role") == "tool" for m in msgs):
-                self._send(200, {"object": "chat.completion", "choices": [{
-                    "finish_reason": "stop",
-                    "message": {"role": "assistant", "content": "planner done"}}]})
-                return
+                return 200, planner_stop_reply("planner done")
             # E2: planner sends a malformed (non-JSON) argument string on purpose
             last_user = next((m.get("content") or "" for m in reversed(msgs)
                               if m.get("role") == "user"), "")
             city = last_user.split("in ")[-1].split("'")[0].strip("\"'") or "Berlin"
             seen_cities.append(city)
-            call = {"id": "c1", "type": "function",
-                    "function": {"name": "get_weather", "arguments": "city=" + city}}
-            self._send(200, {"object": "chat.completion", "choices": [{
-                "finish_reason": "tool_calls",
-                "message": {"role": "assistant", "content": None,
-                            "tool_calls": [call]}}]})
-            return
+            return 200, planner_tool_calls_reply(
+                [planner_tool_call("c1", "get_weather", "city=" + city)])
         if model == LION:
             content = body.get("messages", [{}])[0].get("content") or ""
             if "999empty" in content.lower():
-                self._send(200, {"object": "chat.completion", "model": model, "choices": []})
-                return
-            self._send(200, {"object": "chat.completion", "model": model, "choices": [{
-                "index": 0, "finish_reason": "stop",
-                "message": {"role": "assistant", "content": "RESIDENT SAW: " + content}}],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}})
-            return
-        self._send(200, body)
+                return 200, {"object": "chat.completion", "model": model, "choices": []}
+            return 200, resident_reply("RESIDENT SAW: " + content, model=model, usage=True)
+        return 200, body
 
-def start(port, handler):
-    srv = ThreadingHTTPServer(("127.0.0.1", port), handler)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    return srv
+sup.start_mock(EdgePolicy(), MOCK_PORT)
+sup.start_server(mod.Handler, SHIM_PORT)
 
-import http.client
-start(MOCK_PORT, Mock)
-start(SHIM_PORT, mod.Handler)
-
-fails = []
-def check(name, cond, detail=""):
-    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  | {detail}"))
-    if not cond: fails.append(name)
+check = Checker()
 
 # E1: second shim on the SAME port must exit 0 with the 'already in use' note
 #     (uses the LIVE 4010 instance as the occupying process if up, else own)
@@ -111,7 +82,6 @@ req = urllib.request.Request(f"http://127.0.0.1:{SHIM_PORT}/v1/chat/completions"
 with urllib.request.urlopen(req, timeout=60) as resp:
     out = json.loads(resp.read())
 txt = (out["choices"][0]["message"] or {}).get("content") or ""
-import re
 m = re.search(r"current weather in (Cape Town|Berlin)", txt)
 check("E2 malformed args did not crash exec", m is not None, txt[:220])
 check("E2 handover contains a real record", ("current weather in" in txt) and (" C," in txt), txt[:220])
@@ -193,6 +163,6 @@ check("E7 unusable completion -> 502", e7[0] == 502 and "unusable upstream" in e
       f"st={e7[0]} {e7[1]}")
 
 print()
-if fails:
-    print("FAILED:", "; ".join(fails)); sys.exit(1)
+if check.fails:
+    print("FAILED:", "; ".join(check.fails)); sys.exit(1)
 print("ALL EDGE BEHAVIORAL CHECKS PASSED")

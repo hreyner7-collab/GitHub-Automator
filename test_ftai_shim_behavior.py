@@ -1,147 +1,86 @@
 #!/usr/bin/env python3
 """Headless behavioral tests for ftai_tool_shim.py.
 
-Spins up a MOCK gateway that mimics FreeTheAI's measured behavior, points a
-real in-process shim Handler at it, and drives the full request surface with
-real HTTP calls — asserting actual state transitions, not code text:
+Drives a real in-process shim Handler (loaded via ftai_test_support with the
+mock endpoint plumbed through the established FTAI_UPSTREAM env seam) against
+a shared mock-gateway policy, asserting actual state transitions over real
+HTTP — not code text:
 
   A1 tool loop:      planner -> native tool_calls -> shim executes REAL
                      (open-meteo) weather for Tokyo -> single-message handover
                      -> resident answer routed back with the right model id
   A2 multi-round:    planner asks twice (second call executed, no duplicates)
   A3 unknown tool:   no faked data, planner is told the real capabilities
+  A8 honesty+stream: all-honest records served as JSON even for stream:true
   A4 passthrough:    no-tools request is forwarded byte-identical
   A5 stream:         SSE synthesis with final content inside
   A6 filter retry:   first resident call 400 content_filter -> retry succeeds
   A7 error relay:    upstream 429 passes through with the real message
 """
-import importlib.util, json, os, re, sys, threading, time, urllib.request, urllib.error
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json, re, sys, urllib.request
+
+import ftai_test_support as sup
+from ftai_test_support import (LION, DEFAULT_TOOL as TOOL, COFFEE_TOOL as DECAF,
+                               planner_tool_call, planner_tool_calls_reply,
+                               planner_stop_reply, resident_reply, Checker)
 
 MOCK_PORT, SHIM_PORT = 4199, 4011
-os.environ["FTAI_UPSTREAM"] = f"http://127.0.0.1:{MOCK_PORT}"  # shim reads it once at startup
-spec = importlib.util.spec_from_file_location("shimmod", "ftai_tool_shim.py")
-mod = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(mod)
-
+spec = sup.load_shim(env_upstream=f"http://127.0.0.1:{MOCK_PORT}")
+mod = spec
 PLANNER = mod.PLANNER_MODEL  # e.g. fta/meow/gpt-4o-mini
-LION = "fta/lion/claude-opus-5-5"
 
 state = {"filter_hits": 0, "planner_rounds": 0, "tool_msg_seen": 0}
 
-class Mock(BaseHTTPRequestHandler):
-    protocol_version = "HTTP/1.1"
-    def log_message(self, *a): pass
-
-    def _send(self, code, obj):
-        b = json.dumps(obj).encode()
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(b)))
-        self.end_headers()
-        self.wfile.write(b)
-
-    def do_GET(self):
+class BehaviorPolicy:
+    """Scenario logic only; the HTTP envelope lives in ftai_test_support."""
+    def serve_get(self):
         # /v1/models passthrough
-        self._send(200, {"object": "list", "data": [{"id": "mock-model"}]})
+        return 200, {"object": "list", "data": [{"id": "mock-model"}]}
 
-    def do_POST(self):
-        n = int(self.headers.get("Content-Length", 0) or 0)
-        body = json.loads(self.rfile.read(n) if n else b"{}")
-        model = body.get("model", "")
+    def serve(self, model, body, raw):
         if body.get("stream"):
-            self._send(400, {"error": {"message": "mock: internal calls must be non-stream"}})
-            return
+            return 400, {"error": {"message": "mock: internal calls must be non-stream"}}
 
         if model == PLANNER:
             msgs = body.get("messages", [])
             last_user = next((m.get("content") or "" for m in reversed(msgs) if m.get("role") == "user"), "")
             if "429PLANNER" in last_user:
-                self._send(429, {"error": {"message": "Daily free request limit reached. It resets at 00:00 UTC"}})
-                return
+                return 429, {"error": {"message": "Daily free request limit reached. It resets at 00:00 UTC"}}
             if any(m.get("role") == "tool" for m in msgs):
                 state["tool_msg_seen"] += 1
                 state["planner_rounds"] += 1
                 if state["planner_rounds"] == 1:  # second lookup requested
-                    second_call = {
-                        "id": "callB", "type": "function",
-                        "function": {"name": "get_weather",
-                                     "arguments": json.dumps({"city": "Osaka"})}}
-                    reply = {"object": "chat.completion", "choices": [{
-                        "finish_reason": "tool_calls",
-                        "message": {"role": "assistant", "content": None,
-                                    "tool_calls": [second_call]}}]}
-                    self._send(200, reply)
-                    return
-                stop = {"object": "chat.completion", "choices": [{
-                    "finish_reason": "stop",
-                    "message": {"role": "assistant", "content": "planner done"}}]}
-                self._send(200, stop)
-                return
+                    second_call = planner_tool_call("callB", "get_weather",
+                                                    json.dumps({"city": "Osaka"}))
+                    return 200, planner_tool_calls_reply([second_call])
+                return 200, planner_stop_reply("planner done")
             # like the real gateway: the planner decides using the tools it was given
-            fname = "get_weather"
             fname = ((body.get("tools") or [TOOL])[0].get("function") or {}).get("name", "get_weather")
             args = (json.dumps({"size": "large"}) if fname == "make_coffee"
                     else json.dumps({"city": "Tokyo"}))
-            first_call = {
-                "id": "callA", "type": "function",
-                "function": {"name": fname, "arguments": args}}
-            reply = {"object": "chat.completion", "choices": [{
-                "finish_reason": "tool_calls",
-                "message": {"role": "assistant", "content": None,
-                            "tool_calls": [first_call]}}]}
-            self._send(200, reply)
-            return
+            return 200, planner_tool_calls_reply(
+                [planner_tool_call("callA", fname, args)])
 
         if model == LION:
             msgs = body.get("messages", [])
             content = msgs[0]["content"] if msgs else ""
             if "FORCE429" in content:
-                self._send(429, {"error": {"message": "Daily free request limit reached. It resets at 00:00 UTC"}})
-                return
+                return 429, {"error": {"message": "Daily free request limit reached. It resets at 00:00 UTC"}}
             if "filterme" in content.lower():
                 state["filter_hits"] += 1
                 if state["filter_hits"] == 1:
-                    self._send(400, {"error": {"code": "content_filter", "message": "Content filtered: lion/ models are for general questions"}})
-            self._send(200, {"object": "chat.completion", "model": model,
-                "choices": [{"index": 0, "finish_reason": "stop",
-                             "message": {"role": "assistant", "content": "RESIDENT SAW: " + content}}],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}})
-            return
+                    return 400, {"error": {"code": "content_filter", "message": "Content filtered: lion/ models are for general questions"}}
+            return 200, resident_reply("RESIDENT SAW: " + content, model=model, usage=True)
 
         # generic passthrough echo: return body unchanged (differentiates shim edits)
-        self._send(200, body)
+        return 200, body
 
-def start_server(port, handler):
-    srv = ThreadingHTTPServer(("127.0.0.1", port), handler)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    return srv
-
-start_server(MOCK_PORT, Mock)
-start_server(SHIM_PORT, mod.Handler)
+sup.start_mock(BehaviorPolicy(), MOCK_PORT)
+sup.start_server(mod.Handler, SHIM_PORT)
 
 SHIM = f"http://127.0.0.1:{SHIM_PORT}/v1/chat/completions"
-TOOL = {"type": "function", "function": {"name": "get_weather",
-        "description": "Get current weather for a city",
-        "parameters": {"type": "object", "properties": {"city": {"type": "string"}}}}}
-DECAF = {"type": "function", "function": {"name": "make_coffee",
-        "description": "Make coffee",
-        "parameters": {"type": "object", "properties": {"size": {"type": "string"}}}}}
-
-def post(body, timeout=60, want_status=False):
-    req = urllib.request.Request(SHIM, data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            raw = r.read().decode()
-            return (r.status, raw if want_status else json.loads(raw))
-    except urllib.error.HTTPError as e:
-        return (e.code, e.read().decode())
-
-fails = []
-def check(name, cond, detail=""):
-    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  | {detail}"))
-    if not cond: fails.append(name)
+post = sup.make_post(SHIM)
+check = Checker()
 
 # A1: full tool loop with REAL weather execution
 st, r = post({"model": LION, "max_tokens": 300,
@@ -243,6 +182,6 @@ check("A7 429 relayed", st == 429 and "Daily free request limit" in err, f"st={s
 
 print()
 print("planner model:", PLANNER, "| mock state:", state)
-if fails:
-    print("FAILED:", "; ".join(fails)); sys.exit(1)
+if check.fails:
+    print("FAILED:", "; ".join(check.fails)); sys.exit(1)
 print("ALL BEHAVIORAL CHECKS PASSED")
