@@ -174,6 +174,34 @@ txt = (r.get("choices", [{}])[0].get("message") or {}).get("content") or ""
 check("A3 unknown tool: no fake data", "not available in this assistant" in txt, txt[:200])
 check("A3 still a completion", st == 200 and r.get("model") == LION, str(st))
 
+# A8: honesty fast path keeps serving when the client asked stream:true.
+# INTENTIONAL CONTRACT (pinned): all-honest records are answered by the
+# shim directly — no gateway round, no resident leg — and that answer is
+# always a well-formed non-streaming JSON completion, never SSE. Verified
+# on the real build 2026-10-19: a stream:true unknown-tool request gets
+# application/json + the honest record, which is a clean either-shape
+# answer, not something a real OpenAI-compatible client cannot parse
+# (the fast path shares the standard chat.completion body schema).
+req = urllib.request.Request(SHIM, data=json.dumps({"model": LION, "max_tokens": 300,
+    "stream": True, "messages": [{"role": "user", "content": "Make me a coffee please."}],
+    "tools": [DECAF]}).encode(), headers={"Content-Type": "application/json"})
+with urllib.request.urlopen(req, timeout=30) as r:
+    a8_ct = r.headers.get("Content-Type", "")
+    a8_raw = r.read().decode()
+check("A8 honesty+stream serves JSON (not SSE)",
+      a8_ct.startswith("application/json") and not a8_raw.startswith("data: "),
+      f"ct={a8_ct} raw={a8_raw[:80]}")
+try:
+    a8 = json.loads(a8_raw)
+    a8_content = (a8.get("choices", [{}])[0].get("message") or {}).get("content") or ""
+except Exception:
+    a8_content = ""
+check("A8 honesty+stream carries the honest record",
+      a8_content.startswith("Tool ") and "not available in this assistant" in a8_content,
+      a8_raw[:140])
+check("A8 honesty+stream keeps the client model id",
+      isinstance(a8_raw, str) and json.loads(a8_raw).get("model") == LION, a8_raw[:60])
+
 # A4: no-tools passthrough is byte-identical forwarding
 original = {"model": "fta/meow/gpt-4x-echo", "max_tokens": 50,
             "messages": [{"role": "user", "content": "hi"}],

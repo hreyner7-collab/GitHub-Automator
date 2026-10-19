@@ -77,7 +77,11 @@ mod.post = fake_post_weak
 mod.main()
 weak = open(mod.OUT, encoding="utf-8").read()
 check("R3 weak answer -> PARTIAL", "PARTIAL" in weak, weak[-220:])
-check("R3 refusal documented as WEAK", "data missing in answer" in weak, weak[:300])
+# aligned 2026-10-19 to the shipped runner's WEAK marker: the G5 oracle
+# relaxation reworded it ("WEAK (no live weather data in answer)") without
+# updating this assertion, so R3 failed at baseline on wording drift alone
+current_weak_marker = "WEAK (no live weather data in answer)"
+check("R3 refusal documented as WEAK", current_weak_marker in weak, weak[:300])
 
 print()
 if fails:

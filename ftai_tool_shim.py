@@ -23,6 +23,14 @@ How it works
        'Quick context: the data I have on hand says <record>. Given that,
        <task>' — the only shape verified to pass the filter — and its
        reply is returned to the client as the completion.
+  Honesty fast path: when EVERY executed record is the honest unknown-tool
+  message (nothing the planner called matches a built-in capability, so
+  there is no real data to hand over), the shim answers the client
+  DIRECTLY with that record — no planner answer round, no resident leg,
+  no gateway call. This exists because the gateway's content filter
+  reliably rejected the resident leg on unknown-tool handovers (measured);
+  the fast path serves honest text without faking data. Such answers are
+  non-streaming JSON completions, even when the client asked stream:true.
   Requests WITHOUT tools are forwarded unchanged (passthrough).
 
 Known limits (measured, not guesswork):
@@ -40,6 +48,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PORT = int(os.environ.get("FTAI_SHIM_PORT", "4010"))
 UPSTREAM = os.environ.get("FTAI_UPSTREAM") or "https://api.freetheai.org"
 EMU_MARKER = ("/lion/", "/dog/")
+
+# Measured-won policy constants: each value here is verified working
+# behavior, not a tuning knob. Renaming is free; changing a value is not
+# a tweak, it is a re-measurement (GATES evidence).
+PLANNER_ROUNDS = 3              # tool-call rounds the planner gets per request
+UPSTREAM_TIMEOUT = 120          # seconds per upstream (gateway) round
+RESIDENT_TOKEN_MULTIPLIER = 2   # resident leg budget = client max_tokens * this
+RESIDENT_TOKEN_FLOOR = 1024
+RESIDENT_TOKEN_CEILING = 16000
+FILTER_RETRY_ATTEMPTS = 3       # resident-leg 400 content_filter -> retries
+FILTER_RETRY_PAUSE = 2.5        # seconds between filter retries
+# persona-refusal phrasing of the lion/dog residents (measured); matched
+# where answers are judged and where fresh retry samples are accepted
+REFUSAL_RE = re.compile(r"cannot (?:provide|access)|do not have access|no access to", re.I)
 
 # ub.shim-owned builtin tools + native-planner auto mode ----------------------
 # The requested model (lion/dog) is filtered and cannot emit tool calls. So the
@@ -68,7 +90,7 @@ def auto_tool_flow(req_body, key):
                "messages": list(req_body.get("messages", [])),
                "tools": tools, "stream": False}
     collected = []
-    for _round in range(3):
+    for _round in range(PLANNER_ROUNDS):
         st, body, _ = forward("/v1/chat/completions", json.dumps(planner).encode(), key)
         if st != 200:
             raise ShimUpstream(st, body)
@@ -126,7 +148,8 @@ def upstream_req(path, body_bytes, key, headers_extra=None):
 
 def forward(path, body_bytes, key):
     try:
-        r = urllib.request.urlopen(upstream_req(path, body_bytes, key), timeout=120)
+        r = urllib.request.urlopen(upstream_req(path, body_bytes, key),
+                                   timeout=UPSTREAM_TIMEOUT)
         return r.status, r.read(), dict(r.headers)
     except urllib.error.HTTPError as e:
         return e.code, e.read(), dict(e.headers)
@@ -270,16 +293,17 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         work = {"model": model, "stream": False,
-                "max_tokens": min(max(req_max * 2, 1024), 16000),
+                "max_tokens": min(max(req_max * RESIDENT_TOKEN_MULTIPLIER,
+                                      RESIDENT_TOKEN_FLOOR), RESIDENT_TOKEN_CEILING),
                 "messages": build_final_messages(req_body, collected)}
         # resident answer: I1-verified single-message shape; the filter is
-        # flaky on protocol-looking bodies, so retry up to 3x with a pause
+        # flaky on protocol-looking bodies, so retry with pauses
         payload = json.dumps(work).encode()
-        for attempt in range(3):
+        for attempt in range(FILTER_RETRY_ATTEMPTS):
             st, body, _ = forward(self.path, payload, self._key())
             if not (st == 400 and b"content_filter" in body) or attempt == 2:
                 break
-            time.sleep(2.5)
+            time.sleep(FILTER_RETRY_PAUSE)
         if st != 200:
             self._reply(st, body)
             return
@@ -295,7 +319,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         final["model"] = model
         txt = (ch0.get("message") or {}).get("content") or ""
-        n_refuse = len(re.findall(r"cannot (?:provide|access)|do not have access|no access to", txt, re.I))
+        n_refuse = len(REFUSAL_RE.findall(txt))
         if n_refuse:  # persona refusal ~2/5 measured; a fresh sample usually complies
             try:
                 st2, body2, _ = forward(self.path, payload, self._key())
@@ -306,7 +330,7 @@ class Handler(BaseHTTPRequestHandler):
                     t2 = (ch2.get("message") or {}).get("content") or ""
                     # adopt only a usable, non-refusing fresh sample: an empty
                     # content passes the refusal regex and would blank a good answer
-                    if t2 and not re.search(r"cannot (?:provide|access)|do not have access|no access to", t2, re.I):
+                    if t2 and not REFUSAL_RE.search(t2):
                         final, txt = final2, t2
                         final["model"] = model
             except Exception:

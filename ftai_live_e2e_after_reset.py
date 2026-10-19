@@ -11,6 +11,7 @@ Writes plain-text + JSON results so the run's evidence survives the session.
 Run:  python ftai_live_e2e_after_reset.py
 """
 import json, re, sys, time, urllib.request, urllib.error, os, winreg
+from ftai_executors import UNKNOWN_TOOL_MARKER
 from datetime import datetime, timedelta, timezone
 
 SHIM = "http://127.0.0.1:4010/v1/chat/completions"
@@ -85,6 +86,10 @@ def main():
                 continue
             txt = (r["choices"][0]["message"] or {}).get("content") or ""
             m = re.search(r"current weather in " + city + r".{0,24}?(-?[\d.]+) C", txt)
+            # `p = None if m else ...` is correct here, not the conditional bug it
+            # resembles: when m matched, the verdict goes PASS via the exact record
+            # echo, so the loose temp search is deliberately skipped; it is only
+            # needed for the paraphrased-reading branch of a non-echo answer.
             p = None if m else re.search(r"(-?\d+(?:\.\d+)?)\s*°?\s*C\b", txt)
             w = re.search(r"humidity|km/h|cloudy|rain|drizzle|snow|fog|wind", txt, re.I)
             if m:
@@ -100,7 +105,7 @@ def main():
             "messages": [{"role": "user", "content": "Make me a coffee please."}],
             "tools": [COFFEE]})
         txt = (r.get("choices", [{}])[0].get("message") or {}).get("content") or "" if st == 200 else ""
-        ok = st == 200 and "not available in this assistant" in txt
+        ok = st == 200 and UNKNOWN_TOOL_MARKER in txt
         log(f"L4 unknown-tool honesty: HTTP {st}; no-fake-data {'PASS' if ok else 'FAIL'} {txt[:120]}")
         verdicts["L4"] = "PASS" if ok else "FAIL"
         verdicts["overall"] = "PASS" if all("PASS" in v for v in verdicts.values()) else "PARTIAL"

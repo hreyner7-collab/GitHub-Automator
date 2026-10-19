@@ -8,6 +8,11 @@ honest no-fake-data capability list instead of invented results.
 """
 import ast, json, re, time, urllib.parse, urllib.request
 
+# Measured-won policy constants (see ftai_tool_shim.py header note): the
+# values are verified acceptable round-trip times, not tuning knobs.
+WEATHER_HTTP_TIMEOUT = 15       # seconds per open-meteo round (geocode + forecast)
+PAGE_FETCH_HTTP_TIMEOUT = 20    # seconds per page-fetch round
+
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
@@ -34,7 +39,7 @@ def _norm_args(raw):
         return {"input": raw}
     return {"input": str(raw)}
 
-def _http_json(url, timeout=15):
+def _http_json(url, timeout=WEATHER_HTTP_TIMEOUT):
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode())
@@ -77,7 +82,7 @@ def builtin_fetch_url(args):
         return "error: need an absolute http(s) url"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": _UA})
-        with urllib.request.urlopen(req, timeout=20) as r:
+        with urllib.request.urlopen(req, timeout=PAGE_FETCH_HTTP_TIMEOUT) as r:
             txt = r.read().decode("utf-8", "replace")
         txt = re.sub(r"<script[\s\S]*?</script>|<style[\s\S]*?</style>", " ", txt, flags=re.I)
         txt = re.sub(r"<[^>]+>", " ", txt)
