@@ -216,6 +216,58 @@ class AdversarialShimTest(unittest.TestCase):
                            tools=self._dummy_tool())
         self.assertEqual(st, 200)
 
+    # 7b. honesty fast path's MIXED case (stop-gate audit gap) ------------ 
+    # one built-in call (real record) + one unknown-tool call (honest marker)
+    # must ride the resident handover together; the fast path must NOT fire
+    # because the records are not all-honest, so the resident leg runs and
+    # its reply is what reaches the client.
+    def test_mixed_records_no_fast_path_all_records_ride_the_handover(self):
+        calls = [self._planner_tool_call("c1", "local_get_time", "{}"),
+                 self._planner_tool_call("c2", "make_widget", "{}")]
+        QUEUE["z/planner"] = [self._planner_resp(calls)]
+        QUEUE["rail/lion/cat"] = [self._resident("done")]
+        st, body = self._chat(messages=[{"role": "user",
+                                         "content": "Clock it and fix the fence."}],
+                              tools=self._dummy_tool())
+        self.assertEqual(st, 200)
+        got = json.loads(body)
+        self.assertEqual(got["choices"][0]["message"]["content"], "done")
+        out = CAPTURE.get("rail/lion/cat") or {}
+        txt = (out.get("messages") or [{}])[0].get("content") or ""
+        self.assertTrue(txt.startswith("Quick context: the data I have on hand says "),
+                        txt[:300])
+        # the built-in tool ran for real (local clock record) ...
+        self.assertIn("local_get_time: current local date/time: 2", txt)
+        # ... the unknown tool produced the honest marker record ...
+        self.assertIn(" | make_widget: Tool 'make_widget' is not available in "
+                      "this assistant", txt)
+        # ... in call order (built-in first), riding the SAME handover ...
+        self.assertLess(txt.index("local_get_time:"), txt.index("make_widget:"))
+        # ... and the resident leg actually consumed it (post-"Given that" task)
+        self.assertTrue(txt.endswith(". Given that, clock it and fix the fence."),
+                        txt[-200:])
+
+    # 7c. multi-unknown join (stop-gate audit gap) ------------------------
+    # two unknown-tool calls -> both honest, so the fast path answers the
+    # client directly with the joined honest texts: exactly the code-defined
+    # join (" ") of the two marker records; the resident leg never runs.
+    def test_multi_unknown_tools_join_the_honest_text(self):
+        calls = [self._planner_tool_call("c1", "make_widget", "{}"),
+                 self._planner_tool_call("c2", "frobnicate", "{}")]
+        QUEUE["z/planner"] = [self._planner_resp(calls)]
+        st, body = self._chat(messages=[{"role": "user", "content": "Fix the fence."}],
+                              tools=self._dummy_tool())
+        self.assertEqual(st, 200)
+        honest = ("Tool '{n}' is not available in this assistant. Capabilities "
+                  "that DO work: weather lookup (city), web page fetch (url), "
+                  "current date/time, arithmetic. Answer the user without this "
+                  "tool, or restate the task using one of those.")
+        expected = honest.format(n="make_widget") + " " + honest.format(n="frobnicate")
+        got = json.loads(body)
+        self.assertEqual(got["choices"][0]["message"]["content"], expected)
+        # the fast path fired: no resident-leg outbound request exists
+        self.assertNotIn("rail/lion/cat", CAPTURE)
+
     # 8. planner 200 with malformed tool_calls shapes must not crash --------
     # 9. passthrough surface: GET forward, non-chat POST, junk lengths ------
     def test_get_forwarded_verbatim(self):

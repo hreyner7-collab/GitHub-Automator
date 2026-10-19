@@ -18,8 +18,7 @@ from ftai_test_support import (LION, planner_tool_call,
                                resident_reply, Checker)
 
 MOCK_PORT, SHIM_PORT = 4299, 4013
-spec = sup.load_shim(env_upstream=f"http://127.0.0.1:{MOCK_PORT}")
-mod = spec
+mod = sup.load_shim(env_upstream=f"http://127.0.0.1:{MOCK_PORT}")  # the loaded shim module
 PLANNER = mod.PLANNER_MODEL
 
 TOOL = {"type": "function", "function": {"name": "get_weather",

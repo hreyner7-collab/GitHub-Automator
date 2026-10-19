@@ -25,8 +25,7 @@ from ftai_test_support import (LION, DEFAULT_TOOL as TOOL, COFFEE_TOOL as DECAF,
                                planner_stop_reply, resident_reply, Checker)
 
 MOCK_PORT, SHIM_PORT = 4199, 4011
-spec = sup.load_shim(env_upstream=f"http://127.0.0.1:{MOCK_PORT}")
-mod = spec
+mod = sup.load_shim(env_upstream=f"http://127.0.0.1:{MOCK_PORT}")  # the loaded shim module
 PLANNER = mod.PLANNER_MODEL  # e.g. fta/meow/gpt-4o-mini
 
 state = {"filter_hits": 0, "planner_rounds": 0, "tool_msg_seen": 0}

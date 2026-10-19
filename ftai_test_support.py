@@ -24,6 +24,7 @@ import importlib.util
 import json
 import os
 import threading
+import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
