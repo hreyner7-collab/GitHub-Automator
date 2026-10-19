@@ -6,12 +6,14 @@ sandboxed arithmetic. Every executor returns a plain string; failures are
 returned as "error: ..." strings, never raised, and unknown tools get the
 honest no-fake-data capability list instead of invented results.
 """
-import ast, json, re, time, urllib.parse, urllib.request
+import ast, json, os, re, time, urllib.parse, urllib.request
 
 # Measured-won policy constants (see ftai_tool_shim.py header note): the
 # values are verified acceptable round-trip times, not tuning knobs.
 WEATHER_HTTP_TIMEOUT = 15       # seconds per open-meteo round (geocode + forecast)
 PAGE_FETCH_HTTP_TIMEOUT = 20    # seconds per page-fetch round
+READ_FILE_MAX_CHARS = 1600      # handover-friendly head of each read file
+LIST_DIR_MAX_ENTRIES = 60       # entries served per directory listing
 
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
@@ -91,6 +93,50 @@ def builtin_fetch_url(args):
     except Exception as e:
         return f"error fetching page: {e}"
 
+def _confined_path(raw):
+    """Resolve raw against the project root and refuse anything that would
+    escape it (absolute outside paths, .. traversal). Coding executors are
+    project-scoped by design: the gateway loop must not touch system files."""
+    root = os.path.realpath(os.environ.get("FTAI_PROJECT_ROOT") or os.getcwd())
+    rel = str(raw or "").strip().replace("\\", "/").lstrip("/")
+    cand = os.path.realpath(os.path.join(root, rel))
+    if not (cand == root or cand.startswith(root + os.sep)):
+        return None, root
+    return cand, root
+
+def builtin_read_file(args):
+    path = str(args.get("path") or args.get("file") or args.get("input") or "").strip()
+    if not path:
+        return "error: no path provided"
+    cand, root = _confined_path(path)
+    if cand is None:
+        return f"error: path escapes the project root: {path}"
+    if not os.path.isfile(cand):
+        return f"error: no file named '{path}'"
+    try:
+        with open(cand, encoding="utf-8", errors="replace") as f:
+            txt = f.read(READ_FILE_MAX_CHARS + 1)
+    except OSError as e:
+        return f"error reading file: {e}"
+    note = " (excerpt, truncated)" if len(txt) > READ_FILE_MAX_CHARS else ""
+    return f"file {path}: {txt[:READ_FILE_MAX_CHARS]}{note}"
+
+def builtin_list_dir(args):
+    path = str(args.get("path") or args.get("dir") or args.get("input") or "").strip()
+    cand, root = _confined_path(path or ".")
+    if cand is None:
+        return f"error: path escapes the project root: {path}"
+    if not os.path.isdir(cand):
+        return f"error: no directory named '{path}'"
+    try:
+        names = sorted(os.listdir(cand))[:LIST_DIR_MAX_ENTRIES]
+    except OSError as e:
+        return f"error listing directory: {e}"
+    mark = "d" if os.path.isdir(cand) else "f"
+    shown = ", ".join(n + ("/" if os.path.isdir(os.path.join(cand, n)) else "")
+                      for n in names)
+    return f"directory {path or '.'} ({mark}, {len(names)} entries): {shown}"
+
 def builtin_now(args):
     return time.strftime("current local date/time: %Y-%m-%d %H:%M:%S (%A)")
 
@@ -111,6 +157,12 @@ def builtin_calc(args):
 def builtin_exec(name, raw_args):
     a = _norm_args(raw_args)
     n = (name or "").lower()
+    # coding executors first: they must not fall through into the fuzzy
+    # fetch/web routing (e.g. 'read_file' is not a page fetch)
+    if "read_file" in n or ("read" in n and "file" in n):
+        return builtin_read_file(a)
+    if "list_dir" in n or "ls_dir" in n or ("list" in n and ("dir" in n or "files" in n)):
+        return builtin_list_dir(a)
     if "weather" in n:
         return builtin_get_weather(a)
     if any(k in n for k in ("fetch", "url", "open", "browse", "read_page", "web")):
