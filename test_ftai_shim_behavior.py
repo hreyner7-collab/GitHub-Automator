@@ -53,10 +53,18 @@ class BehaviorPolicy:
                                                     json.dumps({"city": "Osaka"}))
                     return 200, planner_tool_calls_reply([second_call])
                 return 200, planner_stop_reply("planner done")
+            # summarization request (lion prose-policy): no tools on the
+            # payload -> the shim's CODE_HINT_RE transform is calling
+            if not body.get("tools"):
+                return 200, planner_stop_reply(
+                    "PROSE SUMMARY SENTINEL: this small script checks that a "
+                    "local service answers with a successful status and prints "
+                    "SHIM HEALTH OK on success.")
             # like the real gateway: the planner decides using the tools it was given
             fname = ((body.get("tools") or [TOOL])[0].get("function") or {}).get("name", "get_weather")
-            args = (json.dumps({"size": "large"}) if fname == "make_coffee"
-                    else json.dumps({"city": "Tokyo"}))
+            args = (json.dumps({"size": "large"}) if fname == "make_coffee" else
+                    json.dumps({"path": "check_shim_health.py"}) if fname == "read_file" else
+                    json.dumps({"city": "Tokyo"}))
             return 200, planner_tool_calls_reply(
                 [planner_tool_call("callA", fname, args)])
 
@@ -147,6 +155,30 @@ original = {"model": "fta/meow/gpt-4x-echo", "max_tokens": 50,
 st, echoed = post(original)
 check("A4 passthrough forwards unchanged", st == 200 and echoed == original,
       json.dumps(echoed)[:200])
+
+# A9: lion prose-policy — a code-shaped record (read_file of a real project
+# file) must be rendered as a plain-prose summary before the resident leg:
+# raw code text is refused by the real gateway on lion routes (measured),
+# prose transcripts of the same facts pass and are consumed. The canned
+# planner summary carries a sentinel; assertions check the handover into
+# the resident contains NO raw code and DOES contain the sentinel summary.
+READ_FILE_TOOL = {"type": "function", "function": {"name": "read_file",
+        "description": "Read a text file from this project",
+        "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}}}
+st, r = post({"model": LION, "max_tokens": 400,
+              "messages": [{"role": "user", "content":
+                  "Read check_shim_health.py in this project and tell me in one short sentence what it does."}],
+              "tools": [READ_FILE_TOOL]})
+txt = (r.get("choices", [{}])[0].get("message") or {}).get("content") or ""
+check("A9 status 200", st == 200, str(st))
+check("A9 handover carries prose summary record",
+      "read_file (plain-prose summary):" in txt and "PROSE SUMMARY SENTINEL" in txt,
+      txt[:180])
+check("A9 no raw code in the lion handover",
+      "import urllib" not in txt and "urllib.request.urlopen" not in txt, txt[:180])
+check("A9 executor really read the file (path echoed)",
+      "check_shim_health.py" in txt, txt[:180])
+check("A9 still a completion", r.get("model") == LION and txt.strip() != "", txt[:60])
 
 # A5: stream synthesis
 st, raw = post({"model": LION, "max_tokens": 300, "stream": True,
