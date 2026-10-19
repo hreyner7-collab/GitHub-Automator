@@ -29,6 +29,10 @@ mod = sup.load_shim(env_upstream=f"http://127.0.0.1:{MOCK_PORT}")  # the loaded 
 PLANNER = mod.PLANNER_MODEL  # e.g. fta/meow/gpt-4o-mini
 
 state = {"filter_hits": 0, "planner_rounds": 0, "tool_msg_seen": 0}
+# FIFO of planner-played summarization replies; empty = the default clean
+# sentinel. Used to pin the summary sanitizer's trip->retry and trip->trip->
+# de-tokenize paths with real shim code.
+summary_queue = []
 
 class BehaviorPolicy:
     """Scenario logic only; the HTTP envelope lives in ftai_test_support."""
@@ -56,10 +60,13 @@ class BehaviorPolicy:
             # summarization request (lion prose-policy): no tools on the
             # payload -> the shim's CODE_HINT_RE transform is calling
             if not body.get("tools"):
-                return 200, planner_stop_reply(
-                    "PROSE SUMMARY SENTINEL: this small script checks that a "
-                    "local service answers with a successful status and prints "
-                    "SHIM HEALTH OK on success.")
+                if summary_queue:
+                    content = summary_queue.pop(0)
+                else:
+                    content = ("PROSE SUMMARY SENTINEL: this small script checks that a "
+                               "local service answers with a successful status and prints "
+                               "SHIM HEALTH OK on success.")
+                return 200, planner_stop_reply(content)
             # like the real gateway: the planner decides using the tools it was given
             fname = ((body.get("tools") or [TOOL])[0].get("function") or {}).get("name", "get_weather")
             args = (json.dumps({"size": "large"}) if fname == "make_coffee" else
@@ -156,15 +163,71 @@ st, echoed = post(original)
 check("A4 passthrough forwards unchanged", st == 200 and echoed == original,
       json.dumps(echoed)[:200])
 
+READ_FILE_TOOL = {"type": "function", "function": {"name": "read_file",
+        "description": "Read a text file from this project",
+        "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}}}
+
+# A10: summary sanitizer — a generated summary that itself carries code
+# tokens is re-planned ONCE with hard constraints; the clean retry is what
+# rides the lion handover. (offline: the summarizer is the mock planner)
+summary_queue.append("TRIPPY: the script calls args.get( and builtin_read_file(path) to read sizes")
+summary_queue.append("SUMMARY CLEAN RETRY: the small script checks a local service and prints SHIM HEALTH OK on success")
+st, r = post({"model": LION, "max_tokens": 400,
+              "messages": [{"role": "user", "content":
+                  "Read check_shim_health.py in this project and tell me in one short sentence what it does."}],
+              "tools": [READ_FILE_TOOL]})
+txt = (r.get("choices", [{}])[0].get("message") or {}).get("content") or ""
+check("A10 status 200", st == 200, str(st))
+check("A10 clean retry rides, trippy draft does not",
+      "SUMMARY CLEAN RETRY" in txt and "TRIPPY" not in txt, txt[:150])
+check("A10 no call fragments in the handover",
+      "args.get(" not in txt and "builtin_read_file(path)" not in txt, txt[:150])
+
+# A11: even the hard-constrained retry trips -> the deterministic de-tokenized
+# fallback carries the file's real facts with identifiers generalized.
+summary_queue.append("TRIPPY: the script calls args.get( to read sizes")
+summary_queue.append("ALSO TRIPPY: it calls builtin_read_file(path) again and prints =; markers")
+st, r = post({"model": LION, "max_tokens": 400,
+              "messages": [{"role": "user", "content":
+                  "Read check_shim_health.py in this project and tell me in one short sentence what it does."}],
+              "tools": [READ_FILE_TOOL]})
+txt = (r.get("choices", [{}])[0].get("message") or {}).get("content") or ""
+check("A11 status 200", st == 200, str(st))
+check("A11 de-tokenized fallback rides the handover",
+      "an identifier from the file" in txt, txt[:160])
+check("A11 no raw call fragments or symbol runs remain",
+      "args.get(" not in txt and "builtin_read_file(path)" not in txt
+      and "=;" not in txt and "(path)" not in txt, txt[:160])
+check("A11 fallback keeps the honest plain-prose label",
+      "(plain-prose summary):" in txt, txt[:150])
+
+# A12: empty-summary fallback — when the planner produces NO usable summary
+# (measured on the live sustained leg: the untouched-record fallback rode raw
+# file text to a 400), the last-resort rendering must be the record's OWN
+# content de-tokenized to prose, not the raw record.
+summary_queue.append("")          # soft planner: empty -> fallback path
+# (single call: the empty-summary fallback skips the hard-constrained retry)
+st, r = post({"model": LION, "max_tokens": 400,
+              "messages": [{"role": "user", "content":
+                  "Read check_shim_health.py in this project and tell me in one short sentence what it does."}],
+              "tools": [READ_FILE_TOOL]})
+txt = (r.get("choices", [{}])[0].get("message") or {}).get("content") or ""
+check("A12 status 200", st == 200, str(st))
+check("A12 fallback renders the real record de-tokenized",
+      "(prose transcript):" in txt and "an identifier from the file" in txt,
+      txt[:180])
+check("A12 fallback carries no call fragments in the handover",
+      "(path)" not in txt and "args.get(" not in txt and "=;" not in txt,
+      txt[:180])
+check("A12 fallback keeps the honest transcript label",
+      "(prose transcript):" in txt, txt[:150])
+
 # A9: lion prose-policy — a code-shaped record (read_file of a real project
 # file) must be rendered as a plain-prose summary before the resident leg:
 # raw code text is refused by the real gateway on lion routes (measured),
 # prose transcripts of the same facts pass and are consumed. The canned
 # planner summary carries a sentinel; assertions check the handover into
 # the resident contains NO raw code and DOES contain the sentinel summary.
-READ_FILE_TOOL = {"type": "function", "function": {"name": "read_file",
-        "description": "Read a text file from this project",
-        "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}}}
 st, r = post({"model": LION, "max_tokens": 400,
               "messages": [{"role": "user", "content":
                   "Read check_shim_health.py in this project and tell me in one short sentence what it does."}],
