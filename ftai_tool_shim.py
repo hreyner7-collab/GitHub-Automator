@@ -207,13 +207,28 @@ class ShimUpstream(Exception):
 
 # the built-in executors (weather/fetch/time/math + honest unknown-tool
 # handling) live in ftai_executors.py; the shim only dispatches them
+# Multi-round continuity (measured 2026-10-19 A/B on the real planner leg):
+# with only the accumulated history, the planner re-executes step 1 every
+# round whenever the task asks for facts a tool result does not carry
+# (identical history re-issued the first call three times; the SAME task
+# with a system guide + a continuation nudge advanced to the next read).
+# Generic guidance injected by the loop — no tool-specific casing.
+PROGRESS_GUIDE = (
+    "Use the provided tools step by step. Calls you already made and their "
+    "results appear in the conversation as tool messages. Never repeat a "
+    "call whose result you already have; continue to the next step until "
+    "you can answer.")
+CONTINUE_NUDGE = ("Continue from the results above: choose your NEXT tool "
+                  "call, or answer if you have everything.")
+
 def auto_tool_flow(req_body, key):
     """Run a native-capable planner over the user's REAL tools; execute every
     requested call with the shim's own built-in capabilities. Returns the list
     of executed records. Raises ShimUpstream when the planner(route) fails."""
     tools = req_body.get("tools") or []
     planner = {"model": PLANNER_MODEL,
-               "messages": list(req_body.get("messages", [])),
+               "messages": ([{"role": "system", "content": PROGRESS_GUIDE}]
+                            + list(req_body.get("messages", []))),
                "tools": tools, "stream": False}
     collected = []
     for _round in range(PLANNER_ROUNDS):
@@ -244,6 +259,8 @@ def auto_tool_flow(req_body, key):
             collected.append(f"{fname}: {res}")
             planner["messages"] = planner["messages"] + [
                 {"role": "tool", "tool_call_id": tc.get("id", ""), "content": res}]
+        planner["messages"] = planner["messages"] + [
+            {"role": "user", "content": CONTINUE_NUDGE}]
     return collected
 
 def get_key():

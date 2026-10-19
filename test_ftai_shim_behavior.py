@@ -49,6 +49,32 @@ class BehaviorPolicy:
             last_user = next((m.get("content") or "" for m in reversed(msgs) if m.get("role") == "user"), "")
             if "429PLANNER" in last_user:
                 return 429, {"error": {"message": "Daily free request limit reached. It resets at 00:00 UTC"}}
+            if any(isinstance(m, dict) and "A13DISCOVERY" in (m.get("content") or "")
+                   for m in msgs) and body.get("tools"):
+                # A13 scripted planner: advance by DISCOVERY like a real model —
+                # round1 list_dir, round2 read a name found in the listing,
+                # round3 read a second distinct name. CAPTURE every decision
+                # body so the pins can assert record retention across rounds.
+                state.setdefault("planner_bodies", []).append(body)
+                tool_msgs = [m for m in msgs if m.get("role") == "tool"]
+                if not tool_msgs:
+                    return 200, planner_tool_calls_reply(
+                        [planner_tool_call("a13c1", "list_dir", "{}")])
+                if len(tool_msgs) == 1:
+                    names = re.findall(r"[A-Za-z0-9_\-]+\.py",
+                                       tool_msgs[0].get("content") or "")
+                    state["a13_first"] = names[0] if names else "check_shim_health.py"
+                    return 200, planner_tool_calls_reply([planner_tool_call(
+                        "a13c2", "read_file", json.dumps({"path": state["a13_first"]}))])
+                all_names = []
+                for tm in tool_msgs:
+                    all_names += re.findall(r"[A-Za-z0-9_\-]+\.py",
+                                            (tm.get("content") or ""))
+                state["a13_second"] = next((n for n in dict.fromkeys(all_names)
+                                             if n != state.get("a13_first")),
+                                            state.get("a13_first", "README.md"))
+                return 200, planner_tool_calls_reply([planner_tool_call(
+                    "a13c3", "read_file", json.dumps({"path": state["a13_second"]}))])
             if any(m.get("role") == "tool" for m in msgs):
                 state["tool_msg_seen"] += 1
                 state["planner_rounds"] += 1
@@ -221,6 +247,58 @@ check("A12 fallback carries no call fragments in the handover",
       txt[:180])
 check("A12 fallback keeps the honest transcript label",
       "(prose transcript):" in txt, txt[:150])
+
+LIST_DIR_TOOL = {"type": "function", "function": {"name": "list_dir",
+        "description": "List the files in this project directory",
+        "parameters": {"type": "object", "properties": {}}}}
+
+# A13 (root-cause pin for the measured live defect): the loop must ADVANCE
+# rounds under guidance — round1 list_dir, round2 read a name DISCOVERED in
+# the listing, round3 read a second distinct discovered name. Every planner
+# decision body is CAPTUREd; the pins assert each earlier round's tool
+# record rides the next request (A14 regression) and the completion
+# consumes all three records.
+def _tool_contents(cap):
+    return [(m.get("content") or "") for m in (cap.get("messages") or [])
+            if isinstance(m, dict) and m.get("role") == "tool"]
+
+st, r = post({"model": LION, "max_tokens": 400,
+              "messages": [{"role": "user", "content":
+                  "A13DISCOVERY task: explore this project: first list the "
+                  "directory, then read the two project files the listing "
+                  "suggests, then summarize in one sentence what you found."}],
+              "tools": [LIST_DIR_TOOL, READ_FILE_TOOL]})
+txt = (r.get("choices", [{}])[0].get("message") or {}).get("content") or ""
+caps = state.get("planner_bodies") or []
+first_path, second_path = state.get("a13_first", ""), state.get("a13_second", "")
+check("A13 status 200", st == 200, str(st))
+check("A13 three planner decision bodies captured", len(caps) == 3, f"caps={len(caps)}")
+check("A13 progress guide rides every round",
+      len(caps) >= 1 and "Never repeat a call" in ((caps[0].get("messages") or [{}])[0].get("content") or ""),
+      json.dumps(caps)[:120])
+check("A13 continuation nudge rides round 2/3",
+      len(caps) >= 3 and all("Continue from the results above"
+          in ((c.get("messages") or [{}])[-1].get("content") or "") for c in caps[1:]),
+      json.dumps([ (c.get("messages") or [{}])[-1].get("content", "")[:40] for c in caps[1:] ]))
+check("A13 round2 request carries round1's executed record",
+      len(caps) >= 2 and "directory " in _tool_contents(caps[1])[0],
+      json.dumps(_tool_contents(caps[1]) if caps else [])[:120])
+disc_proof = bool(first_path) and len(caps) >= 2 and first_path in _tool_contents(caps[1])[0]
+exec_proof = (len(caps) >= 3 and len(_tool_contents(caps[2])) >= 2
+              and ("file " + first_path + ":") in _tool_contents(caps[2])[1])
+check("A13 round2 read_file used a name discovered in the listing",
+      disc_proof and exec_proof, f"first={first_path} disc={disc_proof} exec={exec_proof}")
+check("A14 regression: round1 record NOT lost by round3",
+      len(caps) >= 3 and "directory " in _tool_contents(caps[2])[0],
+      json.dumps(_tool_contents(caps[2]) if len(caps) >= 3 else [])[:120])
+check("A14 regression: round2 file record rides round3 request",
+      len(caps) >= 3 and ("file " + first_path + ":") in _tool_contents(caps[2])[1],
+      json.dumps(_tool_contents(caps[2]) if len(caps) >= 3 else [])[:160])
+check("A13 completion consumed all three records",
+      "list_dir (prose listing):" in txt and txt.count("(plain-prose summary):") == 2,
+      txt[:200])
+check("A13 no failed second discovery read",
+      "no file named" not in txt and "path escapes" not in txt, txt[:160])
 
 # A9: lion prose-policy — a code-shaped record (read_file of a real project
 # file) must be rendered as a plain-prose summary before the resident leg:
