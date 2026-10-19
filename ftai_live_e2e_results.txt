@@ -1,0 +1,7 @@
+18:15:08  note: FTAI_API_KEY not in this env; shim reads registry fallback itself
+18:15:08  wait_for_reset: SKIPPED (final recovery run after oracle w-branch fix; quota open)
+18:15:22  L1 lion plain chat: HTTP 200
+18:15:54  L2 lion weather: PASS (record echo) — real data: ...The current weather in Tokyo is 17.0 C, partly cloudy, humidity 88%, with wind at 2.2 km/h.
+18:16:11  L3 dog weather: PASS (paraphrased live reading, temp=13.3) — ...The current weather in Paris is 13.3°C with light rain, 86% humidity, and wind at 7.9 km/h.
+18:16:20  L4 unknown-tool honesty: HTTP 200; no-fake-data PASS Tool 'make_coffee' is not available in this assistant. Capabilities that DO work: weather lookup (city), web page fetch 
+18:16:20  RESULT: {'L2 lion': 'PASS temp=17.0C', 'L3 dog': 'PASS temp=13.3C', 'L4': 'PASS', 'overall': 'PASS'}

@@ -11,6 +11,10 @@ import ast, json, re, time, urllib.parse, urllib.request
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
+# Marker inside the honest unknown-tool record; the shim recognizes it to
+# answer such requests directly (no gateway round, no filter to trip).
+UNKNOWN_TOOL_MARKER = "not available in this assistant"
+
 def _norm_args(raw):
     if isinstance(raw, dict):
         return raw

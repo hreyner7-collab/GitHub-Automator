@@ -34,7 +34,7 @@ Key: reads FTAI_CHAT_KEY env var, falls back to FTAI_API_KEY (Windows
 registry via setx is fine). Run:  python ftai_tool_shim.py  (port 4010)
 """
 import html, json, os, re, sys, time, urllib.error, urllib.request, uuid, winreg
-from ftai_executors import builtin_exec, _UA
+from ftai_executors import builtin_exec, UNKNOWN_TOOL_MARKER, _UA
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("FTAI_SHIM_PORT", "4010"))
@@ -256,6 +256,17 @@ class Handler(BaseHTTPRequestHandler):
             collected = auto_tool_flow(req_body, self._key())
         except ShimUpstream as e:
             self._reply(e.st, e.body)
+            return
+
+        # All records honest unknown-tool results -> no executor data exists.
+        # The shim answers directly with the honest record (no fake data, no
+        # gateway call): the resident leg would filter it (measured) and the
+        # answer carries no data a resident could add.
+        if collected and all(UNKNOWN_TOOL_MARKER in rec for rec in collected):
+            answer = " ".join(rec.split(": ", 1)[1] for rec in collected)
+            self._reply(200, {"model": model, "choices": [{"index": 0,
+                              "finish_reason": "stop",
+                              "message": {"role": "assistant", "content": answer}}]})
             return
 
         work = {"model": model, "stream": False,

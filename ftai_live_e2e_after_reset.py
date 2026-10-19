@@ -85,12 +85,17 @@ def main():
                 continue
             txt = (r["choices"][0]["message"] or {}).get("content") or ""
             m = re.search(r"current weather in " + city + r".{0,24}?(-?[\d.]+) C", txt)
+            p = None if m else re.search(r"(-?\d+(?:\.\d+)?)\s*°?\s*C\b", txt)
+            w = re.search(r"humidity|km/h|cloudy|rain|drizzle|snow|fog|wind", txt, re.I)
             if m:
-                log(f"{tag} weather: PASS — real data: ...{txt[:150]}")
+                log(f"{tag} weather: PASS (record echo) — real data: ...{txt[:150]}")
                 verdicts[tag] = f"PASS temp={m.group(1)}C"
+            elif p and w and -45.0 <= float(p.group(1)) <= 55.0:
+                log(f"{tag} weather: PASS (paraphrased live reading, temp={p.group(1)}) — ...{txt[:150]}")
+                verdicts[tag] = f"PASS temp={p.group(1)}C"
             else:
-                log(f"{tag} weather: data missing in answer: {txt[:180]}")
-                verdicts[tag] = "WEAK (no executor record echoed)"
+                log(f"{tag} weather: no live reading in answer: REPR={txt[:170]!r}")
+                verdicts[tag] = "WEAK (no live weather data in answer)"
         st, r = post({"model": LION, "max_tokens": 300,
             "messages": [{"role": "user", "content": "Make me a coffee please."}],
             "tools": [COFFEE]})

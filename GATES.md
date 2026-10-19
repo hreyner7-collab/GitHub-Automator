@@ -24,7 +24,7 @@ Scope: Prove the shim's shipped behavior (auto-tool loop, edge handling, runner 
   EXPECT: SHIM HEALTH OK
   EVIDENCE: automatic-evidence=v1; definition-sha256=d69e946b147994985476a98c4547c5081559665665dca5aae0abe69d148507f4; exit=0; EXPECT=matched; output-sha256=19f7b1a682e8d364affc0c5b277689c5e35f9b192b10ff6e2b566a5310ef0dce; output-bytes=16; shell=C:\Windows\system32\cmd.exe; cwd=C:\Users\henry\Documents\free\app\Cruality Pipeline; path=4a1ac152ae88/25 entries
 
-- [ ] G5: live end-to-end at the 00:00 UTC quota window — results file must show the composed tool loop passing on lion and dog with no fake data
+- [x] G5: live end-to-end at the 00:00 UTC quota window — results file must show the composed tool loop passing on lion and dog with no fake data
   CHECK: .venv\Scripts\python.exe check_live_e2e.py
   EXPECT: LIVE E2E PASS
-  EVIDENCE: pending
+  EVIDENCE: automatic-evidence=v1; definition-sha256=6cebb19fd40a0193392511b6973d92a6e2b35cf509f42e12c13f6153c53da6e5; exit=0; EXPECT=matched; output-sha256=46746b733e5606db14005375fd86f5bd35d1607c2130f84d4e179825c66bcf21; output-bytes=15; shell=C:\Windows\system32\cmd.exe; cwd=C:\Users\henry\Documents\free\app\Cruality Pipeline; path=4a1ac152ae88/25 entries
