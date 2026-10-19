@@ -25,3 +25,7 @@ logs/
 School/
 read-aloud/
 tools/
+
+# runner suite R-block scratch outputs (test_ftai_e2e_runner.py redirects
+# mod.OUT to these fixed names relative to the repo root)
+ftai_runner_test_*.txt
