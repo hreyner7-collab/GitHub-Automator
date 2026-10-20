@@ -181,13 +181,26 @@ check("A8 honesty+stream carries the honest record",
 check("A8 honesty+stream keeps the client model id",
       isinstance(a8_raw, str) and json.loads(a8_raw).get("model") == LION, a8_raw[:60])
 
-# A4: no-tools passthrough is byte-identical forwarding
-original = {"model": "fta/meow/gpt-4x-echo", "max_tokens": 50,
+# A4: no-tools passthrough is byte-identical forwarding (exposed model only:
+# the five-model door is pinned separately below)
+original = {"model": "fta/lion/gpt-6-astra", "max_tokens": 50,
             "messages": [{"role": "user", "content": "hi"}],
             "temperature": 0.7, "top_p": 0.9}
 st, echoed = post(original)
 check("A4 passthrough forwards unchanged", st == 200 and echoed == original,
       json.dumps(echoed)[:200])
+
+# A4b: five-model door — a chat request for a NON-exposed model is refused
+# at the shim with the upstream-style 404 model_not_found, never forwarded
+st, refused = post({"model": "fta/meow/gpt-4x-not-exposed", "max_tokens": 10,
+                    "messages": [{"role": "user", "content": "hi"}]})
+try:
+    _ref = json.loads(refused) if isinstance(refused, (str, bytes)) else refused
+except Exception:
+    _ref = {}
+check("A4b non-exposed model refused at the door", st == 404
+      and _ref.get("error", {}).get("code") == "model_not_found",
+      f"st={st} {json.dumps(_ref)[:160]}")
 
 READ_FILE_TOOL = {"type": "function", "function": {"name": "read_file",
         "description": "Read a text file from this project",

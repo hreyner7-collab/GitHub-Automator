@@ -384,6 +384,34 @@ def _filter_models_list(raw):
     listing["data"] = filtered
     return json.dumps(listing).encode()
 
+def _synthetic_models_listing():
+    """Deterministic owner listing used when the upstream cannot supply a
+    usable catalog (error, non-listing, or a catalog with none of the
+    owner's models): the five-model selection must never depend on the
+    upstream's mood, and must look identical on any client base path."""
+    return {"object": "list", "data": [
+        {"id": i, "object": "model", "created": 0,
+         "owned_by": "market/FreeTheAI",
+         "tools": ("native" if i in TOOL_CAPABLE_NATIVE else "shim")}
+        for i in EXPOSED_MODELS]}
+
+def _is_models_path(path):
+    """Any path shape whose last segment is 'models' counts as a listing
+    request (e.g. /v1/models, /v1/models/, /models): a client configured
+    with a different base path must still receive the EXPOSED_MODELS-only
+    listing, not the ~120-model upstream catalog."""
+    return path.split("?", 1)[0].rstrip("/").split("/")[-1] == "models"
+
+def _model_not_found(model):
+    """Upstream-style 404 body for any model outside the owner's allowlist:
+    the five-model contract is enforced, not just advertised."""
+    return {"error": {"code": "model_not_found",
+                      "type": "invalid_request_error",
+                      "message": (f"model \"{model}\" was not found. "
+                                  "This endpoint serves only the owner's "
+                                  "exposed model list; use a model ID from "
+                                  "the /v1/models listing.")}}
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -411,11 +439,24 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        st, body, hdrs = forward(self.path, None, self._key())
-        if self.path.split("?", 1)[0].rstrip("/") == "/v1/models":
+        if _is_models_path(self.path):
+            st, body, hdrs = forward(self.path, None, self._key())
             # filter on any status: the helper itself passes through bodies
             # that are not parseable model listings (errors, HTML, etc.)
             body = _filter_models_list(body)
+            try:
+                listed = json.loads(body.decode())
+            except Exception:
+                listed = {}
+            if not (isinstance(listed, dict)
+                    and listed.get("object") == "list" and listed.get("data")):
+                # empty/error upstream listing -> serve the deterministic
+                # owner listing (a client on any base path must see exactly
+                # the owner's five models)
+                st, body = 200, json.dumps(_synthetic_models_listing()).encode()
+            self._copy(st, body, hdrs)
+            return
+        st, body, hdrs = forward(self.path, None, self._key())
         self._copy(st, body, hdrs)
 
     def do_POST(self):
@@ -438,6 +479,11 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         model = req_body.get("model", "")
+        if not (isinstance(model, str) and model in EXPOSED_MODELS):
+            # five-model contract is enforced at the door: no request to a
+            # model the owner did not expose is forwarded upstream
+            self._reply(404, _model_not_found(model))
+            return
         tools = req_body.get("tools") or []
         force = str(self.headers.get("x-ftai-force-emu", "")).lower() in ("1", "true")
         should_emu = bool(tools) and (force or any(tag in model for tag in EMU_MARKER))

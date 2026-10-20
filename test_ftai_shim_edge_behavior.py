@@ -112,16 +112,17 @@ ok_no_mix = all(city in (results[i] or "") for i, city in enumerate(cities))
 check("E3 no city cross-contamination", ok_no_mix,
       " | ".join((r or "none")[:80] for r in results))
 
-# E4: GET /v1/models relays the upstream STATUS (203!), and the listing body
-# is filtered to the shim's exposed-model allowlist (EXPOSED_MODELS — the
-# user-chosen three, 2026-10-19). The edge-mock id is not exposed, so the
-# shim correctly serves an empty listing: status relayed, body allowlisted.
+# E4: GET /v1/models on an upstream listing that carries NONE of the owner's
+# models (upstream 203, junk id only) must still serve the deterministic
+# owner listing: model selection is the owner's five, on any base path.
 with urllib.request.urlopen(f"http://127.0.0.1:{SHIM_PORT}/v1/models", timeout=15) as resp:
     body = json.loads(resp.read())
     st = resp.status
-check("E4 GET relays status, filters listing to exposed models",
-      st == 203 and body == {"object": "list", "data": []},
-      f"st={st} body={json.dumps(body)[:80]}")
+check("E4 models listing is always the owner's five",
+      st == 200 and body.get("object") == "list"
+      and [m.get("id") for m in body["data"]] == list(mod.EXPOSED_MODELS)
+      and all(m.get("tools") in ("native", "shim") for m in body["data"]),
+      f"st={st} ids={[m.get('id') for m in body.get('data', [])]}")
 
 # E5: malformed client fields degrade instead of crashing the handler
 garbage_ok = False
