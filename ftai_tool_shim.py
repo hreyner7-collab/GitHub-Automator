@@ -72,6 +72,7 @@ EXPOSED_MODELS = (
     "fta/lion/gpt-6-luna",        # GPT-6 Luna
     "fta/lion/gpt-6-astra",       # GPT Astra 6
     "fta/lion/claude-opus-5-5",   # Opus 5.5, strongest proven-with-tools resident
+    "fta/lion/claude-fable-5.1",  # Fable 5.1 (re-added on owner's request)
 )
 
 # Measured-won policy constants: each value here is verified working
