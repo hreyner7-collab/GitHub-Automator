@@ -85,10 +85,10 @@ class AdversarialShimTest(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, e.read()
 
-    # fta/lion/claude-fable-5.1 was the old fake id; the five-model door now enforces real
+    # fta/lion/claude-opus-5-5 was the old fake id; the five-model door now enforces real
     # exposed ids, so the suite rides the owner's Fable 5.1 listing entry
     def _chat(self, **kw):
-        body = {"model": "fta/lion/claude-fable-5.1", "messages": kw.get("messages"), "tools": kw.get("tools", [])}
+        body = {"model": "fta/lion/claude-opus-5-5", "messages": kw.get("messages"), "tools": kw.get("tools", [])}
         body.update({k: v for k, v in kw.items() if k in ("stream",)})
         return self._post(body)
 
@@ -121,7 +121,7 @@ class AdversarialShimTest(unittest.TestCase):
 
     # 3. multimodal list content on the user message ------------------------
     def test_list_content_user_message_completes(self):
-        QUEUE["fta/lion/claude-fable-5.1"] = [self._resident("42")]
+        QUEUE["fta/lion/claude-opus-5-5"] = [self._resident("42")]
         st, body = self._chat(messages=[
             {"role": "user", "content": ["plain text part",
              {"type": "text", "text": "What is 2+2?"}]}],
@@ -132,7 +132,7 @@ class AdversarialShimTest(unittest.TestCase):
 
     # 4. non-dict entries inside the history list ---------------------------
     def test_non_dict_history_entries_do_not_crash(self):
-        QUEUE["fta/lion/claude-fable-5.1"] = [self._resident("ok")]
+        QUEUE["fta/lion/claude-opus-5-5"] = [self._resident("ok")]
         st, body = self._chat(messages=[
             {"role": "user", "content": "What is 2+2?"},
             "garbage-string-entry"],
@@ -141,7 +141,7 @@ class AdversarialShimTest(unittest.TestCase):
 
     # 5. SSE with a resident reply missing finish_reason --------------------
     def test_stream_missing_finish_reason_still_serves_sse(self):
-        QUEUE["fta/lion/claude-fable-5.1"] = [(200, {"choices": [{"message":
+        QUEUE["fta/lion/claude-opus-5-5"] = [(200, {"choices": [{"message":
             {"role": "assistant", "content": "hello"}}]})]
         st, body = self._chat(messages=[{"role": "user", "content": "hi"}], stream=True,
                               tools=self._dummy_tool())
@@ -151,7 +151,7 @@ class AdversarialShimTest(unittest.TestCase):
 
     # 6. refusal-retry must not adopt an unusable fresh sample ---------------
     def test_retry_keeps_good_answer_when_fresh_sample_is_empty(self):
-        QUEUE["fta/lion/claude-fable-5.1"] = [
+        QUEUE["fta/lion/claude-opus-5-5"] = [
             self._resident("I cannot access that information."),
             self._resident(""),  # fresh sample: empty content, non-refusing
         ]
@@ -161,10 +161,10 @@ class AdversarialShimTest(unittest.TestCase):
         got = json.loads(body)
         self.assertEqual(got["choices"][0]["message"]["content"],
                          "I cannot access that information.")
-        self.assertEqual(got["model"], "fta/lion/claude-fable-5.1")
+        self.assertEqual(got["model"], "fta/lion/claude-opus-5-5")
 
     def test_retry_keeps_good_answer_when_fresh_choices_empty(self):
-        QUEUE["fta/lion/claude-fable-5.1"] = [
+        QUEUE["fta/lion/claude-opus-5-5"] = [
             self._resident("I cannot access that information."),
             (200, {"choices": []}),
         ]
@@ -197,13 +197,13 @@ class AdversarialShimTest(unittest.TestCase):
                                           json.dumps({"expression": str(i)}))
                   for i in (4, 5)]
         QUEUE["z/planner"] = [self._planner_resp(calls1), self._planner_resp(calls2)]
-        QUEUE["fta/lion/claude-fable-5.1"] = [self._resident("done")]
+        QUEUE["fta/lion/claude-opus-5-5"] = [self._resident("done")]
         st, body = self._chat(messages=[{"role": "user", "content": "summarize."}],
                               tools=self._dummy_tool())
         self.assertEqual(st, 200)
         got = json.loads(body)
         self.assertEqual(got["choices"][0]["message"]["content"], "done")
-        resreq = CAPTURE.get("fta/lion/claude-fable-5.1") or {}
+        resreq = CAPTURE.get("fta/lion/claude-opus-5-5") or {}
         txt = (resreq.get("messages") or [{}])[0].get("content") or ""
         self.assertTrue(txt.startswith("Quick context: the data I have on hand says "), txt[:300])
         self.assertIn("calc_1: 1 = 1 | calc_2: 2 = 2 | calc_3: 3 = 3 | calc_4: 4 = 4", txt)
@@ -217,7 +217,7 @@ class AdversarialShimTest(unittest.TestCase):
         calls2 = [self._planner_tool_call("c4", "calc_4",
                                           json.dumps({"expression": "4"}))]
         QUEUE["z/planner"] = [self._planner_resp(calls1), self._planner_resp(calls2)]
-        QUEUE["fta/lion/claude-fable-5.1"] = [self._resident("done")]
+        QUEUE["fta/lion/claude-opus-5-5"] = [self._resident("done")]
         st, _ = self._chat(messages=[{"role": "user", "content": "summarize."}],
                            tools=self._dummy_tool())
         self.assertEqual(st, 200)
@@ -231,14 +231,14 @@ class AdversarialShimTest(unittest.TestCase):
         calls = [self._planner_tool_call("c1", "local_get_time", "{}"),
                  self._planner_tool_call("c2", "make_widget", "{}")]
         QUEUE["z/planner"] = [self._planner_resp(calls)]
-        QUEUE["fta/lion/claude-fable-5.1"] = [self._resident("done")]
+        QUEUE["fta/lion/claude-opus-5-5"] = [self._resident("done")]
         st, body = self._chat(messages=[{"role": "user",
                                          "content": "Clock it and fix the fence."}],
                               tools=self._dummy_tool())
         self.assertEqual(st, 200)
         got = json.loads(body)
         self.assertEqual(got["choices"][0]["message"]["content"], "done")
-        out = CAPTURE.get("fta/lion/claude-fable-5.1") or {}
+        out = CAPTURE.get("fta/lion/claude-opus-5-5") or {}
         txt = (out.get("messages") or [{}])[0].get("content") or ""
         self.assertTrue(txt.startswith("Quick context: the data I have on hand says "),
                         txt[:300])
@@ -272,7 +272,7 @@ class AdversarialShimTest(unittest.TestCase):
         got = json.loads(body)
         self.assertEqual(got["choices"][0]["message"]["content"], expected)
         # the fast path fired: no resident-leg outbound request exists
-        self.assertNotIn("fta/lion/claude-fable-5.1", CAPTURE)
+        self.assertNotIn("fta/lion/claude-opus-5-5", CAPTURE)
 
     # 8. planner 200 with malformed tool_calls shapes must not crash --------
     # 9. passthrough surface: GET forward, non-chat POST, junk lengths ------
@@ -316,21 +316,21 @@ class AdversarialShimTest(unittest.TestCase):
 
     # 10. handover fallback paths through the real handler ------------------
     def test_no_messages_completes_with_fallback_task(self):
-        QUEUE["fta/lion/claude-fable-5.1"] = [self._resident("done")]
+        QUEUE["fta/lion/claude-opus-5-5"] = [self._resident("done")]
         st, _ = self._chat(messages=[], tools=self._dummy_tool())
         self.assertEqual(st, 200)
-        resreq = CAPTURE.get("fta/lion/claude-fable-5.1") or {}
+        resreq = CAPTURE.get("fta/lion/claude-opus-5-5") or {}
         self.assertEqual(resreq.get("messages"),
                          [{"role": "user", "content": "answer the request."}])
 
     def test_prior_tool_history_rendered_as_facts(self):
-        QUEUE["fta/lion/claude-fable-5.1"] = [self._resident("done")]
+        QUEUE["fta/lion/claude-opus-5-5"] = [self._resident("done")]
         st, _ = self._chat(messages=[
             {"role": "user", "content": "My form?"},
             {"role": "tool", "content": "record: ok"}],
             tools=self._dummy_tool())
         self.assertEqual(st, 200)
-        resreq = CAPTURE.get("fta/lion/claude-fable-5.1") or {}
+        resreq = CAPTURE.get("fta/lion/claude-opus-5-5") or {}
         txt = (resreq.get("messages") or [{}])[0].get("content") or ""
         self.assertTrue(txt.startswith("Quick context: I asked: My form?"), txt[:300])
         self.assertIn("Then the record for the filled form came back: record: ok", txt)
@@ -347,13 +347,13 @@ class AdversarialShimTest(unittest.TestCase):
     def test_planner_tool_calls_non_dict_entries_do_not_crash(self):
         QUEUE["z/planner"] = [(200, {"choices": [{"message": {
             "content": None, "tool_calls": [42, "x"]}}]})]
-        QUEUE["fta/lion/claude-fable-5.1"] = [self._resident("ok")]
+        QUEUE["fta/lion/claude-opus-5-5"] = [self._resident("ok")]
         st, _ = self._chat(messages=[{"role": "user", "content": "hi"}],
                            tools=self._dummy_tool())
         self.assertEqual(st, 200)
 
     def test_retry_adopts_usable_fresh_sample(self):
-        QUEUE["fta/lion/claude-fable-5.1"] = [
+        QUEUE["fta/lion/claude-opus-5-5"] = [
             self._resident("I do not have access to that."),
             self._resident("The answer is 42."),
         ]
@@ -361,7 +361,7 @@ class AdversarialShimTest(unittest.TestCase):
                               tools=self._dummy_tool())
         got = json.loads(body)
         self.assertEqual(got["choices"][0]["message"]["content"], "The answer is 42.")
-        self.assertEqual(got["model"], "fta/lion/claude-fable-5.1")
+        self.assertEqual(got["model"], "fta/lion/claude-opus-5-5")
 
 
 if __name__ == "__main__":

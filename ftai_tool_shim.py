@@ -69,9 +69,9 @@ TOOL_CAPABLE_NATIVE = (
 EXPOSED_MODELS = (
     "fta/zai/glm-5.3",            # native tool_calls (verified live 2026-10-20)
     "fta/zai/glm-5.3-flash",      # native tool_calls (verified live 2026-10-20)
-    "fta/lion/claude-fable-5.1",  # Fable 5.1
-    "fta/lion/gpt-6-astra",       # flagship tier on the catalog
-    "fta/lion/claude-opus-5-5",   # strongest proven-with-tools resident (G5 composite)
+    "fta/lion/gpt-6-luna",        # GPT-6 Luna
+    "fta/lion/gpt-6-astra",       # GPT Astra 6
+    "fta/lion/claude-opus-5-5",   # Opus 5.5, strongest proven-with-tools resident
 )
 
 # Measured-won policy constants: each value here is verified working
