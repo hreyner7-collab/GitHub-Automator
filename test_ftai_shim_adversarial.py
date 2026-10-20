@@ -281,10 +281,13 @@ class AdversarialShimTest(unittest.TestCase):
             st, body = r.status, r.read()
         self.assertEqual(st, 200)
         # exposed-model allowlist filter: only the opus entry survives;
-        # the junk id is stripped from the client-visible listing
+        # the junk id is stripped from the client-visible listing. Each
+        # entry carries the requested tool-capability marker (lions ride
+        # the shim loop: "shim").
         self.assertEqual(json.loads(body),
                          {"object": "list",
-                          "data": [{"id": "fta/lion/claude-opus-5-5"}]})
+                          "data": [{"id": "fta/lion/claude-opus-5-5",
+                                    "tools": "shim"}]})
 
     def test_non_chat_post_forwarded_verbatim(self):
         st, body = self._post({"ping": 1})

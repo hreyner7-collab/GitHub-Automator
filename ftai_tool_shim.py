@@ -58,10 +58,20 @@ EMU_MARKER = ("/lion/", "/dog/")
 # Models exposed to clients on GET /v1/models (user-chosen allowlist, kept in
 # the user's requested order). Everything else the upstream lists is hidden
 # from the listing; chat requests to other routes still forward unchanged.
+# Verified native tool-callers among the exposed routes (live-verified:
+# fta/zai/glm-5.3 and fta/zai/glm-5.3-flash each returned a real tool_call
+# round-trip 2026-10-20).
+TOOL_CAPABLE_NATIVE = (
+    "fta/zai/glm-5.3",
+    "fta/zai/glm-5.3-flash",
+)
+
 EXPOSED_MODELS = (
-    "fta/lion/claude-opus-5-5",   # strongest proven-with-tools resident (G5 composite)
-    "fta/lion/gpt-6-astra",       # newest flagship tier on the catalog
+    "fta/zai/glm-5.3",            # native tool_calls (verified live 2026-10-20)
+    "fta/zai/glm-5.3-flash",      # native tool_calls (verified live 2026-10-20)
     "fta/lion/claude-fable-5.1",  # Fable 5.1
+    "fta/lion/gpt-6-astra",       # flagship tier on the catalog
+    "fta/lion/claude-opus-5-5",   # strongest proven-with-tools resident (G5 composite)
 )
 
 # Measured-won policy constants: each value here is verified working
@@ -362,8 +372,16 @@ def _filter_models_list(raw):
         return raw
     if not (isinstance(listing, dict) and isinstance(listing.get("data"), list)):
         return raw
-    listing["data"] = [m for m in listing["data"]
-                       if isinstance(m, dict) and m.get("id") in EXPOSED_MODELS]
+    filtered = [m for m in listing["data"]
+                if isinstance(m, dict) and m.get("id") in EXPOSED_MODELS]
+    # Client-visible tool capability per exposed model (user-requested marker):
+    #  "native" — the model itself emits OpenAI tool_calls; the client executes them
+    #  "shim"   — the shim's own loop executes tools on the request and returns a
+    #             plain answer (coding-class CONTENT on lion routes still faces
+    #             the gateway's resident-leg filter; weather/fetch/time/math ride)
+    for m in filtered:
+        m["tools"] = ("native" if m.get("id") in TOOL_CAPABLE_NATIVE else "shim")
+    listing["data"] = filtered
     return json.dumps(listing).encode()
 
 class Handler(BaseHTTPRequestHandler):
