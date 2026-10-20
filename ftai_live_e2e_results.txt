@@ -1,7 +1,0 @@
-18:43:19  note: FTAI_API_KEY not in this env; shim reads registry fallback itself
-18:43:19  wait_for_reset: SKIPPED (re-measure at open window; build c28a942 shim bytes)
-18:43:28  L1 lion plain chat: HTTP 200
-18:43:48  L2 lion weather: PASS (paraphrased live reading, temp=17.2) — ...The weather in Tokyo right now is 17.2 C, partly cloudy, with 82% humidity and wind at 2.3 km/h.
-18:44:03  L3 dog weather: PASS (paraphrased live reading, temp=13.2) — ...Paris right now: 13.2°C, light rain, 87% humidity, with wind at 8.0 km/h.
-18:44:10  L4 unknown-tool honesty: HTTP 200; no-fake-data PASS Tool 'make_coffee' is not available in this assistant. Capabilities that DO work: weather lookup (city), web page fetch 
-18:44:10  RESULT: {'L2 lion': 'PASS temp=17.2C', 'L3 dog': 'PASS temp=13.2C', 'L4': 'PASS', 'overall': 'PASS'}
