@@ -720,6 +720,14 @@ def _file_attempt_note(fa: dict) -> str:
                 % str(fa.get("page") or "?")[:80])
     if fa.get("click_error"):
         return "clicking %r failed: %s" % (fa.get("control"), fa["click_error"])
+    if fa.get("rejected"):
+        return ("its file dialog downloaded %s and none of it is real model "
+                "geometry" % ", ".join(str(x)[:40] for x in fa["rejected"][:3]))
+    if fa.get("files"):
+        return ("its file dialog listed %s, and none of them started a download"
+                % ", ".join("%r (%s)" % (str(f.get("name", ""))[:40],
+                                         f.get("size") or "no size")
+                            for f in fa["files"][:3]))
     return ("clicked %r%s and waited for a download that never started"
             % (fa.get("control"),
                (" then %r" % fa["step2"]) if fa.get("step2") else ""))

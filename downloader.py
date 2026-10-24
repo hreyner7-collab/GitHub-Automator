@@ -250,6 +250,238 @@ FIND_DIALOG_JS = r"""
     }
 """
 
+# The dialog that "View STL/CAD Files" opens lists each printable file as a row,
+# and a row's ONLY download control is an icon with no text at all:
+#     <div class="model-item"> … <i class="iconfont icon-download"></i></div>
+# Both finders above only answer with an element whose TEXT matches, so they can
+# never see it. Live 2026-10-24 on /model-detail/ender-3-cable-chain: the dialog
+# held a real STL (5.94 KB) and a 3MF, both finders answered null for the
+# download wording, step 2 clicked nothing, no download started, and a model with
+# perfectly good files was skipped as "no usable model file came back from the
+# page" — the note every one of the 2026-10-23 run's 20 skips carried.
+# So the dialog is read by STRUCTURE instead of by words. One constant, three
+# calls: q={} lists what the dialog holds, q={index:N} locates (or, with
+# force, DOM-clicks) that row's own icon, q={all:true} does the same for the
+# dialog's folder-level "download everything" control.
+MODEL_FILES_JS = r"""
+    (q) => {
+        const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+        const ICON = '.icon-download, [class*=icon-download]';
+        const toBytes = (t) => {
+            const m = /([0-9][0-9.,]*)\s*(gb|mb|kb|gib|mib|kib|b)\b/i.exec(clean(t));
+            if (!m) return 0;
+            const n = parseFloat(m[1].replace(/\s/g, '').replace(',', '.'));
+            if (!(n > 0)) return 0;
+            const u = m[2].toLowerCase();
+            return Math.round(n * (/^g/.test(u) ? 1073741824
+                                 : /^m/.test(u) ? 1048576
+                                 : /^k/.test(u) ? 1024 : 1));
+        };
+        const panels = [...document.querySelectorAll(
+            '.el-dialog,.el-drawer,[role=dialog]')]
+            .filter(d => d.getBoundingClientRect().width > 0);
+        const roots = panels.length ? panels
+            : [...document.querySelectorAll(
+                  '.model-download-wrap,.folder-box,.folder-files')];
+        if (!roots.length) return {error: 'no file dialog is open'};
+        const rows = [];
+        const seen = new Set();
+        // The name is the row's own label. On this layout the element holding it
+        // (.model-name) ALSO holds the size, so the size is subtracted rather
+        // than trusted as part of the name.
+        const nameOf = (row, size) => {
+            for (const sel of ['.name', '.model-name', '.file-name', '.title']) {
+                const el = row.querySelector(sel);
+                if (!el) continue;
+                const t = clean(el.innerText);
+                if (!t) continue;
+                if (size && t.endsWith(size))
+                    return clean(t.slice(0, t.length - size.length));
+                return t;
+            }
+            return clean(row.innerText).slice(0, 70);
+        };
+        for (const root of roots) {
+            for (const row of root.querySelectorAll(
+                    '.model-item,.file-item,.folder-files > *,.dialog-file-list > *')) {
+                if (seen.has(row)) continue;
+                seen.add(row);
+                const r = row.getBoundingClientRect();
+                const cs = getComputedStyle(row);
+                // A row the browser does not draw is not a file: the listing keeps
+                // its templates mounted, and clicking one starts nothing.
+                if (r.width < 20 && r.height < 20) continue;
+                if (cs.display === 'none' || cs.visibility !== 'visible') continue;
+                const sizeEl = row.querySelector('.size,.file-size,.model-size');
+                const size = clean(sizeEl ? sizeEl.innerText : '');
+                rows.push({row, icon: row.querySelector(ICON), size,
+                           bytes: toBytes(size), name: nameOf(row, size)});
+            }
+        }
+        const find_all = () => {
+            const drawn = (el) => {
+                if (!el) return false;
+                const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+                return r.width > 0 && r.height > 0 && cs.display !== 'none'
+                    && cs.visibility === 'visible';
+            };
+            for (const root of roots) {
+                const icon = root.querySelector('.folder-operate ' + ICON);
+                if (drawn(icon))
+                    return {el: icon, label: clean(icon.title) || 'download all'};
+                const btn = [...root.querySelectorAll('button,a,.el-button')]
+                    .find(b => drawn(b)
+                        && /download all|tout t[ée]l[ée]charger|descargar todo/i
+                            .test(clean(b.innerText)));
+                if (btn) return {el: btn, label: clean(btn.innerText)};
+            }
+            return null;
+        };
+        const wants = q || {};
+        let target = null;
+        const asked = wants.all || typeof wants.index === 'number';
+        if (wants.all) target = find_all();
+        else if (typeof wants.index === 'number') {
+            const it = rows[wants.index];
+            if (!it) return {error: 'row ' + wants.index + ' is gone'};
+            target = {el: it.icon, label: it.name};
+        }
+        if (asked && (!target || !target.el))
+            return {error: 'no control to click: ' + ((target || {}).label || '')};
+        if (target) {
+            const el = target.el;
+            try { el.scrollIntoView({block: 'center'}); } catch (e) {}
+            if (wants.force) {
+                try { el.click(); } catch (e) { return {error: String(e).slice(0, 90)} }
+                return {clicked: true, name: target.label || ''};
+            }
+            const r = el.getBoundingClientRect();
+            const x = Math.round(r.x + r.width / 2), y = Math.round(r.y + r.height / 2);
+            const top = document.elementFromPoint(x, y);
+            return {x, y, name: target.label || '',
+                    hit: !!top && (top === el || el.contains(top) || top.contains(el)),
+                    inView: r.width > 0 && r.height > 0
+                        && y >= 0 && y < window.innerHeight};
+        }
+        const point = (el) => {
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            if (r.width < 3 || r.height < 3) return null;
+            return {x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2)};
+        };
+        const al = find_all(), ap = al ? point(al.el) : null;
+        return {rows: rows.map((it, i) => ({i, name: it.name, size: it.size,
+                bytes: it.bytes, icon: point(it.icon)})),
+                all: ap ? {x: ap.x, y: ap.y, name: al.label} : null};
+    }
+"""
+
+
+def _dialog_files(page) -> dict:
+    """What the file dialog really holds: its rows (name, size, its own icon's
+    point) and its folder-level control. Retries while the dialog is still
+    mounting; returns {"error": …} when there is nothing to read."""
+    got: dict = {}
+    for _ in range(12):
+        try:
+            got = page.evaluate(MODEL_FILES_JS, {}) or {}
+        except Exception as e:
+            return {"error": str(e)[:120]}
+        if got.get("rows"):
+            return got
+        if str(got.get("error", "")).startswith("no file dialog"):
+            return got            # no dialog: waiting will not conjure one
+        page.wait_for_timeout(500)
+    return got
+
+
+def _dialog_click(page, where: dict) -> dict:
+    """Click one control of the file dialog — a row's icon ({"index": i}) or the
+    folder-level one ({"all": True}) — with the real mouse when the page says the
+    point is reachable, and through the DOM when it is not: the dialog scrolls
+    its own list, so a row below the fold has no point a mouse can be put on."""
+    last: dict = {}
+    for force in (False, True):
+        try:
+            got = page.evaluate(MODEL_FILES_JS, dict(where, force=force)) or {}
+        except Exception as e:
+            return {"error": str(e)[:120]}
+        if got.get("error"):
+            return got
+        last = got
+        if force:
+            return got
+        if got.get("hit") and got.get("inView"):
+            try:
+                page.mouse.click(got["x"], got["y"])
+                return {"clicked": True, "name": got.get("name", ""), "mouse": True}
+            except Exception as e:
+                return {"error": str(e)[:120]}
+    return {"error": "not reachable", "name": str(last.get("name", ""))[:60]}
+
+
+def _files_from_dialog(page, downloads, slug: str, model_url: str, report: dict,
+                       verify, wait_ms: int = 500, patience: int = 30,
+                       max_rows: int = 3) -> str | None:
+    """Take the model file out of Creality's file dialog and return the saved path
+    of the first answer that verifies as real geometry; None when nothing did.
+
+    Rows are tried largest-first: a listing keeps a few-KB preview stub next to
+    the real print file, and a DOM-order click is how a 5 KB stand-in was being
+    fetched for a 2 MB part. Every saved file must pass `verify` before it is
+    returned, so an unverified file is never handed to the uploader, and each
+    refusal is named in the report — the run can then say WHICH file was junk
+    instead of "no usable model file came back from the page".
+    """
+    got = _dialog_files(page)
+    rows = got.get("rows") or []
+    if not rows:
+        report["dialog"] = str(got.get("error", "the dialog listed no files"))[:120]
+        return None
+    report["files"] = [{"name": r.get("name", ""), "size": r.get("size", "")}
+                       for r in rows][:10]
+    clickable = sorted((r for r in rows if r.get("icon")),
+                       key=lambda r: -(r.get("bytes") or 0))
+    attempts: list = [{"index": r["i"]} for r in clickable[:max_rows]]
+    if got.get("all"):
+        attempts.append({"all": True})
+    report["tried_files"] = []
+    rejected: list = []
+    mark = len(downloads)
+    for where in attempts:
+        clicked = _dialog_click(page, where)
+        report["tried_files"].append(
+            {"name": str(clicked.get("name", ""))[:60],
+             "how": "mouse" if clicked.get("mouse") else
+                    ("dom" if clicked.get("clicked") else ""),
+             "error": str(clicked.get("error", ""))[:90]})
+        if not clicked.get("clicked"):
+            continue
+        left = patience
+        while len(downloads) == mark and left:
+            page.wait_for_timeout(wait_ms)
+            left -= 1
+        if len(downloads) == mark:
+            continue
+        page.wait_for_timeout(600)     # let "download all" finish queueing its rest
+        new = downloads[mark:]
+        mark = len(downloads)
+        for d in new:
+            fname = (getattr(d, "suggested_filename", "") or (slug + ".stl"))
+            fname = fname.replace("/", "_")
+            path = os.path.join(DOWNLOADS_DIR, fname)
+            try:
+                d.save_as(path)
+            except Exception as e:
+                report["save_error"] = str(e)[:120]
+                continue
+            if os.path.exists(path) and verify([path], model_url):
+                return path
+            rejected.append(fname)
+    if rejected:
+        report["rejected"] = rejected[:6]
+    return None
+
 
 def _slug(name: str) -> str:
     return re.sub(r"[^\w-]", "_", name.lower())[:40]
@@ -1424,15 +1656,14 @@ def _fetch_creality(url: str) -> dict:
             # browser behind 20 identical skips on 2026-10-23.
             file_try: dict = {"control": "", "step2": "", "page": "",
                               "downloads": 0, "signin": False, "navigated": False}
-            # The control's LABEL is in the page's own language, and on the
-            # French layout (2026-10-09: 6 photos came back but no model file,
-            # so the mandatory proof could not be built) the flow is TWO steps:
-            #   1. "Voir les fichiers STL/CAO" (View STL/CAD files) opens a dialog
-            #      listing the printable files;
-            #   2. that dialog's own control — "Tout télécharger" (Download all)
-            #      or a "Télécharger 3MF" item — starts the download.
-            # An English-layout page offers "Download 3MF"/"View STL/CAD Files"
-            # directly, so both are tried, in the site's own wording.
+            # The control's LABEL is in the page's own language, and most layouts
+            # are TWO steps: "Voir les fichiers STL/CAO" (View STL/CAD files) opens
+            # a dialog listing the printable files, and a control INSIDE that
+            # dialog starts the download. The dialog's controls are icons with no
+            # text (see MODEL_FILES_JS), so it is worked by structure; an
+            # English-layout page that offers "Download 3MF" as a menu item, or
+            # starts the download from the first click alone, is still matched by
+            # words and by the wait below.
             main = _find(DOWNLOAD_MAIN_RE)
             file_try["control"] = (main or {}).get("t", "")
             if main:
@@ -1444,27 +1675,40 @@ def _fetch_creality(url: str) -> dict:
                 if _left_the_model():
                     file_try["navigated"] = True
                 if not downloads and not file_try["navigated"]:
-                    for _ in range(8):
-                        item = (_find_in_panel(DOWNLOAD_3MF_RE)
-                                or _find_in_panel(DOWNLOAD_VERB_RE)
-                                or _find_in_panel(r"\b3MF\b"))
-                        if item and item.get("t") != main.get("t"):
-                            file_try["step2"] = item.get("t", "")
-                            try:
-                                page.mouse.click(item["x"], item["y"])
-                            except Exception as e:
-                                file_try["click_error"] = str(e)[:120]
+                    # First the dialog read by STRUCTURE (its rows have no text),
+                    # then — only when there was no dialog at all — the older
+                    # layout's menu item, which DOES carry the site's wording.
+                    from uploader import _verify_model_files as _verify
+                    stl_path = _files_from_dialog(page, downloads, slug, model_url,
+                                                  file_try, _verify)
+                    if stl_path is None and not file_try.get("files"):
+                        for _ in range(8):
+                            item = (_find_in_panel(DOWNLOAD_3MF_RE)
+                                    or _find_in_panel(DOWNLOAD_VERB_RE)
+                                    or _find_in_panel(r"\b3MF\b"))
+                            if item and item.get("t") != main.get("t"):
+                                file_try["step2"] = item.get("t", "")
+                                try:
+                                    page.mouse.click(item["x"], item["y"])
+                                except Exception as e:
+                                    file_try["click_error"] = str(e)[:120]
+                                break
+                            page.wait_for_timeout(1000)
+                if (stl_path is None and not file_try.get("rejected")
+                        and not file_try.get("files")):
+                    # Nothing had a chance to wait yet: this is the no-dialog
+                    # layout, where the click itself starts the download. A
+                    # dialog that WAS read has already been given its own
+                    # patience, so it is not waited on twice.
+                    for _ in range(45):
+                        if downloads:
                             break
                         page.wait_for_timeout(1000)
-                for _ in range(45):
                     if downloads:
-                        break
-                    page.wait_for_timeout(1000)
-                if downloads:
-                    d = downloads[0]
-                    fname = (d.suggested_filename or (slug + ".3mf")).replace("/", "_")
-                    stl_path = os.path.join(DOWNLOADS_DIR, fname)
-                    d.save_as(stl_path)
+                        d = downloads[0]
+                        fname = (d.suggested_filename or (slug + ".3mf")).replace("/", "_")
+                        stl_path = os.path.join(DOWNLOADS_DIR, fname)
+                        d.save_as(stl_path)
             file_try["downloads"] = len(downloads)
             file_try["page"] = (page.url or "")[:160]
             file_try["signin"] = bool(SIGNIN_URL_RE.search(page.url or ""))
