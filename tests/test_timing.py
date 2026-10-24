@@ -92,3 +92,33 @@ def test_run_log_write_is_atomic_and_keeps_the_previous_log_on_failure(tmp_path)
         main._write_run_log(log, {"job_id": "broken", "x": Unserializable()})
     # the previous, good log is still there and still readable
     assert json.loads(log.read_text(encoding="utf-8"))["job_id"] == "ok"
+
+
+def test_a_step_mark_times_only_its_own_stretch():
+    """Steps() is how one long function is cut up: each mark measures the
+    stretch since the previous mark, so the marks add up to the call instead of
+    nesting inside each other. Without this the 40 s publish stays one number."""
+    import time
+
+    timing.reset()
+    m = timing.Steps("publish")
+    time.sleep(0.12)
+    m("covers")            # the slow step, on purpose
+    time.sleep(0.02)
+    m("submit")
+    rows = {r["phase"]: r for r in timing.snapshot()["phases"]}
+    assert rows["publish.covers"]["total_s"] >= 0.12 - 0.001
+    assert rows["publish.submit"]["total_s"] < 0.09      # not charged for covers
+    total = sum(r["total_s"] for r in rows.values())
+    assert 0.13 <= total < 0.35                          # they partition, no double count
+    timing.reset()
+
+
+def test_step_marks_lands_in_the_process_ledger_too():
+    """The dashboard answers "what is slow in general" from the process ledger,
+    so a step mark must reach it and not only the current run's table."""
+    timing.reset()
+    m = timing.Steps("fetch")
+    m("gallery")
+    assert any(r["phase"] == "fetch.gallery"
+               for r in timing.process_snapshot()["phases"])

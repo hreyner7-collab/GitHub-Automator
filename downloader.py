@@ -4,6 +4,8 @@ import json
 import requests
 from urllib.parse import urlparse
 
+import timing
+
 # no-derivatives markers: "by-nd", "by-nc-nd", a bare "nd" token, or words
 # (\b keeps "and"/"end" from matching)
 nd_re = re.compile(r"by-nc-nd|by-nd|\bnd\b|no-?deriv", re.I)
@@ -514,11 +516,18 @@ def _render_page(url: str, wait_ms: int = 6000) -> dict:
                 page = await ctx.new_page()
                 await page.goto(url, wait_until="domcontentloaded", timeout=60000)
                 await page.wait_for_timeout(wait_ms)
-                for _ in range(3):  # trigger lazy-loaded gallery images
+                # lazy sections: scroll and stop as soon as the image count stops
+                # growing, instead of a fixed 3 x 1500 ms plus a 500 ms settle on
+                # a page that finished loading in the first screen
+                for _ in range(4):
+                    seen = await page.evaluate("() => document.images.length") or 0
                     await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    await page.wait_for_timeout(1500)
+                    try:
+                        await page.wait_for_function("(n) => document.images.length > n",
+                                                     timeout=1200, arg=seen)
+                    except Exception:
+                        break
                 await page.evaluate("window.scrollTo(0, 0)")
-                await page.wait_for_timeout(500)
                 title = await page.title()
                 desc = await page.evaluate(
                     "() => { const m = document.querySelector('meta[property=\"og:description\"]')"
@@ -734,6 +743,37 @@ def _background_reason(path: str) -> str:
         return ""
 
 
+def _poll(page, budget_ms: int, step_ms: int, cond):
+    """Evaluate cond() now and then every `step_ms` until it is truthy or the
+    budget runs out; returns the last value it produced.
+
+    This is the difference between waiting for a CONDITION and waiting for a
+    NUMBER. The fetch path slept a fixed 8000 ms for the page to render, 3 x 1200
+    ms for lazy sections, 5000 ms after an empty gallery read and 950 ms per
+    gallery click: 18.6 s of the measured 25.3 s fetch was the code sleeping on a
+    clock while the site answered long before (job 20261024-131810). Each of
+    those now exits as soon as its own evidence shows up, and keeps the old
+    figure as the cap, so a slow page still gets exactly the grace it got before.
+    """
+    import time
+    t0 = time.time()
+    got = None
+    while True:
+        got = cond()
+        if got or (time.time() - t0) * 1000.0 >= budget_ms:
+            return got
+        page.wait_for_timeout(step_ms)
+
+
+# How many of ONE listing's photos are fetched at the same time. Each is an
+# independent HTTP GET followed by an independent decode, so waiting for them in
+# a queue buys nothing: eight photos at ~300 ms of CDN latency each cost the run
+# 2.4 s of pure waiting on every single model. Overlapping the waiting changes
+# no decision — the same audit still judges every photo, and the kept set and
+# its order are exactly what the serial loop produced.
+IMAGE_FETCH_WORKERS = 6
+
+
 def _download_images(images: list[str], slug: str, limit: int = 12,
                      strict: bool = True, report: list | None = None) -> list[str]:
     """Download images and keep the usable ones, in the order given.
@@ -747,13 +787,16 @@ def _download_images(images: list[str], slug: str, limit: int = 12,
     set handed to the uploader is exactly the set that can be published.
     """
     import time
+    from concurrent.futures import ThreadPoolExecutor
 
-    def _drop(img_url, why, sink):
-        if sink is not None:
-            sink.append({"url": img_url.split("?")[0][-90:], "reason": why})
+    def _one(item):
+        """Fetch and judge one photo: (path, None) or (None, (url, why))."""
+        i, img_url = item
+        tag = img_url.split("?")[0][-90:]
 
-    paths = []
-    for i, img_url in enumerate(images[:limit]):
+        def _drop(why):
+            return None, (tag, why)
+
         ext = img_url.split("?")[0].split(".")[-1].lower()
         if not ext.isalpha() or len(ext) > 4:
             ext = "jpg"
@@ -768,8 +811,7 @@ def _download_images(images: list[str], slug: str, limit: int = 12,
                 err = "download failed: %s: %s" % (type(e).__name__, str(e)[:120])
                 time.sleep(1.5) if attempt == 0 else None
         if err:
-            _drop(img_url, err, report)
-            continue
+            return _drop(err)
         try:
             why = ""
             if os.path.getsize(p) <= 1024:
@@ -790,13 +832,28 @@ def _download_images(images: list[str], slug: str, limit: int = 12,
             if not why and strict:
                 why = _background_reason(p) or ""    # opportunistic scans: not on a desk or black backdrop
             if why:
-                _drop(img_url, why, report)
                 if p and os.path.exists(p):
                     os.remove(p)
-            else:
-                paths.append(p)
+                return _drop(why)
+            return p, None
         except Exception as e:
-            _drop(img_url, "check failed: %s: %s" % (type(e).__name__, str(e)[:120]), report)
+            return _drop("check failed: %s: %s" % (type(e).__name__, str(e)[:120]))
+
+    want = list(enumerate(images[:limit]))
+    workers = max(1, IMAGE_FETCH_WORKERS)
+    if len(want) > 1 and workers > 1:
+        with ThreadPoolExecutor(max_workers=min(workers, len(want))) as pool:
+            got = list(pool.map(_one, want))
+    else:
+        got = [_one(w) for w in want]
+
+    paths = []
+    for p, drop in got:                    # index order, exactly as the serial loop
+        if drop is not None:
+            if report is not None:
+                report.append({"url": drop[0], "reason": drop[1]})
+        if p:
+            paths.append(p)
     return paths
 
 
@@ -942,14 +999,23 @@ def _fetch_makerworld(model_id: str) -> dict:
                     wait_until="domcontentloaded",
                     timeout=60000,
                 )
-                # Let lazy-loaded images settle (networkidle never fires on MakerWorld
-                # due to constant analytics traffic, so wait on a fixed delay instead)
-                await page.wait_for_timeout(5000)
-                # Scroll to trigger any lazy loading
+                # MakerWorld renders its gallery lazily and its analytics traffic
+                # means networkidle never fires, so wait for the images THEMSELVES
+                # to arrive — capped at the 5 s this used to sleep unconditionally,
+                # plus one poll after scrolling for anything below the fold.
+                try:
+                    await page.wait_for_function("() => document.images.length >= 6",
+                                                 timeout=5000)
+                except Exception:
+                    pass
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await page.wait_for_timeout(1500)
+                try:
+                    _n = await page.evaluate("() => document.images.length") or 0
+                    await page.wait_for_function("(k) => document.images.length > k",
+                                                 timeout=1500, arg=_n)
+                except Exception:
+                    pass
                 await page.evaluate("window.scrollTo(0, 0)")
-                await page.wait_for_timeout(500)
 
                 # Page title → model name (strip MakerWorld's SEO suffixes)
                 title = await page.title()
@@ -1267,6 +1333,10 @@ def _fetch_creality(url: str) -> dict:
     from browser_opener import sync_playwright_auto
     from uploader import ensure_browser, CDP_URL, UPLOAD_VERIFY
 
+    # Per-step timings. main.py times the whole fetch, so without these marks a
+    # slow fetch is one number with nothing to point at.
+    _mark = timing.Steps("fetch")
+
     os.makedirs(DOWNLOADS_DIR, exist_ok=True)
     if not ensure_browser():
         raise RuntimeError("Creality Cloud needs the logged-in debug Chrome: "
@@ -1285,6 +1355,7 @@ def _fetch_creality(url: str) -> dict:
         downloads = []
         page.on("download", lambda d: downloads.append(d))
         try:
+            _mark("connect")
             page.goto(model_url, wait_until="domcontentloaded", timeout=60000)
             # WAIT FOR THE MODEL PAGE, not just any response: a fetch fired right
             # after discovery serves the login/Cloudflare wall first (2026-10-09:
@@ -1299,13 +1370,37 @@ def _fetch_creality(url: str) -> dict:
                     "() => ({t: document.title || '', h1: (document.body.innerText || '').slice(0, 800)})") or {}
                 if "crealitycloud.com" in (page.url or "") and _probe.get("h1", ""):
                     break
-                page.wait_for_timeout(1500)
-            page.wait_for_timeout(8000)
-            for _ in range(3):
+                page.wait_for_timeout(400)
+            # Then wait for the SPA to have RENDERED something usable, not for a
+            # fixed 8 s: the model title plus the first images. A listing that is
+            # ready in 900 ms used to cost 8000 ms of sitting still, on every
+            # model, and a slow one still gets the whole 8 s of grace.
+            try:
+                page.wait_for_function(
+                    """() => {
+                        const h = document.querySelector('h1');
+                        return !!((h && (h.innerText || h.textContent) || '').trim())
+                               && document.images.length >= 3;
+                    }""", timeout=8000)
+            except Exception:
+                pass
+            # Scroll to the bottom and let the lazy sections appear: ask whether
+            # the image count is still growing instead of sleeping 1200 ms three
+            # times over. A page that stops loading after one screen costs one
+            # poll, and the loop is still capped.
+            seen = 0
+            for _ in range(6):
                 page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                page.wait_for_timeout(1200)
+                try:
+                    page.wait_for_function("(n) => document.images.length > n",
+                                           timeout=1200, arg=seen)
+                except Exception:
+                    pass
+                n = page.evaluate("() => document.images.length") or 0
+                if n == seen:
+                    break
+                seen = n
             page.evaluate("window.scrollTo(0, 0)")
-            page.wait_for_timeout(600)
 
             data = page.evaluate("""
                 () => {
@@ -1331,6 +1426,7 @@ def _fetch_creality(url: str) -> dict:
                 }
             """)
 
+            _mark("page")
             # ---- the model's own licence card (see LICENSE_JS). The card is
             # rendered in pieces, so it is read up to three times, waiting
             # between tries, and the first read that actually NAMES a licence
@@ -1364,6 +1460,7 @@ def _fetch_creality(url: str) -> dict:
             lic_icons = list(lic_d.get("icons") or [])
             UPLOAD_VERIFY["license_icons"] = lic_icons[:6]
 
+            _mark("licence")
             # ---- gallery photos: ONLY the model's own gallery images.
             # Measured layout (inspector): the model's gallery block is
             #   div.model-gallery > div.swiper-thumb        (the thumbnail strip)
@@ -1688,11 +1785,23 @@ def _fetch_creality(url: str) -> dict:
                     break                      # two identical reads — the set is stable
                 g = g2
 
+            def _grab_new(_where, budget_ms):
+                """Grab until a NEW creator photo appears or the budget runs out.
+                A slide usually paints long before the flat 950 ms the old code
+                insisted on for every arrow click."""
+                out = {}
+
+                def _once():
+                    gg, ad = _grab(_where)
+                    out["g"], out["added"] = gg, ad
+                    return ad > 0
+                _poll(page, budget_ms, 150, _once)
+                return out["g"], out.get("added", 0)
+
             if not gallery_imgs:
-                # an empty read is usually a page still rendering; give it one more
-                # full settle before concluding the listing has no photos
-                page.wait_for_timeout(5000)
-                g, _ = _grab("empty-retry")
+                # an empty read is usually a page still rendering; keep reading
+                # until a photo appears instead of sleeping the whole 5 s first
+                g, _ = _grab_new("empty-retry", 5000)
                 gallery_scope = g.get("cls") or gallery_scope
 
             for _step in range(12):          # click the next-arrow through the set
@@ -1700,19 +1809,16 @@ def _fetch_creality(url: str) -> dict:
                 if not g.get("next"):
                     break
                 page.mouse.click(g["next"]["x"], g["next"]["y"])
-                page.wait_for_timeout(950)
-                g, added = _grab("arrow")
+                g, added = _grab_new("arrow", 950)
                 gallery_steps += 1
                 stale = stale + 1 if not added else 0
                 if stale >= 3:
                     break
             # a full scroll pass catches anything that only loads in view
             page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            page.wait_for_timeout(1600)
-            g, _ = _grab("scrolled")
+            g, _ = _grab_new("scrolled", 1600)
             page.evaluate("window.scrollTo(0, 0)")
-            page.wait_for_timeout(600)
-            g, _ = _grab("back-to-top")
+            g, _ = _grab_new("back-to-top", 600)
             gallery_scope = g.get("cls") or gallery_scope
             gallery_info = {
                 "scope": gallery_scope, "images": len(gallery_imgs),
@@ -1733,6 +1839,7 @@ def _fetch_creality(url: str) -> dict:
             }
             UPLOAD_VERIFY["gallery"] = gallery_info
 
+            _mark("gallery")
             # ---- SECOND licence read, after the page has fully settled (the
             # first read can land while the card is still unmounted; by now the
             # gallery work has given every piece time to render). It is kept only
@@ -1758,6 +1865,7 @@ def _fetch_creality(url: str) -> dict:
                     if _attempt == 0:
                         page.wait_for_timeout(2000)
 
+            _mark("licence")
             # ---- name: the page's own h1 when it is the model name, else the
             # SEO title with its localised tail stripped (see _model_name_from)
             name = _model_name_from(data.get("title", ""), data.get("h1", ""))
@@ -1771,6 +1879,7 @@ def _fetch_creality(url: str) -> dict:
             gallery_info["dropped"] = dropped[:12]     # why each photo was not kept
             UPLOAD_VERIFY["gallery"] = gallery_info
 
+            _mark("photos")
             # ---- the real model file: split-button 'Download 3MF' (this
             # layout) or 'View STL/CAD Files' -> menu item 'Download 3MF'
             def _find(text_re, min_w=40):
@@ -1849,6 +1958,7 @@ def _fetch_creality(url: str) -> dict:
             file_try["downloads"] = len(downloads)
             file_try["page"] = (page.url or "")[:160]
             file_try["signin"] = bool(SIGNIN_URL_RE.search(page.url or ""))
+            _mark("file")
         finally:
             try:
                 page.close()

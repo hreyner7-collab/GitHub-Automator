@@ -25,6 +25,7 @@ import zipfile
 from playwright.async_api import async_playwright
 
 import page_model
+import timing
 # Imported under an alias ON PURPOSE: `upload()` has a long-standing local named
 # `verify` (the dict of evidence it returns), and a plain `import verify` would be
 # shadowed by it -- making every step_verify call below a silent AttributeError
@@ -510,6 +511,27 @@ SOURCE_ROWS_JS = r"""
                                chosen: chosen ? clean(chosen.innerText || '').slice(0, 80) : ''});
     }
 """
+
+
+async def _settle(page, budget_ms, step_ms, cond):
+    """Evaluate the async `cond()` now and then every `step_ms` until it returns
+    something true or the budget runs out, and hand back the last value.
+
+    This is the difference between waiting for a CONDITION and waiting for a
+    NUMBER. The publish path slept a flat 15.8 s per model on clocks nothing was
+    watching — 3500 ms per source search, 2000 ms after the row click, 1200 ms
+    per remix-radio try, 500 ms before looking for a crop modal — against a
+    measured 40.1 s publish (job 20261024-131810). Every one of those keeps its
+    old figure as the cap, so a slow answer still gets the same grace; a fast one
+    now costs what it actually takes.
+    """
+    t0 = time.time()
+    got = None
+    while True:
+        got = await cond()
+        if got or (time.time() - t0) * 1000.0 >= budget_ms:
+            return got
+        await page.wait_for_timeout(step_ms)
 
 
 def _norm_words(s: str) -> list[str]:
@@ -1205,6 +1227,11 @@ async def _attach_files_by_path(ctx, page, paths, wants=("stl", "step", "3mf", "
 async def upload(name: str, description: str, stl_path: str, image_paths: list[str],
                  source_url: str = "", dry_run: bool = False,
                  license_raw: str = "", should_stop=None) -> dict:
+    # Per-step timings. main.py times the publish as a whole, so without these
+    # marks a 40 s publish is one number with nothing to point at — which is
+    # how the slow step stayed hidden while the census blamed "the form".
+    _mark = timing.Steps("publish")
+
     # Auto-launch Chrome with the debug port if it isn't already running, so
     # the user never has to start it by hand (and never sees ECONNREFUSED).
     # Both calls BLOCK (a 2s port probe; up to 20s while Chrome is launched).
@@ -1240,6 +1267,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
         except Exception:
             pass
 
+        _mark("browser")
         # 1) Model files — for THIS model only. Prefer a file the fetch already
         #    produced; otherwise download the exact model from its source URL.
         #    No "grab any leftover file" fallback — that caused the wrong (old)
@@ -1292,6 +1320,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
 
         if _stop_pressed(should_stop):
             return _stopped_result()
+        _mark("files")
         # 2) ALWAYS a fresh tab on a known-good URL. Never reuse an existing
         #    crealitycloud tab: reusing is what drove "random links to older
         #    models" — the old code picked the user's half-filled form tab and
@@ -1355,6 +1384,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
 
         if _stop_pressed(should_stop):
             return _stopped_result()
+        _mark("form_open")
         # 3) Select the "STL/CAD files..." radio. The measured live form (October
         #    13, debug/repro_remix.jpg): get_by_text() never resolves this label —
         #    it is plain div text next to an .el-radio — and the form's default is
@@ -1403,6 +1433,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                 pass
             await page.wait_for_timeout(300)
 
+        _mark("radio")
         # 4) Attach the model file(s) to the model-files input. Upload ALL real
         #    parts at once; if the input rejects multiples, fall back to the
         #    largest single file so the primary geometry still gets in.
@@ -1449,6 +1480,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
 
         if _stop_pressed(should_stop):
             return _stopped_result()
+        _mark("attach")
         # 5) Next -> step 2. The Next control is a <div class="step-one-btn submit">
         #    inside the iframe (not a real <button>). After the click, VERIFY that
         #    step 2 (the name field) actually appeared: a Next click that silently
@@ -1503,6 +1535,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                     "(STL/CAD radio: %s; the form says: %s). Nothing was uploaded."
                     % (_stl_ok, why)}
 
+        _mark("next")
         # 6) Name — the field is up (step2_up), fill it. A listing without a
         #    name is exactly what Creality refuses at Submit with "Please
         #    fill" and the name field's err-box (measured 2026-10-13), so the
@@ -1523,6 +1556,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
 
         if _stop_pressed(should_stop):
             return _stopped_result()
+        _mark("name")
         # 7) Cover images + the "Model Images" gallery, addressed BY LABEL and
         #    read back from the form's own counter.
         #      * the two REQUIRED cover slots are the first two image inputs of
@@ -1563,16 +1597,30 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
             except Exception:
                 return {}
 
+        async def _confirm_btn():
+            return work.get_by_role("button", name="Confirm").last
+
+        async def _wait_for(btn, state, ms):
+            """Wait up to `ms` for the crop modal's button to appear/vanish. The
+            same grace the old fixed sleeps gave, but it returns the moment the
+            modal is actually there — this ran once per cover slot, so ~10 times
+            a model, and a slot that crops instantly used to pay it anyway."""
+            try:
+                await btn.wait_for(state=state, timeout=ms)
+                return True
+            except Exception:
+                return False
+
         async def _clear_crop_modals(rounds=10):
             """Cover slots open a cropping modal; confirm whatever is showing.
             The modal can take a moment to appear, so keep looking for a short
             while after the last one is dismissed."""
             misses = 0
-            await page.wait_for_timeout(500)
+            btn = await _confirm_btn()
+            await _wait_for(btn, "visible", 500)
             for _ in range(rounds):
                 clicked_now = False
                 try:
-                    btn = work.get_by_role("button", name="Confirm").last
                     if await btn.is_visible():
                         await btn.click(timeout=2500)
                         clicked_now = True
@@ -1580,12 +1628,12 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                     pass
                 if clicked_now:
                     misses = 0
-                    await page.wait_for_timeout(700)
+                    await _wait_for(btn, "hidden", 700)
                     continue
                 misses += 1
                 if misses >= 3:
                     break
-                await page.wait_for_timeout(400)
+                await _wait_for(btn, "visible", 400)
 
         async def _attach(idx, files):
             if idx is None or idx < 0 or not files:
@@ -1649,6 +1697,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
 
         if _stop_pressed(should_stop):
             return _stopped_result()
+        _mark("covers")
         # 8) "Auto-Generated" — Creality's AI fills Category + Tags + Description
         #    from the cover image. This removes the manual Category requirement.
         try:
@@ -1674,6 +1723,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
         except Exception:
             pass
 
+        _mark("ai_fill")
         # 8b) Description — use the REAL model description (from the source page),
         #     not Creality's AI text. Auto-Generated fills an AI description above;
         #     here we replace it with the actual description when we have one.
@@ -1712,6 +1762,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
             except Exception as e:
                 print(f"[uploader] description override failed: {e}")
 
+        _mark("description")
         # 8c) Model Source — declare the remix HONESTLY. A re-upload of
         # someone else's model must never claim originality: select the
         # "Remix Models" radio and register the source model's URL in
@@ -1750,7 +1801,17 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                             await work.locator(".step-one-btn.submit").first.click(timeout=4000)
                         except Exception:
                             pass
-                        await page.wait_for_timeout(2500)
+                        # wait for step 2 to be laid out — the same 2500 ms of
+                        # grace, but it ends the moment the section is visible
+                        # instead of sleeping it and only then looking
+                        try:
+                            await page.wait_for_function(
+                                """() => !!document.querySelector(
+                                       'section.second-step') &&
+                                       document.querySelector('section.second-step').offsetParent !== null""",
+                                timeout=2500)
+                        except Exception:
+                            pass
                         if await work.evaluate(
                                 """() => !!document.querySelector(
                                        'section.second-step') &&
@@ -1776,6 +1837,15 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                 # (The old locator-based .first.click() resolved to an invisible
                 # text node of the same wording and just timed out — the radio
                 # was never checked, so the source input never appeared.)
+                async def _radio_checked():
+                    return await work.evaluate(r"""() => {
+                        const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+                        const hit = [...document.querySelectorAll('label.el-radio, .el-radio, div.el-radio')]
+                            .filter(e => /Remix Models|Modèles modifiés/i.test(clean(e.innerText)))
+                            .find(e => e.classList.contains('is-checked'));
+                        return !!hit;
+                    }""")
+
                 revealed = False
                 for _round in range(6):
                     _state = await work.evaluate(r"""() => {
@@ -1794,14 +1864,9 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                         info = json.loads(_state) if isinstance(_state, str) and _state.startswith("{") else _state
                     except Exception:
                         info = _state
-                    await page.wait_for_timeout(1200)
-                    checked = await work.evaluate(r"""() => {
-                        const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
-                        const hit = [...document.querySelectorAll('label.el-radio, .el-radio, div.el-radio')]
-                            .filter(e => /Remix Models|Modèles modifiés/i.test(clean(e.innerText)))
-                            .find(e => e.classList.contains('is-checked'));
-                        return !!hit;
-                    }""")
+                    # ask whether the radio took the checked state until it does,
+                    # up to the 1200 ms this slept before checking once
+                    checked = await _settle(page, 1200, 150, _radio_checked)
                     if checked:
                         # the radio took the checked state — the paste box shows
                         # with it. Do NOT break before confirming: a checked
@@ -1817,7 +1882,9 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                             await page.mouse.click(info["x"], info["y"])
                         except Exception:
                             pass
-                        await page.wait_for_timeout(1000)
+                        if await _settle(page, 1000, 150, _radio_checked):
+                            revealed = True
+                            break
                     # the verdict comes from the DOM, not from a Playwright
                     # locator: locate() on 'input[placeholder*=...]' resolved a
                     # hidden twin elsewhere on the page and reported the box
@@ -1857,7 +1924,12 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                         pass
                     raise RuntimeError("Remix Models radio never revealed the "
                                        "source input after 6 attempts")
-                await page.wait_for_timeout(600)
+                try:
+                    # the paste box is what the radio was supposed to reveal: wait
+                    # for it, rather than sleeping 600 ms and hoping
+                    await src_input.wait_for(state="visible", timeout=600)
+                except Exception:
+                    pass
                 # The paste box is a SEARCH, and the model must be CLICKED from
                 # the list it shows. The source model's own TITLE is searched
                 # for (the URL alone never registers, and slug words miss a
@@ -1878,13 +1950,21 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
 
                 last: dict = {}
                 result: dict = {}
+
+                async def _rows_now():
+                    nonlocal last
+                    last = await _read_rows()
+                    return bool(last.get("rows"))
+
                 # titles only — the URL is pasted on its own afterwards, where
                 # Enter registers it instead of feeding a search list.
                 for query in [q for q in (name, " ".join(words)) if q]:
                     await src_input.fill("")
                     await src_input.fill(query)
-                    await page.wait_for_timeout(3500)
-                    last = await _read_rows()
+                    # the picker lists the moment its search answers: poll for the
+                    # first row instead of sleeping 3500 ms per query (two queries
+                    # a model), with the same figure kept as the cap
+                    await _settle(page, 3500, 300, _rows_now)
                     if not last.get("rows"):
                         # no dropdown yet — a search box in this form often needs
                         # Enter before it lists anything
@@ -1892,8 +1972,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                             await src_input.press("Enter")
                         except Exception:
                             pass
-                        await page.wait_for_timeout(2500)
-                        last = await _read_rows()
+                        await _settle(page, 2500, 250, _rows_now)
                     result = pick_source_suggestion(last.get("rows"), name, slug)
                     if result["pick"] or result["flagged"]:
                         break
@@ -1906,16 +1985,25 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                 # certain, pasting the exact URL is STRONGER evidence than any
                 # look-alike row, so try it before refusing.
                 if cand is None and source_url:
+                    async def _mark_shown():
+                        return bool((await _registered_mark(work)).get("href"))
                     try:
                         await src_input.fill(source_url)
                         await src_input.press("Enter")
-                        await page.wait_for_timeout(3000)
+                        # the source card appears once the site has taken the URL:
+                        # ask for it instead of sleeping the whole 3 s
+                        await _settle(page, 3000, 200, _mark_shown)
                     except Exception:
                         pass
                 if cand:
+                    async def _chosen_or_marked():
+                        r = await _read_rows()
+                        return bool(r.get("chosen")) or bool(await _registered_mark(work))
                     await page.mouse.click(cand["x"], cand["y"])
                     clicked_name = cand.get("name", "")
-                    await page.wait_for_timeout(2000)
+                    # same 2000 ms of grace the code slept, but it ends when the
+                    # row is actually highlighted or the source card is up
+                    await _settle(page, 2000, 200, _chosen_or_marked)
                     # if the row highlight did not take, click it through the DOM.
                     # The registered source is shown in `.origin-choose-mark`
                     # (live-form markup: origin-choose > origin-choose-mark >
@@ -2070,7 +2158,9 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                 "badge_ok": bool(got_badge) and _norm_cc(got_badge) == _norm_cc(want_badge),
                 "license_card": (cap.get("card") or "")[:400],
             }
-            await page.wait_for_timeout(600)
+            # nothing sleeps here: the radio states were just read back from the
+            # DOM and 8e refuses to submit unless they are right, so the 600 ms
+            # this used to spend was paid on every model for no decision
         except Exception as e:
             UPLOAD_VERIFY["license_answers"] = {"error": str(e)[:200]}
 
@@ -2106,6 +2196,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
 
         if _stop_pressed(should_stop):
             return _stopped_result()
+        _mark("source")
         # 9) Tick "I have read and agree to Copyright Statement." — Submit is
         #    blocked until this is ticked. The live row is Element UI's real
         #    checkbox (label.el-checkbox > span.el-checkbox__input + hidden
@@ -2362,6 +2453,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
         except Exception:
             pass
 
+        _mark("consent")
         # 10) Submit. The Submit control is a styled <div class="submit">, not a
         #     real <button>, so locate it in the iframe and click via translated
         #     page coordinates (iframe offset + element center). Before the
@@ -2494,8 +2586,10 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                                 "verify": dict(UPLOAD_VERIFY)}
                     if not await _click_submit():
                         break
-                    for _ in range(40):
-                        await page.wait_for_timeout(1000)
+                    for _ in range(100):
+                        # same ~40 s of grace the 40 x 1000 loop gave, but the
+                        # answer is noticed in 400 ms instead of up to a second
+                        await page.wait_for_timeout(400)
                         # Most reliable success signal: navigation to the model page.
                         if "model-detail" in page.url:
                             outcome = "success"; break
@@ -2532,6 +2626,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                 submitted = (outcome == "success")
         except Exception as e:
             reason = str(e)
+        _mark("submit")
 
         try:
             page.remove_listener("response", _on_response)

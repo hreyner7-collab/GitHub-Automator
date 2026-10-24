@@ -49,6 +49,27 @@ def record(name: str, seconds: float) -> None:
         _bump(_PROCESS, name, seconds)
 
 
+class Steps:
+    """Sequential marks inside one long function: `m = timing.Steps("publish")`,
+    then `m("covers")` at each step boundary.
+
+    Each mark times the stretch since the previous one, so the marks add up to
+    the function instead of nesting inside each other — which is what makes a
+    40 s publish answerable with "the covers took 22 s of it". Names come out
+    prefixed and dotted, so the dashboard shows them under the phase that
+    already wraps the call.
+    """
+
+    def __init__(self, prefix: str) -> None:
+        self.prefix = prefix
+        self._t = time.perf_counter()
+
+    def __call__(self, label: str) -> None:
+        now = time.perf_counter()
+        record("%s.%s" % (self.prefix, label), now - self._t)
+        self._t = now
+
+
 @contextlib.contextmanager
 def phase(name: str) -> Iterator[None]:
     """`with timing.phase("fetch"): ...` — times the block even if it raises.
