@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Creality Pipeline V13</title>
+<title>Creality Pipeline V14</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -257,7 +257,7 @@
 
 <div class="topbar">
   <h1>Creality <span>Pipeline</span></h1>
-  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V13</span>
+  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V14</span>
   <span class="build" id="build-stamp" title="Which code this dashboard process is serving"></span>
   <button id="analytics-btn" onclick="toggleAnalytics()">&#128202; Analytics</button>
 </div>
@@ -332,8 +332,10 @@
     photographs the exact STL that would be uploaded. Nothing is copied or re-photographed from another
     designer's listing, and no designer's photos are edited or re-uploaded. Each model appears below with
     its five photos and a contact sheet; it goes live only when you press
-    <strong>Approve &amp; publish</strong> on that model, one at a time. Photographing one takes about
-    two minutes, so a run of five takes roughly ten minutes.</p>
+    <strong>Approve &amp; publish</strong> on that model, one at a time. Every press of Find &amp; publish
+    starts a fresh set: previews you have not published are replaced by the new ones, while anything you
+    have already published stays. Photographing one takes about two minutes, so a run of five takes
+    roughly ten minutes.</p>
 </div>
 
 <!-- Find Top Models (research only) -->
@@ -888,9 +890,9 @@
       msg = 'Run failed: ' + esc(note || 'unknown error');
     } else {
       kind = 'info';
-      msg = 'Press Find &amp; publish to design original household models. The page ' +
-        'photographs the exact STL it exports; nothing goes to Creality Cloud until ' +
-        'you press Approve &amp; publish on a model.';
+      msg = 'Press Find &amp; publish to design original household models. Each press ' +
+        'starts a fresh set — earlier previews you have not published are replaced. ' +
+        'Nothing goes to Creality Cloud until you press Approve &amp; publish on a model.';
     }
     setStatus('auto-status', kind, msg);
 

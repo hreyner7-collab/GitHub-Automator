@@ -60,7 +60,7 @@ def _reset_originals_state():
     main.ORIGINALS.update({
         "state": "idle", "job_id": None, "items": [], "requested": 0,
         "note": "", "stop": False, "progress": {}, "publishing": "",
-        "finished": None,
+        "finished": None, "stale": [],
     })
     yield
 
@@ -110,8 +110,8 @@ def test_status_lists_a_finished_preview_and_serves_its_contact_sheet(shelf):
     assert client.get("/originals/contact/..%2F..%2Fetc").status_code == 404
 
 
-def test_find_and_publish_prepares_without_uploading(shelf, monkeypatch):
-    _plant(shelf)
+def test_find_and_publish_prepares_a_fresh_set_without_uploading(shelf, monkeypatch):
+    old = _plant(shelf)
     made = []
 
     def fake_prepare(root, family, samples=28, res=1000):
@@ -137,9 +137,39 @@ def test_find_and_publish_prepares_without_uploading(shelf, monkeypatch):
     assert s["job_id"] == started["job_id"]
     assert len(s["shelf"]) == 2
     assert {p["state"] for p in s["shelf"]} == {"preview"}
-    # the one already on the shelf is reused, only the missing one is built
+    # both are new: the earlier preview is replaced, not reused
     assert made, "no model was prepared"
-    assert len(made) == 1
+    assert len(made) == 2
+    assert KEY not in {p["key"] for p in s["shelf"]}
+    assert not old.exists()
+
+
+def test_a_fresh_run_keeps_published_models(shelf, monkeypatch):
+    old = _plant(shelf)
+    kept_key = "wall_hook-01-aaaaaaaa"
+    kept = _plant(shelf, key=kept_key, title="Wall Hook - 54.7 mm Reach",
+                  family="wall_hook")
+    (kept / "PUBLISHED.json").write_text(json.dumps({
+        "key": kept_key, "title": "Wall Hook - 54.7 mm Reach", "url": URL,
+        "at": "2026-10-24 12:00:00", "licence": "CC BY 4.0",
+    }), encoding="utf-8")
+
+    def fake_prepare(root, family, samples=28, res=1000):
+        key = "%s-02-cafebabe" % family
+        d = _plant(Path(root), key=key, title="%s - fresh" % family, family=family)
+        return {"key": key, "family": family, "variant": 2,
+                "title": "%s - fresh" % family, "seconds": 12.0,
+                "contact": str(d / ("%s_contact.jpg" % key)),
+                "photos": [], "check": {"ok": True}}
+
+    monkeypatch.setattr(originals_lib, "prepare", fake_prepare)
+    _drive_start(1)
+
+    s = TestClient(main.app).get("/originals/status").json()
+    keys = {p["key"] for p in s["shelf"]}
+    assert not old.exists()
+    assert kept.exists() and kept_key in keys
+    assert len(s["shelf"]) == 2
 
 
 def test_start_validates_the_typed_count(shelf):
@@ -196,7 +226,7 @@ def test_publish_refuses_unknown_and_invalid_keys(shelf):
 def test_the_dashboard_card_is_the_originals_path():
     html = (Path(__file__).resolve().parents[1] / "creality" / "index.html"
             ).read_text(encoding="utf-8")
-    assert "<title>Creality Pipeline V13</title>" in html
+    assert "<title>Creality Pipeline V14</title>" in html
     assert "/originals/start" in html and "/originals/publish" in html
     assert "Approve &amp; publish" in html
     assert "no designer's photos are edited or re-uploaded" in html

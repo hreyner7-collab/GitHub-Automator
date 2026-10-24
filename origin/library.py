@@ -99,6 +99,16 @@ def write_published(model_dir: Path, url: str, title: str, when: str) -> dict:
     return rec
 
 
+def discard(model_dir: Path) -> bool:
+    """Remove one preview folder; a published original is never removed."""
+    d = Path(model_dir)
+    if published_marker(d):
+        return False
+    if d.is_dir():
+        shutil.rmtree(d, ignore_errors=True)
+    return True
+
+
 def _title_key(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (title or "").lower()).strip()
 

@@ -1476,7 +1476,7 @@ async def auto_status():
 ORIGINALS: dict = {
     "state": "idle", "job_id": None, "requested": 0, "items": [],
     "note": "", "started": None, "finished": None, "stop": False,
-    "progress": {}, "log_path": None, "publishing": "",
+    "progress": {}, "log_path": None, "publishing": "", "stale": [],
 }
 ORIGINALS_TASK: asyncio.Task | None = None
 ORIGINALS_PUBLISH_LOCK = asyncio.Lock()
@@ -1495,8 +1495,11 @@ def _originals_shelf() -> list[dict]:
     """
     root = _originals_root()
     publishing = ORIGINALS.get("publishing") or ""
+    hidden = set(ORIGINALS.get("stale") or [])
     shelf = []
     for p in originals_lib.complete_previews(root):
+        if p["key"] in hidden:
+            continue
         marker = originals_lib.published_marker(root / p["key"])
         state, url = "preview", ""
         if marker:
@@ -1554,6 +1557,21 @@ def _set_original_item(key: str, state: str, *, reason: str = "",
             return
 
 
+def _discard_original(key: str) -> None:
+    """Remove an earlier unpublished preview; published work is kept."""
+    if not originals_lib.KEY_RE.fullmatch(key or ""):
+        return
+    model_dir = _originals_root() / key
+    rec = originals_lib.read_record(model_dir) or {}
+    title = (rec.get("spec") or {}).get("title") or key
+    stl = (rec.get("files") or {}).get("stl") or ""
+    if originals_lib.published_marker(model_dir):
+        return
+    if ledger.find(name=title, file_path=stl)["found"]:
+        return
+    originals_lib.discard(model_dir)
+
+
 async def _originals_worker(count: int, job_id: str) -> None:
     """Design, build and photograph originals until `count` are ready.
 
@@ -1580,27 +1598,24 @@ async def _originals_worker(count: int, job_id: str) -> None:
             "state": "preparing", "job_id": job_id, "requested": count,
             "items": [], "note": "", "stop": False, "progress": {},
             "started": _time.strftime("%Y-%m-%d %H:%M:%S"), "finished": None,
-            "log_path": None, "publishing": "",
+            "log_path": None, "publishing": "", "stale": [],
         })
         root = _originals_root()
         root.mkdir(parents=True, exist_ok=True)
 
+        # A fresh set every time: earlier previews are hidden now and deleted
+        # when this run ends, unless they were published. They stay on disk
+        # during the run so prepare() sees their titles and builds new variants.
+        ORIGINALS["stale"] = [
+            p["key"] for p in _originals_shelf()
+            if p["state"] in ("preview", "approved")
+        ]
         items: list[dict] = []
-        shelf = _originals_shelf()
-        for p in shelf:
-            if len(items) >= count:
-                break
-            if p["state"] in ("preview", "approved"):
-                items.append({
-                    "key": p["key"], "family": p["family"], "title": p["title"],
-                    "state": p["state"], "reason": "", "result": "",
-                    "contact_url": p["contact_url"],
-                })
         ORIGINALS["items"] = items
-        prepared = len(items)
+        prepared = 0
 
         # Spare family slots: a build that fails must not make the run short.
-        families = originals_lib.families_for(count - prepared + 4, root)
+        families = originals_lib.families_for(count + 4, root)
         fi = 0
         while prepared < count and fi < len(families):
             if ORIGINALS.get("stop"):
@@ -1652,6 +1667,12 @@ async def _originals_worker(count: int, job_id: str) -> None:
     finally:
         ORIGINALS["finished"] = _time.strftime("%Y-%m-%d %H:%M:%S")
         ORIGINALS["progress"] = {}
+        for key in ORIGINALS.get("stale") or []:
+            try:
+                _discard_original(key)
+            except Exception:
+                pass
+        ORIGINALS["stale"] = []
         try:
             _log()
         except Exception:
