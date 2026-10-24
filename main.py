@@ -760,7 +760,11 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                      # per-run flags: a stale one from the last run would stop this
                      # one before it began
                      "signin_required": False, "shortfall": None,
-                     "shortfall_reason": "", "published": 0})
+                     "shortfall_reason": "", "published": 0,
+                     # Stop is a per-run flag like the rest: a run that was
+                     # stopped left it set, and the next one would stop itself at
+                     # its first checkpoint without you ever pressing anything.
+                     "stop": False})
         # Models already in the "already published" config are filtered out
         # DURING discovery (not queued and skipped later), so the run never
         # picks a model it has finished before.
@@ -855,6 +859,12 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
             # Stop was pressed while the listings were being read: nothing has
             # been fetched or published, so the run ends here as stopped.
             AUTO["state"] = "stopped"
+            # Still a shortfall: a stopped run that published none of the 20 it
+            # was asked for must read as short by 20, not as a quiet stop.
+            _short = count - _published_count()
+            if _short > 0 and not AUTO.get("shortfall"):
+                AUTO["shortfall"] = _short
+                AUTO["shortfall_reason"] = "stopped by you before any model published"
             AUTO["finished"] = _time.strftime("%Y-%m-%d %H:%M:%S")
             AUTO["log_path"] = _log()
             return

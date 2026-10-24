@@ -1051,3 +1051,55 @@ def test_a_page_that_offered_no_download_is_read_once_more_before_written_off(mo
     item = main.AUTO["items"][0]
     assert item["state"] == "published"
     assert "re-fetched once" in item["refetch_note"]
+
+
+def test_a_stop_during_the_listing_scan_reports_the_models_it_owed(monkeypatch, tmp_path):
+    """Stop pressed while the listings were still being read published none of the
+    five it was asked for. That is a shortfall, not a quiet 'Stopped' line: the
+    dashboard shows the number owed, so 'Stopped' never reads as 'as planned'."""
+    import main
+
+    def no_fetch(url):
+        raise AssertionError("a stopped scan must not reach the fetcher")
+
+    def fake_find(keywords, count, sort="Downloads", is_done=None, progress=None,
+                  should_stop=None, exclude=None, extra=None, deadline_s=None):
+        main.AUTO["stop"] = True               # the user presses Stop mid-scan
+        return {"models": [_card("Bottle storage rack", A_URL)],
+                "licence": {"opened": True, "verified": True},
+                "note": "", "stopped": True}
+
+    monkeypatch.setattr(main, "find_creality", fake_find)
+    monkeypatch.setattr(main, "dl_fetch", no_fetch)
+    monkeypatch.setattr(main, "uploader_upload", _must_not_publish)
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+
+    asyncio.run(main._auto_worker(5, ["k"], "stopscanjob"))
+
+    assert main.AUTO["state"] == "stopped"
+    assert main.AUTO["shortfall"] == 5
+    assert "before any model published" in main.AUTO["shortfall_reason"]
+    assert main._auto_counts()["published"] == 0
+
+
+def test_a_run_ignores_the_stop_flag_left_behind_by_the_last_one(monkeypatch, tmp_path):
+    """`stop` lives in module state, so a run that was stopped used to leave it
+    set — and the next run stopped itself at its first checkpoint, with nobody
+    having pressed Stop."""
+    import main
+
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(bytes([255, 216, 255, 224]))
+    main.AUTO["stop"] = True                      # left over from the previous run
+    monkeypatch.setattr(main, "find_creality",
+                        lambda *a, **k: {"models": [_card("Bottle storage rack", A_URL)],
+                                         "licence": {"opened": True, "verified": True},
+                                         "note": ""})
+    monkeypatch.setattr(main, "dl_fetch", lambda url: _cc_page(url, cover))
+    monkeypatch.setattr(main, "uploader_upload", _publish_upload)
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+
+    asyncio.run(main._auto_worker(1, ["k"], "stalestopjob"))
+
+    assert main.AUTO["state"] == "done", main.AUTO
+    assert main._auto_counts()["published"] == 1

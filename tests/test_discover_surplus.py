@@ -105,7 +105,7 @@ class FakeBrowser:
         return self._page
 
 
-def _harness(monkeypatch, page):
+def _harness(monkeypatch, page, judge=None):
     class FakePW:
         class chromium:
             @staticmethod
@@ -122,13 +122,26 @@ def _harness(monkeypatch, page):
     monkeypatch.setattr(discover, "filter_creality_licences",
                         lambda _p, **_k: {"opened": True, "verified": True,
                                           "ticked_on": [], "ticked_off": []})
-    monkeypatch.setattr(discover, "judge_card",
-                        lambda name, url, used, is_done=None:
-                        {"state": "harvest", "reason": "", "family": "f-" + name})
+    monkeypatch.setattr(discover, "judge_card", judge or (
+        lambda name, url, used, is_done=None:
+        {"state": "harvest", "reason": "", "family": "f-" + name}))
 
 
-def _find(monkeypatch, count, page=None, **kw):
-    _harness(monkeypatch, page or ListingPage())
+def _one_of_each(families):
+    """The real one-of-each rule: the first card of a family is harvested, every
+    repeat of a family already going out in this run is kept aside as a spare."""
+    def _judge(name, url, used, is_done=None):
+        fam = "f%d" % (int(name.split()[-1]) % families)
+        if fam not in used:
+            used.add(fam)
+            return {"state": "harvest", "reason": "", "family": fam}
+        return {"state": "spare", "family": fam, "source": "duplicate-family",
+                "reason": "a %s is already going out in this run" % fam}
+    return _judge
+
+
+def _find(monkeypatch, count, page=None, judge=None, **kw):
+    _harness(monkeypatch, page or ListingPage(), judge)
     return discover.find_creality(None, count, "Downloads", None, **kw)
 
 
@@ -185,3 +198,40 @@ def test_the_deadline_stops_the_scroll_and_keeps_what_it_found(monkeypatch):
     assert "ceiling" in result["note"]
     assert "500" in result["note"]                # says what was asked for
     assert page.scrolls < 5                      # nowhere near the 200-pass ceiling
+
+
+def test_the_scan_counts_the_repeats_it_kept_aside_as_a_full_pool(monkeypatch):
+    """The one-of-each rule caps harvests at the number of families, so a scan
+    that measures its own target against harvests alone can never finish.
+
+    8 families is what the policy has (see /diagnostics). A run asking for 20
+    used to compare `found` against 30, `found` stopped at 8, and so it scrolled
+    all 1000-odd cards of every keyword looking for a ninth family that does not
+    exist. The repeats are the pool: 8 harvests plus 22 kept-aside spares is 30
+    candidates in hand, and the scan stops there.
+    """
+    page = ListingPage(initial=200, per_scroll=20, total=10_000)
+    result = _find(monkeypatch, 20, page=page, judge=_one_of_each(8))
+
+    assert result["harvested"] == 30
+    assert len(result["models"]) == 30
+    assert sum(1 for m in result["models"] if not m.get("spare")) == 8
+    assert page.scrolls == 0, "the scan should stop on the first pass: %d scrolls" % page.scrolls
+
+
+def test_a_family_capped_listing_reports_the_pool_the_dashboard_shows(monkeypatch):
+    """The progress line must count candidates in hand, not harvests.
+
+    It read "found 8 of 20" while 30 publishable rows were already queued, which
+    is how a scan that had finished its work looked like one that was failing.
+    """
+    pages = []
+    page = ListingPage(initial=200, per_scroll=20, total=10_000)
+    _harness(monkeypatch, page, _one_of_each(8))
+
+    discover.find_creality(None, 20, "Downloads", None,
+                           progress=lambda p: pages.append(p))
+
+    last = pages[-1]
+    assert last["found"] == 30, last
+    assert last["harvests"] == 8, last

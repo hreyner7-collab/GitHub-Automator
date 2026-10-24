@@ -668,6 +668,19 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
     used_families: set = set()             # one of each family per run (a preference)
     spares: list[tuple[str, dict]] = []    # repeats of a family, used only to fill `count`
     spare_seen: set = set()
+
+    def in_hand() -> int:
+        """How many publishable candidates the scan actually holds.
+
+        This is harvests PLUS the repeats kept aside to fill the count, not
+        harvests alone. The one-of-each rule is a preference, so `found` stops
+        growing at the number of families (8) however long the scan runs: a
+        request for 20 compared against `found` could never be satisfied, so
+        every listing was scrolled to its end (2026-10-23: 601 passes, 58 min)
+        and the run still came back short.
+        """
+        return len(found) + len(spares)
+
     licence_report: dict = {}
     note = ""
     stops = [CREALITY_SEARCH.format(q=k.replace(" ", "+")) for k in keywords] \
@@ -680,7 +693,7 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
     with sync_playwright_auto() as pw:
         browser = pw.chromium.connect_over_cdp(CDP_URL)
         for entry in stops:
-            if len(found) >= target or stopped:
+            if in_hand() >= target or stopped:
                 break
             if should_stop and should_stop():
                 stopped = True
@@ -730,7 +743,7 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
                     with timing.phase("harvest.read"):
                         cards = json.loads(page.evaluate(CREALITY_CARDS_JS) or "[]")
                     for c in cards:
-                        if len(found) >= target:
+                        if in_hand() >= target:
                             # the page can hold far more cards than the run needs:
                             # judging them all would only cost time
                             break
@@ -779,8 +792,8 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
                                                   .replace("+", " ")
                                                   if "q=" in entry else "")}
                     if progress:
-                        progress({"keyword": (entry.split("q=")[-1].split("&")[0].replace("+", " ") if "q=" in entry else "all models"), "pass": pss + 1, "cards": len(cards), "found": len(found), "count": count})
-                    if len(found) >= target:
+                        progress({"keyword": (entry.split("q=")[-1].split("&")[0].replace("+", " ") if "q=" in entry else "all models"), "pass": pss + 1, "cards": len(cards), "found": in_hand(), "harvests": len(found), "count": count})
+                    if in_hand() >= target:
                         break
                     # the end of the listing = the PAGE stopped growing. Count the
                     # cards on the page, not the accepted models: rejected and
