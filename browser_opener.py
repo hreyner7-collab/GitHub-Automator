@@ -62,6 +62,14 @@ def sync_playwright_auto():
         except Exception as e:
             last = e
             err = "playwright start failed on attempt %d: %s" % (attempt, str(e)[:160])
+        # start() spawns the node driver BEFORE the handshake, so a failed
+        # attempt has already left one behind. Closing the entrance is what
+        # kills it: without this, every retry of a run that cannot reach Chrome
+        # adds another driver process (and Chrome child) that nothing ever reaps.
+        try:
+            entrance.__exit__(None, None, None)
+        except Exception:
+            pass
         if attempt < SYNC_PW_ATTEMPTS and _looks_driver_dead(str(last)):
             time.sleep(SYNC_PW_BACKOFF)
             continue

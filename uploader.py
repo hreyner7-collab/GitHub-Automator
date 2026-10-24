@@ -1128,6 +1128,22 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
             return {"success": False, "error": f"Could not attach to Chrome on {CDP_URL}. ({e})"}
         ctx = browser.contexts[0]
 
+        # 0) Sweep the form tabs a previous publish left behind. Every publish
+        #    opens a fresh tab below and only closes it when the submit worked,
+        #    so a failure (or a stopped run) used to leave its half-filled form
+        #    open for good: 20 of them at once is a Chrome that runs out of
+        #    memory long before the run is through. The user's own tabs are never
+        #    touched — only the create-model form this pipeline opened.
+        try:
+            for _stale in list(ctx.pages):
+                try:
+                    if "create-model" in (_stale.url or ""):
+                        await _stale.close()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         # 1) Model files — for THIS model only. Prefer a file the fetch already
         #    produced; otherwise download the exact model from its source URL.
         #    No "grab any leftover file" fallback — that caused the wrong (old)
@@ -2016,6 +2032,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                     " cls: String(e.className || '').slice(0, 90),"
                     " in_footer: !!e.closest('footer'),"
                     " in_consent: !!e.closest('label.el-checkbox'),"
+                    " is_picker: !!e.closest('.origin-choose-mark'),"
                     " is_submit: !!e.closest('.submit')} : null; }",
                     [ox, oy]) or {}
             except Exception:
@@ -2040,6 +2057,12 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
             the point being checked: the Submit check passes the consent point,
             so the dismissal always lands on the picker's card and never on a
             suggestion row.
+
+            The dismissing click is made ONLY while the thing under the point is
+            the picker's own card (`is_picker`). Anywhere else — over a
+            suggestion row, a link, or the consent label itself — a click would
+            be a real press of that control, so the walk stops and reports the
+            point as unreachable instead of guessing.
             """
             def reaches(hit) -> bool:
                 if not hit:
@@ -2062,6 +2085,13 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                 record.append([kind, "after-escape", hit.get("tag"), hit.get("cls")])
                 if reaches(hit):
                     return True
+                # Only the picker's own card is safe to click: anything else
+                # under the point is a control a click would really press.
+                if not hit.get("is_picker"):
+                    break
+                if (dx, dy) != (x, y) and not (await _topmost_at(dx, dy)).get("is_picker"):
+                    record.append([kind, "dismiss-skipped", "not-picker", ""])
+                    break
                 # the leftover is what a click meets — one real click dismisses
                 # it; the point is then re-verified, never assumed
                 if not await _click_point(dx, dy):
@@ -2404,9 +2434,20 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
             pass
 
         if submitted:
-            return {"success": True, "url": page.url, "verify": dict(UPLOAD_VERIFY),
-                    "message": "Published to your Creality Cloud account with " + img_note
-                               + ". Check 'My Designs'."}
+            published_url = page.url
+            img_note_done = img_note
+            # The publish worked: this form tab has no further use, and leaving
+            # it open is what piled 20 tabs onto the run. Any path that still
+            # needs the human (a failure, a form left for a manual Submit) keeps
+            # its tab, because its own message points at it.
+            try:
+                await page.close()
+            except Exception:
+                pass
+            return {"success": True, "url": published_url,
+                    "verify": dict(UPLOAD_VERIFY),
+                    "message": "Published to your Creality Cloud account with "
+                               + img_note_done + ". Check 'My Designs'."}
         if outcome == "needs_consent" or not UPLOAD_VERIFY.get("copyright_agreed", False):
             return {"success": False, "url": page.url, "needs_consent": True,
                     "error": "Creality is still asking for the 'I have read and agree to "

@@ -6,6 +6,9 @@ Regression: a model that ended as "skipped" (no licence read, no model file) or
 listing and opened its page again. The same few listings came back run after run
 (12 runs in the log for one listing). These tests use a temporary store and never
 open a page or touch the account.
+
+The record has two tiers: a refusal a listing deserves keeps its week, a listing
+the pipeline merely had bad luck with is forgiven after a couple of hours.
 """
 import json
 import time
@@ -110,6 +113,9 @@ def test_listing_a_stopped_run_already_read_is_remembered(tmp_path, monkeypatch)
 
 
 def test_seed_remembers_listings_a_stopped_run_opened(tmp_path):
+    """A run that was stopped mid-page is remembered so the very next run does not
+    read that page again — but as bad luck, not as a refusal, so its cooldown is
+    TRIED_TRANSIENT_COOLDOWN_SECONDS rather than the week a real refusal gets."""
     finished = "2026-10-13 17:15:00"
     when = time.mktime(time.strptime(finished, "%Y-%m-%d %H:%M:%S"))
     stopped = URL + "-stopped"
@@ -124,7 +130,10 @@ def test_seed_remembers_listings_a_stopped_run_opened(tmp_path):
     }), encoding="utf-8")
     store = tmp_path / "tried_listings.json"
 
-    assert discover.was_tried_recently(stopped, path=store, now=when + DAY)
+    assert discover.was_tried_recently(stopped, path=store, now=when + 60)
+    assert not discover.was_tried_recently(
+        stopped, path=store,
+        now=when + discover.TRIED_TRANSIENT_COOLDOWN_SECONDS + 1)
     assert not discover.was_tried_recently(URL + "-plain", path=store, now=when + DAY)
 
 
@@ -177,3 +186,54 @@ def test_corrupt_record_is_kept_aside_not_wiped(tmp_path):
         encoding="utf-8") == "{ not json"
     assert discover.was_tried_recently(URL, path=store, now=NOW)
     assert not (tmp_path / "tried_listings.json.tmp").exists()
+
+
+def test_bad_luck_is_forgiven_while_a_refusal_keeps_its_week(tmp_path):
+    """The two tiers of the record. 2026-10-23: one run skipped 20 models on a
+    transient failure and cooled every one of them down for a week, so the next
+    scans had less to choose from and a 20-model request could not fill 20."""
+    store = tmp_path / "tried_listings.json"
+    luck = URL + "-luck"
+    refused = URL + "-refused"
+    discover.remember_tried(luck, "Flaky", "could not fetch this model",
+                            path=store, now=NOW, transient=True)
+    discover.remember_tried(refused, "Not ours", "licence is ND",
+                            path=store, now=NOW)
+
+    after_2h = NOW + discover.TRIED_TRANSIENT_COOLDOWN_SECONDS + 1
+    assert discover.was_tried_recently(refused, path=store, now=after_2h)
+    assert not discover.was_tried_recently(luck, path=store, now=after_2h)
+
+
+def test_a_refusal_is_not_downgraded_by_later_bad_luck(tmp_path):
+    """The week-long cooldown of a real refusal is the decision that matters: a
+    later run that merely failed to read the page must not shorten it."""
+    store = tmp_path / "tried_listings.json"
+    discover.remember_tried(URL, "Cable organizer X", "licence is ND",
+                            path=store, now=NOW)
+    discover.remember_tried(URL, "Cable organizer X", "could not fetch this model",
+                            path=store, now=NOW + DAY, transient=True)
+
+    entry = json.loads(store.read_text(encoding="utf-8"))[discover._english_url(URL)]
+    assert entry["when"] == NOW
+    assert entry["transient"] is False
+    assert discover.was_tried_recently(URL, path=store, now=NOW + 6 * DAY)
+
+
+def test_a_stored_reason_without_the_flag_is_read_as_its_own_kind(tmp_path):
+    """Records written before the two tiers existed carry no `transient` flag, so
+    their stored reason decides — which unwinds the week-long cooldown a
+    bad-luck run already put on real listings."""
+    store = tmp_path / "tried_listings.json"
+    store.write_text(json.dumps({
+        discover._english_url(URL): {"name": "Old", "reason": "no usable model file"
+                                                               " came back",
+                                     "when": NOW},
+        discover._english_url(URL + "-lic"): {"name": "Old refusal",
+                                              "reason": "licence is ND",
+                                              "when": NOW},
+    }), encoding="utf-8")
+
+    assert not discover.was_tried_recently(URL, path=store,
+                                           now=NOW + discover.TRIED_TRANSIENT_COOLDOWN_SECONDS + 1)
+    assert discover.was_tried_recently(URL + "-lic", path=store, now=NOW + DAY)

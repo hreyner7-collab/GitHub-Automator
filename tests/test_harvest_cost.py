@@ -95,7 +95,9 @@ def _run(monkeypatch, page, count=1):
     monkeypatch.setattr(discover, "judge_card",
                         lambda name, url, used, is_done=None:
                         {"state": "harvest", "reason": "", "family": "f-" + name})
-    return discover.find_creality(None, count, "Downloads", None)
+    # extra=0: these tests measure the COST of a pass, so the scan is asked for
+    # exactly `count` cards (a real run over-harvests a surplus instead)
+    return discover.find_creality(None, count, "Downloads", None, extra=0)
 
 
 def test_the_early_probe_catches_a_batch_that_lands_quickly(monkeypatch):

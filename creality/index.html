@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Creality Pipeline V3</title>
+<title>Creality Pipeline V4</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -232,7 +232,7 @@
 
 <div class="topbar">
   <h1>Creality <span>Pipeline</span></h1>
-  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V3</span>
+  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V4</span>
   <span class="build" id="build-stamp" title="Which code this dashboard process is serving"></span>
   <button id="analytics-btn" onclick="toggleAnalytics()">&#128202; Analytics</button>
 </div>
@@ -848,9 +848,18 @@
     const filtered = Math.max(counts.rejected || 0, s.rejected_total || 0);
     // Stop was pressed and the run has not ended yet: say so, every poll
     const stopping = !!s.stop && (st === 'discovering' || st === 'running');
+    // A run that published fewer models than were asked for did NOT finish, and
+    // saying "Run finished" over 3 of 20 is how a 20-model request looked like a
+    // complete run while publishing nothing. The run records the number and why.
+    const short = (s.shortfall || 0) > 0
+      ? ' <b>Short by ' + s.shortfall + '</b> of the ' + (s.requested || 0) +
+        ' asked for — ' + esc(s.shortfall_reason || 'the run did not say why.') +
+        ' Start it again and it picks up with fresh candidates.'
+      : '';
     setStatus('auto-status',
-      stopping ? 'warn' : (st === 'discovering' ? 'info' : (st === 'running' ? 'info'
-        : (st === 'error' ? 'error' : 'ok'))),
+      stopping ? 'warn' : ((s.shortfall || 0) > 0 ? 'warn'
+        : (st === 'discovering' ? 'info' : (st === 'running' ? 'info'
+        : (st === 'error' ? 'error' : 'ok')))),
       (stopping ? 'Stop requested — ' + (st === 'discovering'
         ? 'the listing scan ends at its next step'
         : 'the run stops at its next checkpoint; a Submit already pressed still completes, nothing new is submitted') + '. ' : '') +
@@ -880,9 +889,10 @@
               ' already on Creality Cloud, ' + (counts.failed || 0) + ' failed, ' +
               filtered + ' filtered out as not useful.'
             : st === 'stopped'
-              ? 'Stopped — ' + (counts.published || 0) + ' published before you stopped it.'
-              : st === 'error' ? 'Run failed: ' + esc(s.note || 'unknown error')
-              : 'Ask me for a number of models and I will find them, then publish them.'));
+              ? 'Stopped — ' + (counts.published || 0) + ' published before you stopped it.' + short
+              : st === 'error' ? 'Run failed: ' + esc(s.note || 'unknown error') + short
+              : 'Ask me for a number of models and I will find them, then publish them.') +
+      ((st === 'done') ? short : ''));
 
     const already = s.skipped_already || 0;
     document.getElementById('auto-summary').innerHTML =

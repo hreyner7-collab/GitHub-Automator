@@ -84,3 +84,31 @@ def test_the_built_in_self_test_can_fail():
         assert any("step 1" in f for f in faults), faults
     finally:
         verify.step_two_open = original
+
+
+def test_a_source_file_changed_on_disk_makes_this_build_stale(monkeypatch):
+    """Regression: freshness compared only the git revision, so uncommitted edits
+    — the normal state while the pipeline is being repaired — let a dashboard that
+    started hours ago report "running the code on disk", and the supervisor's
+    auto-reset never fired for the code actually on disk.
+
+    Here the process remembers a fingerprint that no longer matches its own files,
+    which is exactly what a changed source file does.
+    """
+    monkeypatch.setattr(main, "CODE_FINGERPRINT", "0123456789ab")
+    body = _client().get("/diagnostics").json()
+    fresh = [c for c in body["checks"]
+             if c["name"] == "running the code on disk"][0]
+    assert fresh["ok"] is False
+    assert "--restart" in fresh["fix"]
+    health = _client().get("/health").json()
+    assert health["build_is_current"] is False
+    assert health["disk_fingerprint"] != health["code_fingerprint"]
+
+
+def test_the_server_running_this_code_reports_itself_current():
+    """The control: with an unchanged tree the same check must say current, or the
+    staleness test above would pass for the wrong reason."""
+    health = _client().get("/health").json()
+    if health.get("head_rev"):
+        assert health["build_is_current"] is True

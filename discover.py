@@ -4,6 +4,7 @@ INFORMATION ONLY: it scrapes public listing pages and returns name, link,
 thumbnail and stats. It does NOT download, edit, or upload anything.
 """
 import json
+import os
 import random
 import re
 import time
@@ -67,6 +68,12 @@ CREALITY_SEARCH = "https://www.crealitycloud.com/search/models?q={q}&search_type
 # how many turned-down candidates a discovery call reports back (they are the
 # proof the gate ran, and the run log keeps them)
 REJECTED_MAX = 40
+
+# One listing scan's wall-clock ceiling. The 20-model run of 2026-10-23 spent 58
+# of its 82 minutes here (601 scroll passes), so an unbounded scan is the reason
+# a big run looks like it stopped working; it is also the reason a small run can
+# wait. Override with AUTO_DISCOVER_DEADLINE_S.
+DISCOVER_DEADLINE_S = float(os.environ.get("AUTO_DISCOVER_DEADLINE_S") or 1500)
 
 # The ticked set is creality_rules.LICENCE_ALLOW (imported above): only the
 # licences that allow redistribution, remixing AND commercial use. The
@@ -439,6 +446,15 @@ def _english_url(url: str) -> str:
 TRIED_PATH = Path(__file__).resolve().parent / "artifacts" / "tried_listings.json"
 TRIED_COOLDOWN_SECONDS = 7 * 24 * 3600
 
+# A listing this run could not decide — the fetch died, no file came back, the run
+# was stopped — is written down too, but forgiven after a couple of hours instead
+# of a week. Two different things share one record: "this model is not ours to
+# publish" and "our browser had bad luck with this page".
+# 2026-10-23 proved the difference matters: a run that skipped 20 models on a
+# transient failure cooled all 20 listings down for a week, so every later scan
+# had less to choose from, scrolled deeper, and came back with fewer candidates.
+TRIED_TRANSIENT_COOLDOWN_SECONDS = 2 * 3600
+
 
 # States that mean a run OPENED the listing's page (or was in the middle of it),
 # whatever the outcome. "published" is not here: the ledger already refuses those.
@@ -453,6 +469,46 @@ def listing_was_used(it: dict) -> bool:
     if state in USED_STATES:
         return True
     return state == "queued" and (it.get("reason") or "").startswith("run stopped")
+
+
+# A listing whose page was opened and then FAILED for a reason that says nothing
+# about the model — the fetch died, no file came back, the run was stopped, the
+# cover photos were unreadable — is not a REFUSAL. Cooling those listings down
+# for a week is what starved the pool: every unlucky run removed dozens of still
+# perfectly good models from the next scan, and a scan with less to choose from
+# has to scroll deeper, until a run asked for 20 cannot fill 20 at all.
+# Refusals the model itself caused (licence, policy, duplicate) keep their
+# cooldown; only the pipeline's own misfortune is forgiven.
+_TRANSIENT_OUTCOME_RE = re.compile(
+    r"no usable model file|could not fetch|run stopped|not real model geometry|"
+    r"cover photos|re-fetched|fetch attempt", re.I)
+
+
+def listing_was_refused(it: dict) -> bool:
+    """True when a run decided this listing is not worth publishing — as opposed
+    to failing to publish it for a reason that could go away on its own."""
+    if not listing_was_used(it):
+        return False
+    if (it.get("state") or "") == "duplicate":
+        return True
+    return not _TRANSIENT_OUTCOME_RE.search(it.get("reason") or "")
+
+
+def _entry_is_transient(entry: dict) -> bool:
+    """Whether a remembered listing was a refusal or only bad luck.
+
+    Records written before the two tiers existed carry no `transient` flag, so the
+    reason they stored decides — which also unwinds the week-long cooldown the
+    2026-10-23 run put on 20 listings that never actually failed.
+    """
+    if "transient" in entry:
+        return bool(entry.get("transient"))
+    return bool(_TRANSIENT_OUTCOME_RE.search(entry.get("reason") or ""))
+
+
+def _tried_window(entry: dict) -> float:
+    return (TRIED_TRANSIENT_COOLDOWN_SECONDS if _entry_is_transient(entry)
+            else TRIED_COOLDOWN_SECONDS)
 
 
 def _seed_from_runs(runs_dir: Path) -> dict:
@@ -470,7 +526,8 @@ def _seed_from_runs(runs_dir: Path) -> dict:
             if listing_was_used(it) and it.get("url"):
                 data[_english_url(it["url"])] = {"name": it.get("name", ""),
                                                  "reason": it.get("reason", ""),
-                                                 "when": when}
+                                                 "when": when,
+                                                 "transient": not listing_was_refused(it)}
     return data
 
 
@@ -500,8 +557,9 @@ def _write_tried(path: Path, data: dict) -> None:
     tmp.replace(path)
 
 
-def remember_tried(url: str, name: str, reason: str, path=None, now=None) -> None:
-    """Record that this listing was decided NOT to publish. The first decision
+def remember_tried(url: str, name: str, reason: str, path=None, now=None,
+                   transient: bool = False) -> None:
+    """Record that this listing was opened and not published. The first decision
     keeps its date, so the cooldown is not pushed back on every run."""
     if not url:
         return
@@ -511,28 +569,34 @@ def remember_tried(url: str, name: str, reason: str, path=None, now=None) -> Non
     now_ts = time.time() if now is None else now
     # keep the first date while the cooldown runs; once it has ended, a fresh
     # decision starts a new cooldown (otherwise the listing was opened every run)
-    if key in data and now_ts - float(data[key].get("when") or 0) < TRIED_COOLDOWN_SECONDS:
-        return
+    prev = data.get(key)
+    if prev and now_ts - float(prev.get("when") or 0) < _tried_window(prev):
+        # a real refusal is still inside its week: bad luck must not shorten it,
+        # and a repeat refusal must not push its date back
+        if not transient or not _entry_is_transient(prev):
+            return
     data[key] = {"name": name or "", "reason": (reason or "")[:200],
-                 "when": now_ts}
+                 "when": now_ts, "transient": bool(transient)}
     _write_tried(store, data)
 
 
 def was_tried_recently(url: str, path=None, now=None) -> bool:
-    """True while a listing's refusal is inside the cooldown, so Find Models
-    skips it without opening the page."""
+    """True while a listing's cooldown is running, so Find Models skips it
+    without opening the page — a week for a refusal, a couple of hours for a run
+    that merely had bad luck with it."""
     if not url:
         return False
     entry = _tried_store(Path(path) if path else TRIED_PATH).get(_english_url(url))
     if not entry:
         return False
     current = time.time() if now is None else now
-    return current - float(entry.get("when") or 0) < TRIED_COOLDOWN_SECONDS
+    return current - float(entry.get("when") or 0) < _tried_window(entry)
 
 
 def find_creality(keywords: list[str] | None = None, count: int = 10,
                   sort: str = "Downloads", is_done=None, progress=None,
-                  should_stop=None, exclude=None) -> dict:
+                  should_stop=None, exclude=None, extra: int | None = None,
+                  deadline_s: float | None = None) -> dict:
     """Find Creality Cloud models worth re-publishing.
 
     For each keyword (and once for the whole listing when none is given): the
@@ -541,6 +605,20 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
     scrolls. Returns
     {models: [{name, url, keyword}], licence: {...}, keywords, note,
      rejected: [{name, url, reason, source}], rejected_total, families}.
+
+    `extra` — how many candidates BEYOND `count` to harvest. A run asked for 20
+    gets exactly 20 rows to try, and when some of them do not publish (no model
+    file, a licence the page reads differently than the card did) the queue is
+    already empty, so the whole listing scan runs again. Measured on 2026-10-23:
+    20 models asked for, 20 fetches that brought no file back, two full scans
+    (3459s) and zero published. Harvesting a surplus in ONE scan turns those
+    replacements into queue rows that cost nothing.
+
+    `deadline_s` — a wall-clock ceiling for the whole scan. The one-of-each-family
+    rule sends the scan to every keyword, and 601 scroll passes at ~2.4s each is
+    exactly what a 20-model run did on 2026-10-23: 58 of its 82 minutes went on
+    discovery. Coming back with what it has, and saying so, beats never coming
+    back at all.
 
     `exclude` — listing URLs this run has already attempted (a failed or refused
     model is replaced by a fresh one, never re-picked). They are scrolled past
@@ -570,6 +648,15 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
     # the account's Chrome renders /fr/ pages; drive the ENGLISH site so the
     # listing and its Filters panel speak the language the rest reads
     count = max(1, int(count or 1))
+    # Harvest a surplus by default: replacements for the models that will not
+    # publish are already in the queue instead of needing a second full scan.
+    if extra is None:
+        extra = max(3, count // 2)
+    target = count + max(0, int(extra))
+    if deadline_s is None:
+        deadline_s = DISCOVER_DEADLINE_S
+    deadline = t_total + float(deadline_s) if deadline_s else None
+    timed_out = False
     ensure_browser()
 
     found: dict[str, dict] = {}
@@ -593,10 +680,13 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
     with sync_playwright_auto() as pw:
         browser = pw.chromium.connect_over_cdp(CDP_URL)
         for entry in stops:
-            if len(found) >= count or stopped:
+            if len(found) >= target or stopped:
                 break
             if should_stop and should_stop():
                 stopped = True
+                break
+            if deadline and time.perf_counter() > deadline:
+                timed_out = True          # no new listing: the scan has had its time
                 break
             page = browser.contexts[0].new_page()
             page.set_viewport_size({"width": 1440, "height": 900})
@@ -634,9 +724,16 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
                     if should_stop and should_stop():
                         stopped = True     # Stop pressed: end the scan at this pass
                         break
+                    if deadline and time.perf_counter() > deadline:
+                        timed_out = True    # the scan has had its wall-clock: keep what
+                        break               # it found rather than never returning
                     with timing.phase("harvest.read"):
                         cards = json.loads(page.evaluate(CREALITY_CARDS_JS) or "[]")
                     for c in cards:
+                        if len(found) >= target:
+                            # the page can hold far more cards than the run needs:
+                            # judging them all would only cost time
+                            break
                         url = c.get("url") or ""
                         if not url or url in found or _english_url(url) in skip_urls:
                             continue
@@ -683,7 +780,7 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
                                                   if "q=" in entry else "")}
                     if progress:
                         progress({"keyword": (entry.split("q=")[-1].split("&")[0].replace("+", " ") if "q=" in entry else "all models"), "pass": pss + 1, "cards": len(cards), "found": len(found), "count": count})
-                    if len(found) >= count:
+                    if len(found) >= target:
                         break
                     # the end of the listing = the PAGE stopped growing. Count the
                     # cards on the page, not the accepted models: rejected and
@@ -712,19 +809,30 @@ def find_creality(keywords: list[str] | None = None, count: int = 10,
     # been read and the run still wants more, the repeats fill the count in the
     # order they were seen. Each one already passed the household gate.
     for url, item in spares:
-        if len(found) >= count or stopped:
+        if len(found) >= target or stopped:
             break
         if url not in found:
             found[url] = item
-    if len(found) < count and not note and not stopped:
+    # The ceiling is the reason the queue is short, so it is reported first: a
+    # scan that ran out of its own time must not be described as a listing that
+    # ran out of models.
+    if timed_out and not stopped:
+        # honest about WHY the scan stopped with the queue short: it ran out of
+        # its own time, not out of listings
+        note = (note + " | " if note else "") + (
+            "the listing scan stopped at its %d-second ceiling with %d candidate(s) "
+            "in hand (asked for %d) — raise AUTO_DISCOVER_DEADLINE_S for a longer scan"
+            % (int(deadline_s or 0), len(found), count))
+    elif len(found) < count and not note and not stopped:
         note = ("only %d of the %d models asked for were found in the listings"
                 % (len(found), count))
     # The whole scan's wall-clock, recorded next to its parts: this is the phase
     # that dominates a run (one fixed 6s wait per keyword, a 2.5s wait per scroll
     # pass, up to 200 passes), so it has to be in the table, not guessed at.
     timing.record("discover.total", time.perf_counter() - t_total)
-    return {"models": list(found.values())[:count], "licence": licence_report,
+    return {"models": list(found.values())[:target], "licence": licence_report,
             "keywords": keywords, "note": note, "count": count,
+            "harvested": len(found), "timed_out": timed_out,
             "skipped_done": len(skipped_names),
             "already_done": skipped_names[:12],
             "rejected": rejected[:REJECTED_MAX],

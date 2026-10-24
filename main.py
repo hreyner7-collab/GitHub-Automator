@@ -16,7 +16,9 @@ from uploader import (upload as uploader_upload, _debug_port_up,
                       license_answer_indexes, expected_badge_token,
                       usable_cover_images)
 from discover import discover as discover_models, find_creality, \
-    CREALITY_LICENCE_ALLOW, CREALITY_LICENCE_DENY, listing_was_used, remember_tried, was_tried_recently
+    CREALITY_LICENCE_ALLOW, CREALITY_LICENCE_DENY, listing_was_refused, \
+    listing_was_used, remember_tried, was_tried_recently, \
+    DISCOVER_DEADLINE_S as AUTO_DISCOVER_DEADLINE_S
 import analytics
 import creality_rules
 import ledger
@@ -79,6 +81,32 @@ def _build_stamp() -> str:
 
 
 BUILD = _build_stamp()
+
+
+def _code_fingerprint() -> str:
+    """A fingerprint of the SOURCE this process is running: the pipeline modules
+    and the dashboard page, by mtime and size.
+
+    Freshness used to be judged on the git revision alone, so a dashboard started
+    from an uncommitted tree — the normal state while the pipeline is being
+    repaired — reported "running the code on disk" while serving code hours old,
+    and the supervisor's auto-reset never fired for the edits sitting on disk.
+    The revision says WHICH COMMIT; this says whether those files have changed
+    since the process read them.
+    """
+    import hashlib
+    root = Path(__file__).resolve().parent
+    parts = []
+    for f in sorted(root.glob("*.py")) + [root / "creality" / "index.html"]:
+        try:
+            st = f.stat()
+            parts.append("%s:%d:%d" % (f.name, st.st_mtime_ns, st.st_size))
+        except OSError:
+            parts.append("%s:missing" % f.name)
+    return hashlib.sha1("|".join(parts).encode("utf-8")).hexdigest()[:12]
+
+
+CODE_FINGERPRINT = _code_fingerprint()
 
 SERVER_PORT = 8000
 
@@ -537,7 +565,9 @@ async def upload_to_creality(req: UploadRequest):
 AUTO: dict = {"state": "idle", "job_id": None, "requested": 0, "discovered": 0,
               "items": [], "licence": {}, "keywords": [], "note": "",
               "started": None, "finished": None, "stop": False, "log_path": None,
-              "skipped_already": 0, "already_done": [], "rejected_total": 0}
+              "skipped_already": 0, "already_done": [], "rejected_total": 0,
+              "signin_required": False, "shortfall": None, "shortfall_reason": "",
+              "published": 0}
 AUTO_TASK: asyncio.Task | None = None
 UPLOAD_LOCK = asyncio.Lock()          # the Creality form: one writer at a time
 
@@ -583,13 +613,23 @@ def _fetch_failure_is_recoverable(message: str) -> bool:
 
 
 def _remember_outcomes() -> None:
-    """Write every listing a run OPENED into the tried record — refused, failed,
-    duplicate, or left undecided by a Stop after its page was read. Called with
-    each log write, so a run stopped midway keeps what it decided. A listing
-    already recorded keeps its first date."""
+    """Write every listing a run opened into the tried record, with the reason it
+    ended for: a licence the page really carries, a policy refusal, a duplicate —
+    or the pipeline's own bad luck (a fetch that died, a model file that did not
+    come back, a Stop mid-page).
+
+    Both kinds are recorded, but they are cooled down for different lengths:
+    discover.remember_tried() gives a refusal a week and bad luck a couple of
+    hours. Keeping the bad-luck listings in the record stops a run that is stopped
+    and restarted from reading the same page twice; giving them the short window
+    is what stops one unlucky run from emptying the pool of fresh listings until a
+    20-model request cannot fill 20.
+    Called with each log write, so a run stopped midway keeps what it decided."""
     for it in AUTO.get("items") or []:
         if listing_was_used(it):
-            remember_tried(it.get("url", ""), it.get("name", ""), it.get("reason", ""))
+            remember_tried(it.get("url", ""), it.get("name", ""),
+                           it.get("reason", ""),
+                           transient=not listing_was_refused(it))
 
 
 async def _wait_between_fetch_tries(seconds: float) -> bool:
@@ -663,6 +703,28 @@ def _auto_counts() -> dict:
     return out
 
 
+def _file_attempt_note(fa: dict) -> str:
+    """What the model-file step of a fetch saw, in the run's own words. A bare
+    "no usable model file came back from the page" is what hid 20 identical skips
+    on 2026-10-23 with no way to tell a model with no files from a browser that
+    could not download."""
+    if not fa:
+        return "the fetch reported nothing"
+    if fa.get("signin"):
+        return "the page answered with Creality's sign-in form"
+    if fa.get("navigated"):
+        return ("the download click left the model page (it landed on %r)"
+                % (fa.get("step2") or fa.get("control") or "somewhere else"))
+    if not fa.get("control"):
+        return ("the page showed no download control at all; its url was %s"
+                % str(fa.get("page") or "?")[:80])
+    if fa.get("click_error"):
+        return "clicking %r failed: %s" % (fa.get("control"), fa["click_error"])
+    return ("clicked %r%s and waited for a download that never started"
+            % (fa.get("control"),
+               (" then %r" % fa["step2"]) if fa.get("step2") else ""))
+
+
 async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
     import time as _time
 
@@ -675,6 +737,13 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
             "keywords": AUTO["keywords"], "licence": AUTO["licence"],
             "counts": _auto_counts(), "items": AUTO["items"],
             "timings": timing.snapshot(),
+            # a run that published fewer than it was asked for says so, with the
+            # reason — "done" alone used to hide 0-of-20
+            "published": sum(1 for i in AUTO.get("items") or []
+                             if i.get("state") == "published"),
+            "shortfall": AUTO.get("shortfall"),
+            "shortfall_reason": AUTO.get("shortfall_reason"),
+            "signin_required": bool(AUTO.get("signin_required")),
             "finished": _time.strftime("%Y-%m-%d %H:%M:%S"),
         }
         _write_run_log(path, body)
@@ -687,7 +756,11 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
         # a run starts with an empty queue and empty counters, even when the
         # same worker state was used by an earlier run in this process
         AUTO.update({"items": [], "licence": {}, "note": "", "discovered": 0,
-                     "rejected_total": 0, "skipped_already": 0, "already_done": []})
+                     "rejected_total": 0, "skipped_already": 0, "already_done": [],
+                     # per-run flags: a stale one from the last run would stop this
+                     # one before it began
+                     "signin_required": False, "shortfall": None,
+                     "shortfall_reason": "", "published": 0})
         # Models already in the "already published" config are filtered out
         # DURING discovery (not queued and skipped later), so the run never
         # picks a model it has finished before.
@@ -705,9 +778,18 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
             # One discovery pass. The first pass fills the queue; a top-up
             # replaces what did not publish. `exclude` holds every listing URL
             # this run already attempted, so none is picked twice.
+            #
+            # It harvests a SURPLUS (need + half again) rather than exactly
+            # `need`, because a run asked for 20 does not get 20 publications out
+            # of 20 candidates: licences re-read on the page, missing model files
+            # and Creality's own duplicate check each cost rows. In one scan those
+            # replacements are free; in the old design each one cost a second full
+            # listing scan (the 2026-10-23 run spent 58 of its 82 minutes
+            # discovering and still published nothing).
             disc = find_creality(keywords, need, "Downloads", _already_done,
                                  _on_progress, should_stop=_stop_requested,
-                                 exclude=exclude)
+                                 exclude=exclude, extra=max(4, need // 2),
+                                 deadline_s=AUTO_DISCOVER_DEADLINE_S)
             # The user's rule, re-judged here by the one owner (selector.py) even
             # though discovery already applied it: a rubbish or off-family candidate
             # is written into the run as a visible `rejected` row with its reason and
@@ -781,7 +863,11 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
 
         idx = 0
         topups = 0
-        max_topups = 4
+        # A top-up costs a whole listing scan, so it is a last resort now that the
+        # first scan harvests a surplus. Six of them is plenty for a 20-model run
+        # and, unlike the old fixed 4, it cannot be the only reason a big run came
+        # up short.
+        max_topups = 6
         while True:
             if idx >= len(AUTO["items"]):
                 # The queue is used up. Anything that did not publish (refused,
@@ -789,7 +875,18 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                 # never a repeat, until `count` models are on the account or the
                 # listings run dry.
                 need = count - _published_count()
-                if need <= 0 or AUTO.get("stop") or topups >= max_topups:
+                if need <= 0 or AUTO.get("stop") or AUTO.get("signin_required") \
+                        or topups >= max_topups:
+                    if need > 0:
+                        # Honest about coming up short: "done" with 3 of 20 is not
+                        # a finished run, and the caller must be able to see why.
+                        AUTO["shortfall"] = need
+                        AUTO["shortfall_reason"] = (
+                            "signed out of Creality Cloud"
+                            if AUTO.get("signin_required") else
+                            "stopped by you" if AUTO.get("stop") else
+                            "the listings gave no more candidates that the licence "
+                            "and household gates allowed")
                     break
                 topups += 1
                 AUTO["state"] = "discovering"
@@ -801,6 +898,13 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                     AUTO["state"] = "stopped"
                     break
                 if not more["models"]:
+                    # the listings are dry for this run: say so with the number
+                    AUTO["shortfall"] = count - _published_count()
+                    AUTO["shortfall_reason"] = (
+                        "the listings ran dry — a top-up scan found no candidate "
+                        "the gates allowed"
+                        + (" (%s)" % (more["disc"].get("note") or "")
+                           if more["disc"].get("note") else ""))
                     break
                 AUTO["state"] = "running"
                 continue
@@ -838,6 +942,55 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                 it["reason"] = ("could not fetch this model: " + fetch_err[:160]
                                 + _fetch_attempts_note(fetch_tries))
                 continue
+            if res.get("signin_required"):
+                # The browser is signed out of Creality Cloud. That is not this
+                # model's bad luck: EVERY remaining model in the queue will read
+                # its licence fine (the page is public), find no download and be
+                # skipped — which is how the 2026-10-23 run spent 82 minutes to
+                # publish 0 of 20. Say what is wrong once, and stop.
+                it["state"] = FETCH_FAILED
+                it["reason"] = ("the debug Chrome is signed out of Creality Cloud: "
+                                "its download click landed on the sign-in page")
+                AUTO["note"] = ("SIGN IN REQUIRED — open the debug Chrome window, log in to "
+                                "crealitycloud.com once, and start the run again. The run "
+                                "stopped here instead of skipping every remaining model.")
+                AUTO["signin_required"] = True
+                break
+            # What the model-file step saw, kept on the row even when it worked:
+            # a run that skipped 20 models had nothing to show for any of them.
+            if res.get("file_attempt"):
+                it["file_attempt"] = res["file_attempt"]
+            # A page that offered no download control at all — or a click that
+            # took the tab off the model page — is the FETCH failing, not the
+            # model being undownloadable. It gets one clean retry on a fresh tab
+            # before the candidate is written off (measured: the very same model
+            # hands over its file in seconds when asked again), and it is retried
+            # HERE, before the licence gate, so nothing downstream reads from the
+            # throwaway first attempt.
+            _fa = res.get("file_attempt") or {}
+            if (not res.get("stl_path") and (not _fa.get("control") or _fa.get("navigated"))
+                    and not AUTO.get("stop")):
+                res_b, _e_b, _t_b, stop_b = await _fetch_with_retries(it)
+                if stop_b:
+                    AUTO["state"] = "stopped"
+                    it["state"] = "queued"
+                    it["reason"] = "run stopped while retrying this model's model file"
+                    break
+                if res_b is not None and (res_b.get("stl_path")
+                                          or res_b.get("signin_required")):
+                    res = res_b
+                    it["file_attempt"] = res.get("file_attempt") or {}
+                    it["refetch_note"] = ("re-fetched once for its model file: the first read "
+                                          + ("left the model page" if _fa.get("navigated")
+                                             else "found no download control"))
+            if res.get("signin_required"):
+                it["state"] = FETCH_FAILED
+                it["reason"] = ("the debug Chrome is signed out of Creality Cloud: "
+                                "its download click landed on the sign-in page")
+                AUTO["note"] = ("SIGN IN REQUIRED — open the debug Chrome window, log in to "
+                                "crealitycloud.com once, and start the run again.")
+                AUTO["signin_required"] = True
+                break
             # Already published, as the page names it? Refused now, before the
             # second licence read and the photo downloads.
             hit1 = ledger.find(source_url=res.get("source_url") or it["url"],
@@ -873,6 +1026,14 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                     res = res2
                     lic = res.get("license") or {}
                     it["reason"] = "re-fetched once: the first read saw no licence"
+                    if res2.get("signin_required"):
+                        # the retry itself discovered the sign-out: same fast-fail
+                        it["state"] = FETCH_FAILED
+                        AUTO["note"] = ("SIGN IN REQUIRED — open the debug Chrome "
+                                        "window, log in to crealitycloud.com once, "
+                                        "and start the run again.")
+                        AUTO["signin_required"] = True
+                        break
             it["licence"] = lic.get("raw", "")[:200]
             it["licence_evidence"] = lic.get("evidence") or []
             if AUTO.get("stop"):
@@ -900,7 +1061,8 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                 continue
             if not res.get("stl_path"):
                 it["state"] = "skipped"
-                it["reason"] = "no usable model file came back from the page"
+                it["reason"] = ("no usable model file came back from the page (%s)"
+                                % _file_attempt_note(res.get("file_attempt") or {}))
                 continue
             # The proof of creation, built from the file being uploaded, and the
             # photos the listing will carry (the creator's originals, or our own
@@ -1023,8 +1185,26 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                                   outcome="published" if really_published
                                           else "creality-duplicate",
                                   note="run " + job_id)
-        if AUTO.get("state") != "stopped":
+        # How far the run came up short, in every ending: "done" with 3 of 20 is
+        # not a finished run, and a run that stopped at a sign-out is short by
+        # everything it never tried.
+        _short = count - _published_count()
+        if _short > 0 and not AUTO.get("shortfall"):
+            AUTO["shortfall"] = _short
+            AUTO["shortfall_reason"] = (
+                "signed out of Creality Cloud"
+                if AUTO.get("signin_required") else
+                "stopped by you with %d still to publish" % _short
+                if AUTO.get("state") == "stopped" else
+                "the queue of candidates ran out with %d still to publish" % _short)
+        if AUTO.get("signin_required"):
+            # Not a finished run and not a crash: the account needs a login before
+            # anything else can publish. "error" is the state the dashboard shows
+            # the note for, and the note is the one thing the user has to do.
+            AUTO["state"] = "error"
+        elif AUTO.get("state") != "stopped":
             AUTO["state"] = "done"
+        AUTO["published"] = _published_count()
         AUTO["finished"] = _time.strftime("%Y-%m-%d %H:%M:%S")
         AUTO["log_path"] = _log()
     except Exception as e:
@@ -1069,7 +1249,8 @@ async def auto_start(req: AutoRequest):
                  "note": "", "started": _time.strftime("%Y-%m-%d %H:%M:%S"),
                  "finished": None, "stop": False, "log_path": None,
                  "skipped_already": 0, "already_done": [], "rejected_total": 0,
-                 "progress": None})
+                 "progress": None, "signin_required": False, "shortfall": None,
+                 "shortfall_reason": "", "published": 0})
     AUTO_TASK = asyncio.create_task(_auto_worker(count, keywords, job_id))
     return {"ok": True, "job_id": job_id, "requested": count, "keywords": keywords,
             "licence_allow": CREALITY_LICENCE_ALLOW,
@@ -1130,9 +1311,11 @@ async def diagnostics():
         "if a stale copy holds it: scripts/dashboard_supervisor.py --restart")
 
     head = _git("rev-parse", "--short", "HEAD")
-    add("running the code on disk", (not head) or head == BUILD.split("+")[0],
-        "running %s, disk is %s, up %ss" % (BUILD, head or "unknown",
-                                            round(time.time() - STARTED_AT)),
+    disk = _code_fingerprint()
+    add("running the code on disk",
+        ((not head) or head == BUILD.split("+")[0]) and disk == CODE_FINGERPRINT,
+        "running %s (%s), disk is %s, up %ss" % (BUILD, CODE_FINGERPRINT, disk,
+                                                 round(time.time() - STARTED_AT)),
         "code changed since this process started: scripts/dashboard_supervisor.py --restart")
 
     try:
@@ -1403,16 +1586,21 @@ async def health():
         "browser_probe": "not run here — use the Diagnostics panel's browser check",
     }
     head = _git("rev-parse", "--short", "HEAD")
+    disk_fp = _code_fingerprint()
     return {"status": "ok", "build": BUILD, "pid": os.getpid(),
             "started_at": time.strftime("%Y-%m-%d %H:%M:%S",
                                       time.localtime(STARTED_AT)),
             "uptime_s": round(time.time() - STARTED_AT, 1),
             "port": SERVER_PORT,
+            "head_rev": head,
+            "code_fingerprint": CODE_FINGERPRINT,
             # Is the code ON DISK what this process is running? A server keeps
             # serving the code it started with, which is why a "restart" could
-            # look like it did nothing. This makes that answerable.
-            "head_rev": head,
-            "build_is_current": bool(head) and head == BUILD.split("+")[0],
+            # look like it did nothing. This makes that answerable — and checks
+            # the files themselves, not only the commit they came from.
+            "disk_fingerprint": disk_fp,
+            "build_is_current": bool(head) and head == BUILD.split("+")[0]
+                                and CODE_FINGERPRINT == disk_fp,
             "checks": checks}
 
 

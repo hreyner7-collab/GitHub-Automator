@@ -203,6 +203,53 @@ DOWNLOAD_MAIN_RE = (
 DOWNLOAD_ITEM_RE = (
     r"3mf|t[ée]l[ée]charger|descargar|herunterladen|baixar|scaricare|download")
 
+# Step 2 of the download — the control INSIDE the file dialog — is searched for
+# among the dialog's own elements only, and never inside the page header, nav or
+# footer. FIND_JS alone was not enough here: the signed-in site's top navigation
+# carries a "Downloads" item, DOWNLOAD_VERB_RE matches it, and FIND_JS returns
+# the SMALLEST matching box — so the step-2 "click the dialog's Download All"
+# could click the nav link instead and leave the model page. That is a model with
+# a perfectly good file reported as "no usable model file came back from the
+# page", and it is why a long run stopped publishing while a single model worked.
+FIND_DIALOG_JS = r"""
+    (reStr) => {
+        const re = new RegExp(reStr, 'i');
+        const panels = [...document.querySelectorAll(
+            '.el-dialog,.el-drawer,.el-message-box,[role=dialog]')]
+            .filter(d => d.getBoundingClientRect().width > 0);
+        const roots = panels.length ? panels : [document.body];
+        const hits = [];
+        for (const root of roots) {
+            for (const el of root.querySelectorAll('button,div,a,span,[role=button]')) {
+                if (el.closest('header,nav,footer,.header,.nav,.footer')) continue;
+                const t = (el.innerText || '').trim();
+                if (!t || t.length > 60 || !re.test(t)) continue;
+                const r = el.getBoundingClientRect();
+                if (r.width < 20 || r.height < 12 || r.x < 0 || r.y < 0) continue;
+                if (r.y >= window.innerHeight) continue;
+                const inner = [...el.querySelectorAll('button,div,a,span,[role=button]')]
+                    .some(c => {
+                        const ct = (c.innerText || '').trim();
+                        return ct && ct.length <= 60 && re.test(ct)
+                            && c.getBoundingClientRect().width > 0;
+                    });
+                if (inner) continue;
+                const cx = Math.round(r.x + r.width / 2), cy = Math.round(r.y + r.height / 2);
+                if (cx < 0 || cy < 0 || cx >= window.innerWidth || cy >= window.innerHeight)
+                    continue;
+                const top = document.elementFromPoint(cx, cy);
+                if (!top || (top !== el && !el.contains(top) && !top.contains(el)))
+                    continue;
+                hits.push({x: cx, y: cy, t, area: r.width * r.height,
+                           panel: !!panels.length});
+            }
+        }
+        if (!hits.length) return null;
+        hits.sort((a, b) => a.area - b.area);
+        return hits[0];
+    }
+"""
+
 
 def _slug(name: str) -> str:
     return re.sub(r"[^\w-]", "_", name.lower())[:40]
@@ -1360,7 +1407,23 @@ def _fetch_creality(url: str) -> dict:
             def _find(text_re, min_w=40):
                 return page.evaluate(FIND_JS, text_re)
 
+            def _find_in_panel(text_re):
+                return page.evaluate(FIND_DIALOG_JS, text_re)
+
+            def _left_the_model() -> bool:
+                """True when a click took the tab off the model page: the slug is
+                gone, or the browser is sitting on a sign-in form."""
+                u = page.url or ""
+                return (SIGNIN_URL_RE.search(u) is not None
+                        or (_slug_of_model(model_url) not in u))
+
             stl_path = None
+            # What this step actually saw, so a model that produced no file is
+            # reported with evidence instead of a bare "no usable model file
+            # came back from the page" — which is exactly what hid a signed-out
+            # browser behind 20 identical skips on 2026-10-23.
+            file_try: dict = {"control": "", "step2": "", "page": "",
+                              "downloads": 0, "signin": False, "navigated": False}
             # The control's LABEL is in the page's own language, and on the
             # French layout (2026-10-09: 6 photos came back but no model file,
             # so the mandatory proof could not be built) the flow is TWO steps:
@@ -1371,16 +1434,26 @@ def _fetch_creality(url: str) -> dict:
             # An English-layout page offers "Download 3MF"/"View STL/CAD Files"
             # directly, so both are tried, in the site's own wording.
             main = _find(DOWNLOAD_MAIN_RE)
+            file_try["control"] = (main or {}).get("t", "")
             if main:
-                page.mouse.click(main["x"], main["y"])
+                try:
+                    page.mouse.click(main["x"], main["y"])
+                except Exception as e:
+                    file_try["click_error"] = str(e)[:120]
                 page.wait_for_timeout(1200)
-                if not downloads:      # step 2, once the dialog/menu has appeared
+                if _left_the_model():
+                    file_try["navigated"] = True
+                if not downloads and not file_try["navigated"]:
                     for _ in range(8):
-                        item = (_find(DOWNLOAD_3MF_RE)
-                                or _find(DOWNLOAD_VERB_RE)
-                                or _find(r"\b3MF\b"))
+                        item = (_find_in_panel(DOWNLOAD_3MF_RE)
+                                or _find_in_panel(DOWNLOAD_VERB_RE)
+                                or _find_in_panel(r"\b3MF\b"))
                         if item and item.get("t") != main.get("t"):
-                            page.mouse.click(item["x"], item["y"])
+                            file_try["step2"] = item.get("t", "")
+                            try:
+                                page.mouse.click(item["x"], item["y"])
+                            except Exception as e:
+                                file_try["click_error"] = str(e)[:120]
                             break
                         page.wait_for_timeout(1000)
                 for _ in range(45):
@@ -1392,6 +1465,9 @@ def _fetch_creality(url: str) -> dict:
                     fname = (d.suggested_filename or (slug + ".3mf")).replace("/", "_")
                     stl_path = os.path.join(DOWNLOADS_DIR, fname)
                     d.save_as(stl_path)
+            file_try["downloads"] = len(downloads)
+            file_try["page"] = (page.url or "")[:160]
+            file_try["signin"] = bool(SIGNIN_URL_RE.search(page.url or ""))
         finally:
             try:
                 page.close()
@@ -1411,6 +1487,8 @@ def _fetch_creality(url: str) -> dict:
     return {"name": name, "description": description, "stl_path": stl_path,
             "image_paths": image_paths, "slug": slug, "author": data["author"],
             "license": license_info, "source_url": model_url,
+            "file_attempt": file_try,    # what the download step really saw
+            "signin_required": bool(file_try.get("signin")),
             "gallery": gallery_info}   # proof of WHICH images were taken
 
 
@@ -1430,6 +1508,21 @@ def _canon_model_url(url: str) -> str:
     u = _english_site_url(url)
     m = re.search(r"crealitycloud\.com/model-detail/[^/?#]+", u)
     return "https://" + m.group(0) if m else u
+
+
+# The download step needs to know when the browser stopped being signed in:
+# Creality answers a download from a logged-out session by showing its own login
+# page, and 2026-10-23 a whole run skipped 20 models with "no usable model file
+# came back from the page" because nothing here could say that out loud.
+SIGNIN_URL_RE = re.compile(r"crealitycloud\.com/login(?:[?/#]|$)|/signin(?:[?/#]|$)",
+                           re.I)
+
+
+def _slug_of_model(url: str) -> str:
+    """The model-detail slug — the one part of the URL that says the tab is
+    still on the model it was sent to read."""
+    m = re.search(r"model-detail/([^/?#]+)", url or "")
+    return m.group(1) if m else ""
 
 
 def fetch(url: str) -> dict:

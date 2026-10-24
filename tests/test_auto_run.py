@@ -437,7 +437,7 @@ def test_a_run_asks_the_harvester_to_skip_what_is_already_published(monkeypatch,
     captured = {}
 
     def fake_find(keywords, count, sort="Downloads", is_done=None, progress=None,
-                  should_stop=None, exclude=None):
+                  should_stop=None, exclude=None, extra=None, deadline_s=None):
         captured["is_done"] = is_done
         captured["count"] = count
         return {"models": [{"name": "Fresh cable organizer",
@@ -733,7 +733,7 @@ def test_a_card_already_published_is_refused_before_its_page_is_opened(monkeypat
     opened = []
 
     def fake_find(keywords, count, sort="Downloads", is_done=None, progress=None,
-                  should_stop=None, exclude=None):
+                  should_stop=None, exclude=None, extra=None, deadline_s=None):
         return {"models": [_card("Known cable organizer", "https://x/model-detail/known")],
                 "licence": {"opened": True, "verified": True}, "note": ""}
 
@@ -761,7 +761,7 @@ def test_a_failed_model_is_replaced_by_a_fresh_candidate_never_a_repeat(monkeypa
     opened = []
 
     def fake_find(keywords, count, sort="Downloads", is_done=None, progress=None,
-                  should_stop=None, exclude=None):
+                  should_stop=None, exclude=None, extra=None, deadline_s=None):
         calls.append({"count": count, "exclude": set(exclude or ())})
         if len(calls) == 1:
             return {"models": [_card("Bottle storage rack", A_URL)],
@@ -805,7 +805,7 @@ def test_a_pool_that_runs_dry_ends_the_run_honestly(monkeypatch, tmp_path):
     calls = []
 
     def fake_find(keywords, count, sort="Downloads", is_done=None, progress=None,
-                  should_stop=None, exclude=None):
+                  should_stop=None, exclude=None, extra=None, deadline_s=None):
         calls.append(set(exclude or ()))
         models = [_card("Bottle storage rack", A_URL)] if len(calls) == 1 else []
         return {"models": models, "licence": {"opened": True, "verified": True},
@@ -820,6 +820,9 @@ def test_a_pool_that_runs_dry_ends_the_run_honestly(monkeypatch, tmp_path):
     assert len(calls) == 2
     assert main.AUTO["state"] == "done"
     assert [i["state"] for i in main.AUTO["items"]] == ["published"]
+    # and it says how far short it came, instead of looking like a finished run
+    assert main.AUTO["shortfall"] == 2
+    assert "ran dry" in main.AUTO["shortfall_reason"]
 
 
 def test_a_model_the_page_names_as_published_is_refused_after_the_first_read(monkeypatch, tmp_path):
@@ -833,7 +836,7 @@ def test_a_model_the_page_names_as_published_is_refused_after_the_first_read(mon
     opened = []
 
     def fake_find(keywords, count, sort="Downloads", is_done=None, progress=None,
-                  should_stop=None, exclude=None):
+                  should_stop=None, exclude=None, extra=None, deadline_s=None):
         return {"models": [_card("Bottle storage rack", "https://x/model-detail/fresh-link")],
                 "licence": {"opened": True, "verified": True}, "note": ""}
 
@@ -907,7 +910,7 @@ def test_a_duplicate_found_after_opening_does_not_stop_the_run(monkeypatch, tmp_
                   source_url="https://www.crealitycloud.com/model-detail/cable-management-tool-3d-print")
 
     def fake_find(keywords, count, sort="Downloads", is_done=None, progress=None,
-                  should_stop=None, exclude=None):
+                  should_stop=None, exclude=None, extra=None, deadline_s=None):
         # the first pass offers the duplicate; the top-up, which excludes what
         # was attempted, offers a fresh model
         if dup in (exclude or ()):
@@ -948,3 +951,103 @@ def test_a_duplicate_found_after_opening_does_not_stop_the_run(monkeypatch, tmp_
     assert len(uploads) == 1
     # the duplicate's listing is learned, so the next card check refuses it by link
     assert ledger.find(source_url=dup, name="Cable Holder 3Dprint")["found"]
+
+
+def test_the_run_asks_the_scan_for_a_surplus_and_a_deadline(monkeypatch, tmp_path):
+    """The queue must start bigger than the request, and the scan must be told
+    when to stop: those two are what replace a second 58-minute listing walk."""
+    import main
+
+    captured = []
+
+    def fake_find(keywords, count, sort="Downloads", is_done=None, progress=None,
+                  should_stop=None, exclude=None, extra=None, deadline_s=None):
+        captured.append({"count": count, "extra": extra, "deadline_s": deadline_s})
+        return {"models": [_card("Bottle storage rack", A_URL)],
+                "licence": {"opened": True, "verified": True}, "note": ""}
+
+    cover = _cc_cover(tmp_path)
+    monkeypatch.setattr(main, "find_creality", fake_find)
+    monkeypatch.setattr(main, "dl_fetch", lambda url: _cc_page(url, cover))
+    monkeypatch.setattr(main, "uploader_upload", _publish_upload)
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+
+    asyncio.run(main._auto_worker(20, ["k"], "surplusjob"))
+
+    first = captured[0]
+    assert first["count"] == 20
+    assert first["extra"] and first["extra"] >= 4
+    assert first["deadline_s"] == main.AUTO_DISCOVER_DEADLINE_S
+    # a top-up asks only for what is still missing, on the same ceiling
+    assert captured[-1]["count"] < first["count"]
+
+
+def test_a_signed_out_browser_ends_the_run_instead_of_skipping_every_model(monkeypatch, tmp_path):
+    """2026-10-23: 82 minutes spent skipping 20 models that shared one cause — the
+    debug Chrome was signed out, so every download click landed on a sign-in page.
+    One clear message, then the run stops; it must not pretend 20 models were bad."""
+    import main
+
+    cover = _cc_cover(tmp_path)
+    opened = []
+
+    def fake_dl(url):
+        opened.append(url)
+        return {"name": "Model " + url.rsplit("/", 1)[-1], "description": "d",
+                "stl_path": "", "image_paths": [cover],
+                "license": discover_license("https://creativecommons.org/licenses/by/4.0"),
+                "signin_required": True,
+                "file_attempt": {"control": "", "navigated": False, "signin": True}}
+
+    monkeypatch.setattr(main, "find_creality",
+                        lambda *a, **k: {"models": [_card("Bottle storage rack", A_URL),
+                                                   _card("Clothes peg", B_URL)],
+                                         "licence": {"opened": True, "verified": True},
+                                         "note": ""})
+    monkeypatch.setattr(main, "dl_fetch", fake_dl)
+    monkeypatch.setattr(main, "uploader_upload", _must_not_publish)
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+
+    asyncio.run(main._auto_worker(2, ["k"], "signinjob"))
+
+    assert opened == [A_URL]                     # the second model never opened
+    assert main.AUTO["signin_required"] is True
+    assert main.AUTO["state"] == "error"
+    assert "SIGN IN REQUIRED" in main.AUTO["note"]
+    assert main.AUTO["items"][0]["state"] == main.FETCH_FAILED
+    assert main.AUTO["shortfall"] == 2
+    assert "signed out" in main.AUTO["shortfall_reason"]
+
+
+def test_a_page_that_offered_no_download_is_read_once_more_before_written_off(monkeypatch, tmp_path):
+    """A fetch that saw no download control is the FETCH failing, not the model
+    having no file: measured live, the same model hands over its file seconds later
+    on a fresh tab. It gets that one clean retry before anything decides it."""
+    import main
+
+    cover = _cc_cover(tmp_path)
+    calls = []
+
+    def fake_dl(url):
+        calls.append(url)
+        if len(calls) == 1:
+            return dict(_cc_page(url, cover), stl_path=None,
+                        file_attempt={"control": "", "step2": "", "page": "",
+                                      "downloads": 0, "signin": False,
+                                      "navigated": False})
+        return _cc_page(url, cover)
+
+    monkeypatch.setattr(main, "find_creality",
+                        lambda *a, **k: {"models": [_card("Bottle storage rack", A_URL)],
+                                         "licence": {"opened": True, "verified": True},
+                                         "note": ""})
+    monkeypatch.setattr(main, "dl_fetch", fake_dl)
+    monkeypatch.setattr(main, "uploader_upload", _publish_upload)
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+
+    asyncio.run(main._auto_worker(1, ["k"], "refetchjob"))
+
+    assert calls == [A_URL, A_URL]
+    item = main.AUTO["items"][0]
+    assert item["state"] == "published"
+    assert "re-fetched once" in item["refetch_note"]

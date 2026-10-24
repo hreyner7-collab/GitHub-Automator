@@ -191,11 +191,32 @@ def load() -> dict:
     return data
 
 
-def _save(data: dict) -> None:
+def _save(data: dict, base: list | None = None) -> None:
+    """Write the ledger, merging it into whatever is on disk right now.
+
+    Every writer does load -> mutate -> save, and the only lock here is a
+    threading lock, so two live processes (the dashboard and a run script) both
+    read the same file and the later save would otherwise drop the earlier one's
+    rows wholesale. Re-read the file at write time and fold our rows over it:
+    a row this process never read (a concurrent add) survives, and a row it
+    deliberately dropped (``forget`` / ``merge_duplicates``) stays dropped,
+    because ``base`` tells us what we actually started from. The JSON carries no
+    tombstones, so a row we cannot tell apart from one the OTHER process deleted
+    is kept rather than removed — never lose another process's history.
+    """
     path = ledger_path()
     path.parent.mkdir(parents=True, exist_ok=True)
+    ours = data.get("entries") or []
+    known = list(base) if base is not None else list(ours)
+    merged = list(ours)
+    for entry in load().get("entries") or []:
+        ident = _identity(entry)
+        if not any(_same_model(ident, _identity(x)) for x in known) \
+                and not any(_same_model(ident, _identity(x)) for x in merged):
+            merged.append(entry)
+    out = {"version": data.get("version", VERSION), "entries": merged}
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False),
+    tmp.write_text(json.dumps(out, indent=1, ensure_ascii=False),
                    encoding="utf-8")
     os.replace(tmp, path)                       # atomic: never a half file
 
@@ -401,12 +422,13 @@ def record(name: str = "", source_url: str = "", author: str = "",
     when = time.strftime("%Y-%m-%d %H:%M:%S")
     with _LOCK:
         data = load()
+        base = list(data["entries"])            # what we read, before we changed it
         for entry in data["entries"]:
             if _same_model(want, _identity(entry)):
                 _merge_into(entry, fp, name=name, author=author,
                             source_url=source_url, published_url=published_url,
                             aliases=aliases, outcome=outcome, when=when)
-                _save(data)
+                _save(data, base=base)
                 return entry
         entry = {"name": name, "author": author or "",
                  "slug": fp["slug"] or slug_of(source_url),
@@ -416,7 +438,7 @@ def record(name: str = "", source_url: str = "", author: str = "",
                                        *(aliases or [])),
                  "published_at": when, "recorded_at": when, "last_seen": when}
         data["entries"].append(entry)
-        _save(data)
+        _save(data, base=base)
         return entry
 
 
@@ -430,6 +452,7 @@ def learn_listing(source_url: str = "", names=(), author: str = "",
     names = [n for n in dict.fromkeys(names or ()) if n]
     with _LOCK:
         data = load()
+        base = list(data["entries"])            # what we read, before we changed it
         for entry in data["entries"]:
             have = _identity(entry)
             for n in (names or [""]):
@@ -446,7 +469,7 @@ def learn_listing(source_url: str = "", names=(), author: str = "",
                 for other in names:
                     if other != n:
                         _merge_into(entry, {}, name=other, outcome="", when="")
-                _save(data)
+                _save(data, base=base)
                 return entry
     return {}
 
@@ -460,6 +483,7 @@ def forget(match: str) -> int:
         return 0
     with _LOCK:
         data = load()
+        base = list(data["entries"])            # what we read, before we dropped it
         keep, dropped = [], 0
         for entry in data["entries"]:
             ident = _identity(entry)
@@ -474,7 +498,7 @@ def forget(match: str) -> int:
             keep.append(entry)
         if dropped:
             data["entries"] = keep
-            _save(data)
+            _save(data, base=base)              # dropped rows stay dropped
         return dropped
 
 
@@ -532,6 +556,7 @@ def absorb_published_redirect(url: str, resolver=None) -> dict:
     want_slug = slug_of(u)
     with _LOCK:
         data = load()
+        base = list(data["entries"])            # what we read, before we changed it
         for entry in data["entries"]:
             published = (entry.get("published_url") or "").strip()
             if not published or not looks_opaque(published):
@@ -545,7 +570,7 @@ def absorb_published_redirect(url: str, resolver=None) -> dict:
                 entry["published_url"] = resolved      # the readable slug wins
                 _merge_into(entry, {}, published_url=resolved,
                             aliases=[published, u, resolved], when="")
-                _save(data)
+                _save(data, base=base)
                 return entry
     return {}
 
@@ -559,6 +584,7 @@ def learn_published_aliases(resolver=None, limit: int = 50) -> list[dict]:
     learned: list[dict] = []
     with _LOCK:
         data = load()
+        base = list(data["entries"])            # what we read, before we changed it
         for entry in data["entries"]:
             if len(learned) >= limit:
                 break
@@ -574,7 +600,7 @@ def learn_published_aliases(resolver=None, limit: int = 50) -> list[dict]:
             learned.append({"entry": entry.get("slug") or entry.get("name") or "",
                             "from": published, "to": resolved})
         if learned:
-            _save(data)
+            _save(data, base=base)
     return learned
 
 
@@ -590,6 +616,7 @@ def merge_duplicates(dry_run: bool = False) -> dict:
     with _LOCK:
         data = load()
         rows = data["entries"]
+        base = list(rows)                       # what we read, before we folded it
         keep: list[dict] = []
         merged: list[dict] = []
         for entry in rows:
@@ -620,7 +647,7 @@ def merge_duplicates(dry_run: bool = False) -> dict:
                   "dry_run": bool(dry_run)}
         if merged and not dry_run:
             data["entries"] = keep
-            _save(data)
+            _save(data, base=base)              # folded-away rows stay gone
         return result
 
 
