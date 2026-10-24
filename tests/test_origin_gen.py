@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 import trimesh
 
-from origin import build, export, names, printcheck, spec
+from origin import build, export, names, printcheck, shots, spec
 
 ROOT = Path(__file__).resolve().parent.parent
 FAMILIES = list(spec.FAMILIES)
@@ -68,10 +68,42 @@ def test_description_is_original_and_points_at_this_stl(made):
         assert "original" in low
         assert "cc by 4.0" in low
         assert "exact stl" in low
+        assert "prop" in low and "not included" in low
         assert "http" not in low and "www." not in low
         for bad in names.BANNED_WORDS:
             assert bad not in low, (bad, fam)
         assert s.colour_name in text
+
+
+def test_context_note_names_the_prop_for_each_family(made):
+    for fam, (s, m, c) in made.items():
+        note = names.context_note(fam, s.params).lower()
+        assert "first photo" in note, fam
+        assert "prop" in note and "not included" in note, fam
+    cable = names.context_note("cable_clip", made["cable_clip"][0].params)
+    assert "cable" in cable and "mm" in cable
+    assert "phone" in names.context_note("phone_stand",
+                                         made["phone_stand"][0].params)
+    wall = names.context_note("wall_hook", made["wall_hook"][0].params)
+    assert "wall" in wall and "screws" in wall
+    assert "desk" in names.context_note("desk_organiser",
+                                        made["desk_organiser"][0].params)
+
+
+def test_photos_are_ordered_in_use_first():
+    names_in = ["detail", "high", "front", "hero_right", "in_use", "extra"]
+    ordered = shots.order_shots([{"name": n} for n in names_in])
+    assert [s["name"] for s in ordered] == [
+        "in_use", "front", "hero_right", "high", "detail", "extra"]
+
+
+def test_render_command_carries_family_and_params(tmp_path):
+    s = spec.make_spec("phone_stand", 1)
+    cmd = shots._blender_cmd(Path("blender"), tmp_path / "m.stl",
+                             tmp_path / "out", s, 4, 400, shots.STYLE)
+    assert cmd[cmd.index("--family") + 1] == "phone_stand"
+    assert json.loads(cmd[cmd.index("--params") + 1]) == s.params
+    assert cmd[cmd.index("--colour") + 1] == s.colour_hex
 
 
 def test_specs_are_deterministic_and_variants_differ():

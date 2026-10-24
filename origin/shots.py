@@ -34,18 +34,24 @@ def find_blender() -> Path:
     raise RenderError("no Blender found under tools/blender (and none on PATH)")
 
 
+def _blender_cmd(exe, stl: Path, outdir: Path, spec, samples: int, res: int,
+                 style: Path) -> list[str]:
+    return [str(exe), "-b", "--factory-startup", "-noaudio",
+            "--python", str(RENDER_PY), "--",
+            "--stl", str(stl), "--out", str(outdir), "--slug", spec.key,
+            "--name", spec.title, "--colour", spec.colour_hex,
+            "--family", spec.family, "--params", json.dumps(spec.params),
+            "--style", str(style), "--samples", str(samples),
+            "--res", str(res)]
+
+
 def _run_blender(stl: Path, outdir: Path, spec, samples: int, res: int,
                  style: Path, timeout: int = 1200) -> dict:
     exe = find_blender()
     stl, outdir, style = (Path(stl).resolve(), Path(outdir).resolve(),
                           Path(style).resolve())
     outdir.mkdir(parents=True, exist_ok=True)
-    cmd = [str(exe), "-b", "--factory-startup", "-noaudio",
-           "--python", str(RENDER_PY), "--",
-           "--stl", str(stl), "--out", str(outdir), "--slug", spec.key,
-           "--name", spec.title, "--colour", spec.colour_hex,
-           "--style", str(style), "--samples", str(samples),
-           "--res", str(res)]
+    cmd = _blender_cmd(exe, stl, outdir, spec, samples, res, style)
     t0 = time.time()
     p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                        errors="replace", timeout=timeout)
@@ -95,7 +101,8 @@ def _font(size: int, bold: bool = False):
 
 
 def contact_sheet(spec, dims, check, photos: list[Path], dest: Path,
-                  licence: str = "CC BY 4.0") -> Path:
+                  licence: str = "CC BY 4.0",
+                  labels: list[str] | None = None) -> Path:
     W, H = 2400, 1500
     canvas = Image.new("RGB", (W, H), (16, 18, 21))
     d = ImageDraw.Draw(canvas)
@@ -105,7 +112,7 @@ def contact_sheet(spec, dims, check, photos: list[Path], dest: Path,
     d.text((72, 140), sub, fill=(155, 166, 178), font=_font(32))
 
     cells = [(60, 210), (840, 210), (1620, 210), (60, 800), (840, 800)]
-    labels = ["Hero", "Front", "Side 3/4", "High 3/4", "Detail"]
+    labels = labels or ["Hero", "Front", "Side 3/4", "High 3/4", "Detail"]
     for (x, y), label, p in zip(cells, labels, photos):
         im = Image.open(p).convert("RGB")
         im = im.resize((700, 525))
@@ -132,11 +139,22 @@ def contact_sheet(spec, dims, check, photos: list[Path], dest: Path,
         d.text((x + 34, ty + 30), v, fill=(231, 235, 240), font=_font(30))
         ty += 68
     d.text((70, 1400),
-           "Photos are renders of the exported STL — no designer's image, model "
-           "or listing was reused.", fill=(126, 140, 155), font=_font(26))
+           "Every photo is a render of the exported STL. The in-use shot adds "
+           "plain props for scale; no designer's image, model or listing was "
+           "reused.", fill=(126, 140, 155), font=_font(26))
     dest.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(dest, "JPEG", quality=92)
     return dest
+
+
+SHOT_ORDER = {"in_use": 0, "front": 1, "hero_right": 2, "high": 3,
+              "detail": 4}
+
+
+def order_shots(shots: list[dict]) -> list[dict]:
+    """In-use first: it is the photo that shows what the part does."""
+    return sorted(shots, key=lambda s: (SHOT_ORDER.get(s["name"], 9),
+                                        s["name"]))
 
 
 def make_photos(mesh, spec, check, dims, outdir: Path, samples: int = 64,
@@ -149,6 +167,7 @@ def make_photos(mesh, spec, check, dims, outdir: Path, samples: int = 64,
         raise RenderError("3MF failed: %s" % files["three_mf_detail"])
     shots_dir = outdir / "renders"
     man = _run_blender(Path(files["stl"]), shots_dir, spec, samples, res, style)
+    man["shots"] = order_shots(man["shots"])
 
     photos_dir = outdir / "photos"
     photos_dir.mkdir(parents=True, exist_ok=True)
@@ -157,8 +176,14 @@ def make_photos(mesh, spec, check, dims, outdir: Path, samples: int = 64,
         a, b = _crops(Path(shot["file"]), photos_dir, spec.key, shot["name"])
         crops_43.append(a)
         crops_34.append(b)
+    label_map = {"in_use": "In use", "front": "Front",
+                 "hero_right": "Side 3/4", "high": "High 3/4",
+                 "detail": "Detail"}
+    labels = [label_map.get(s["name"], s["name"].replace("_", " ").title())
+              for s in man["shots"]]
     sheet = contact_sheet(spec, dims, check, crops_43,
-                          outdir / ("%s_contact.jpg" % spec.key), licence)
+                          outdir / ("%s_contact.jpg" % spec.key), licence,
+                          labels=labels)
 
     stats = {}
     for p in crops_43:

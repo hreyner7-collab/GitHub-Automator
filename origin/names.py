@@ -96,6 +96,21 @@ def feature_for(family: str, params: dict) -> str:
     raise KeyError(family)
 
 
+def context_note(family: str, params: dict) -> str:
+    p = params
+    if family == "cable_clip":
+        return ("The first photo shows it on a desk holding a %s mm cable; the "
+                "cable is a prop for scale, not included." % _g(p["cable_d"]))
+    if family == "phone_stand":
+        return ("The first photo shows a phone resting in the stand; the phone "
+                "is a prop for scale, not included.")
+    if family == "wall_hook":
+        return ("The first photo shows it mounted on a wall; the wall and "
+                "screws are props, not included.")
+    return ("The first photo shows it on a desk; anything around it is a prop "
+            "for scale, not included.")
+
+
 def description_for(spec, dims: tuple[float, float, float],
                     print_note: str = "") -> str:
     L, W, H = dims
@@ -109,11 +124,13 @@ def description_for(spec, dims: tuple[float, float, float],
         "Size: %s x %s x %s mm (measured from the STL).\n"
         "Print: 0.4 mm nozzle, 0.2 mm layers, 3 perimeters, 15%% infill, "
         "PLA or PETG.\n%s\n\n"
+        "%s\n"
         "The photos are renders of the exact STL in this download, printed "
         "colour %s.\n"
         "Licence: CC BY 4.0 - share and adapt with credit."
         % (spec.label.lower(), feature_for(spec.family, spec.params),
-           _g(L), _g(W), _g(H), note, spec.colour_name)
+           _g(L), _g(W), _g(H), note,
+           context_note(spec.family, spec.params), spec.colour_name)
     )
 
 
