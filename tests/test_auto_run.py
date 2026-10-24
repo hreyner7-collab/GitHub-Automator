@@ -4,6 +4,7 @@ the run continues. No browser: the listing and the pipeline are faked."""
 import asyncio
 import json
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -1103,3 +1104,63 @@ def test_a_run_ignores_the_stop_flag_left_behind_by_the_last_one(monkeypatch, tm
 
     assert main.AUTO["state"] == "done", main.AUTO
     assert main._auto_counts()["published"] == 1
+
+
+def test_a_run_leaves_a_heartbeat_the_supervisor_can_act_on(monkeypatch, tmp_path):
+    """The worker writes its state to disk as it runs, and what it writes is
+    what the supervisor's own reader reads back.
+
+    VERIFIED DEFECT (live 2026-10-24 05:11:14): ninety seconds into the user's
+    20-model publish, /health took over 3s to answer — which is what driving a
+    browser, waiting on downloads and writing the ledger does to an event loop —
+    and the supervisor restarted the dashboard, leaving the models half
+    published. The rule "skip the reset while a run is in progress" could only
+    be applied by ASKING the server, and asking was the thing that had just
+    timed out. A file the run rewrites as it works is the one answer that
+    survives the silence.
+    """
+    import main
+
+    hb_path = tmp_path / "artifacts" / "auto_heartbeat.json"
+    seen = {}
+    cover = _cc_cover(tmp_path)
+
+    def fake_dl(url):
+        if hb_path.exists():
+            seen["mid"] = json.loads(hb_path.read_text(encoding="utf-8"))
+        return _cc_page(url, cover)
+
+    monkeypatch.setattr(main, "find_creality",
+                        lambda *a, **k: {"models": [_card("Bottle storage rack", A_URL)],
+                                         "licence": {"opened": True, "verified": True},
+                                         "note": ""})
+    monkeypatch.setattr(main, "dl_fetch", fake_dl)
+    monkeypatch.setattr(main, "uploader_upload", _publish_upload)
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+
+    asyncio.run(main._auto_worker(1, ["k"], "beatjob"))
+
+    mid = seen.get("mid")
+    assert mid is not None, (
+        "the fetch ran while nothing on disk said a run was live: %s"
+        % json.dumps({k: v for k, v in main.AUTO.items() if k != "items"},
+                     default=str)[:400])
+    assert mid["job_id"] == "beatjob" and mid["state"] in ("discovering", "running"), mid
+    assert mid["requested"] == 1
+    final = json.loads(hb_path.read_text(encoding="utf-8"))
+    assert final["state"] == "done" and final["published"] == 1, final
+
+    # and the reader that decides the restart understands this exact file
+    import importlib
+    root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(root / "scripts"))
+    try:
+        sup = importlib.import_module("dashboard_supervisor")
+    finally:
+        sys.path.remove(str(root / "scripts"))
+    monkeypatch.setattr(sup, "HEARTBEAT_PATH", hb_path)
+    assert sup.run_heartbeat() is None, \
+        "a run that said it finished must not shield a hung dashboard forever"
+    hb_path.write_text(json.dumps(dict(mid, at=time.time())), encoding="utf-8")
+    assert sup.run_heartbeat() is not None, \
+        "the beat the worker writes has to be the beat the supervisor reads"

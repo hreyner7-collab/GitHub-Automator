@@ -37,6 +37,9 @@ def supervisor(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_mod, "CHILD_LOG_PATH", tmp_path / "dashboard.log")
     monkeypatch.setattr(sup_mod, "REPORT_PATH", tmp_path / "report.json")
     monkeypatch.setattr(sup_mod, "LOCK_PATH", tmp_path / "supervisor.lock")
+    # Same reason: a real artifacts/auto_heartbeat.json would decide how many
+    # timed-out probes a test thinks the dashboard gets before it is restarted.
+    monkeypatch.setattr(sup_mod, "HEARTBEAT_PATH", tmp_path / "auto_heartbeat.json")
     return sup_mod
 
 class TestIsStaleBuild:
@@ -319,3 +322,196 @@ class TestAutoResetGrace:
                             lambda _health: False)
         assert sup.auto_reset() is True
         assert sup.stale_since is None, "once it is current, the pending reset goes away"
+
+
+def _beat(path, state="running", age=0.0, job="20261024-050936", published=7):
+    """Write the heartbeat file the way `_auto_worker` does, and return it."""
+    import json
+
+    path.write_text(json.dumps({"job_id": job, "state": state,
+                                 "at": time.time() - age,
+                                 "published": published, "requested": 20}),
+                    encoding="utf-8")
+    return path
+
+
+class TestRunHeartbeat:
+    """`run_heartbeat` is the only evidence of a live run that works while the
+    dashboard is not answering — asking it is exactly what just timed out.
+    """
+
+    def test_a_fresh_beat_of_an_active_state_is_read(self, supervisor, monkeypatch):
+        monkeypatch.setattr(supervisor, "HEARTBEAT_PATH",
+                            _beat(supervisor.HEARTBEAT_PATH))
+        hb = supervisor.run_heartbeat()
+        assert hb is not None and hb["job_id"] == "20261024-050936"
+        assert hb["published"] == 7
+
+    @pytest.mark.parametrize("state", ["discovering", "running"])
+    def test_both_active_states_count_as_a_run(self, supervisor, monkeypatch, state):
+        monkeypatch.setattr(supervisor, "HEARTBEAT_PATH",
+                            _beat(supervisor.HEARTBEAT_PATH, state=state))
+        assert supervisor.run_heartbeat() is not None
+
+    @pytest.mark.parametrize("state", ["done", "error", "idle", "stopped", None])
+    def test_a_run_that_said_it_finished_is_not_a_run(self, supervisor, monkeypatch,
+                                                      state):
+        monkeypatch.setattr(supervisor, "HEARTBEAT_PATH",
+                            _beat(supervisor.HEARTBEAT_PATH, state=state))
+        assert supervisor.run_heartbeat() is None, \
+            "a finished run must not shield a hung server forever"
+
+    def test_a_beat_past_its_freshness_is_worth_nothing(self, supervisor, monkeypatch):
+        """Discovery can go quiet for minutes, so a beat is trusted for
+        HEARTBEAT_FRESH_S — but only that long, or a wedged run would hold the
+        port and the models with it."""
+        monkeypatch.setattr(supervisor, "HEARTBEAT_PATH", _beat(
+            supervisor.HEARTBEAT_PATH, age=supervisor.HEARTBEAT_FRESH_S + 1))
+        assert supervisor.run_heartbeat() is None, \
+            "a wedged run stops being evidence once it stops writing"
+
+    def test_a_beat_from_the_future_is_not_evidence(self, supervisor, monkeypatch):
+        monkeypatch.setattr(supervisor, "HEARTBEAT_PATH",
+                            _beat(supervisor.HEARTBEAT_PATH, age=-60.0))
+        assert supervisor.run_heartbeat() is None
+
+    @pytest.mark.parametrize("body", ["", "not json", "[]",
+                                      '{"state": "running"}', '{"state": 7}'])
+    def test_a_file_that_is_not_a_beat_is_no_beat(self, supervisor, monkeypatch, body):
+        supervisor.HEARTBEAT_PATH.write_text(body, encoding="utf-8")
+        assert supervisor.run_heartbeat() is None
+
+    def test_no_file_at_all_is_no_beat(self, supervisor, monkeypatch):
+        assert not supervisor.HEARTBEAT_PATH.exists()
+        assert supervisor.run_heartbeat() is None
+
+
+class TestHungProbes:
+    """Silence earns a restart only after it has lasted, and never while an
+    auto run is heartbeating.
+
+    VERIFIED DEFECT (live 2026-10-24 05:11:14): the log reads
+    "the dashboard is holding port 8000 but not answering — restarting", ninety
+    seconds into the user's 20-model publish. One /health probe that took over
+    3s — which is normal while the same process drives a browser, waits on
+    downloads and writes the ledger — killed the run and left its models
+    half-published. That is "when i do 1 to 5 it is fine but when i do 20 it
+    stops working". The counter the code talked about was never incremented, so
+    a single timeout was enough to pull the rug.
+    """
+
+    def _sup(self, sup_mod):
+        """A supervisor whose only input is a scripted decision, and whose
+        restart side effects are recorded instead of run.
+
+        The heartbeat file starts out absent (the fixture redirects it into
+        tmp_path), which is the idle case these tests compare against.
+        """
+        calls = []
+        sup = sup_mod.Supervisor(port=8000, supervise=False)
+        sup.probe = lambda: sup_mod.guard.RESTART
+        # HEALTHY and ADOPT both fall through to auto_reset, which would poll
+        # the real dashboard for a stale build. These tests are about counting.
+        sup.auto_reset = lambda: True
+        sup.stop_child = lambda: calls.append("stop")
+        sup.clear_port_holder = lambda: calls.append("clear") or True
+        sup.note_restart = lambda: calls.append("note") or True
+        sup.start = lambda: calls.append("start") or True
+        sup.write_report = lambda _reason: calls.append("report")
+        return sup, calls
+
+    def _log(self, supervisor):
+        return supervisor.LOG_PATH.read_text(encoding="utf-8") \
+            if supervisor.LOG_PATH.exists() else ""
+
+    def test_one_timed_out_probe_restarts_nothing(self, supervisor):
+        sup, calls = self._sup(supervisor)
+        assert sup.cycle() is True
+        assert calls == [], "one slow probe is a busy machine, not a dead server"
+        assert sup.silent_probes == 1
+        assert "busy machine" in self._log(supervisor)
+
+    def test_an_answer_between_resumes_the_tally(self, supervisor):
+        """Only CONSECUTIVE silence is hung: a server that answers once was
+        alive, so the count goes back to the start."""
+        sup, calls = self._sup(supervisor)
+        for _ in range(supervisor.HUNG_PROBES - 1):
+            assert sup.cycle() is True
+        sup.probe = lambda: supervisor.guard.HEALTHY
+        assert sup.cycle() is True
+        assert sup.silent_probes == 0
+        sup.probe = lambda: supervisor.guard.RESTART
+        for _ in range(supervisor.HUNG_PROBES - 1):
+            assert sup.cycle() is True
+        assert calls == [], "silence interrupted by an answer is not HUNG_PROBES in a row"
+
+    def test_prolonged_silence_is_still_restarted(self, supervisor):
+        """The other half of the fix: a dashboard that is genuinely wedged and
+        publishing nothing must not become unkillable."""
+        sup, calls = self._sup(supervisor)
+        for _ in range(supervisor.HUNG_PROBES):
+            assert sup.cycle() is True
+        assert calls == ["stop", "clear", "note", "start"], calls
+        assert sup.silent_probes == 0
+        assert "not answered %d probes" % supervisor.HUNG_PROBES \
+            in self._log(supervisor)
+
+    def test_a_beating_run_buys_the_dashboard_many_more_probes(self, supervisor,
+                                                              monkeypatch):
+        hb = {"job_id": "20261024-050936", "state": "running", "published": 7}
+        monkeypatch.setattr(supervisor, "run_heartbeat", lambda *a, **k: hb)
+        sup, calls = self._sup(supervisor)
+        for _ in range(supervisor.HUNG_PROBES):
+            assert sup.cycle() is True
+        assert calls == [], "an idle server would be restarted here; a running one must not be"
+        for _ in range(supervisor.RUN_HUNG_PROBES - supervisor.HUNG_PROBES - 1):
+            assert sup.cycle() is True
+        assert calls == []
+        text = self._log(supervisor)
+        assert "20261024-050936" in text and "half-published" in text, \
+            "the log has to say WHY it is waiting, or it reads as a hang"
+
+    def test_a_beating_run_that_really_is_dead_does_get_restarted(self, supervisor,
+                                                                  monkeypatch):
+        """RUN_HUNG_PROBES is two minutes of silence; past it even a fresh
+        heartbeat loses, because the models are not publishing either."""
+        monkeypatch.setattr(supervisor, "run_heartbeat",
+                            lambda *a, **k: {"job_id": "x", "state": "running",
+                                             "published": 1})
+        sup, calls = self._sup(supervisor)
+        for _ in range(supervisor.RUN_HUNG_PROBES):
+            assert sup.cycle() is True
+        assert calls == ["stop", "clear", "note", "start"], calls
+
+    def test_a_cold_beat_on_disk_protects_nothing(self, supervisor):
+        """Through the real reader, not a stub: a heartbeat file that has gone
+        cold falls back to the ordinary patience."""
+        _beat(supervisor.HEARTBEAT_PATH, age=supervisor.HEARTBEAT_FRESH_S + 1)
+        assert supervisor.run_heartbeat() is None
+        sup, calls = self._sup(supervisor)
+        for _ in range(supervisor.HUNG_PROBES):
+            assert sup.cycle() is True
+        assert calls == ["stop", "clear", "note", "start"], calls
+
+    def test_a_fresh_beat_on_disk_buys_the_run_patience(self, supervisor):
+        _beat(supervisor.HEARTBEAT_PATH, published=3)
+        sup, calls = self._sup(supervisor)
+        for _ in range(supervisor.HUNG_PROBES):
+            assert sup.cycle() is True
+        assert calls == [], "the run was still writing when the port went quiet"
+        assert "3 published" in self._log(supervisor)
+
+    def test_the_run_silences_the_counter_when_it_answers(self, supervisor,
+                                                          monkeypatch):
+        """The shield is the missing answer, not the missing run: once the
+        dashboard replies the tally resets, whoever was heartbeating."""
+        monkeypatch.setattr(supervisor, "run_heartbeat",
+                            lambda *a, **k: {"job_id": "j", "state": "running",
+                                             "published": 2})
+        sup, calls = self._sup(supervisor)
+        for _ in range(supervisor.HUNG_PROBES - 1):
+            assert sup.cycle() is True
+        assert sup.silent_probes == supervisor.HUNG_PROBES - 1
+        sup.probe = lambda: supervisor.guard.HEALTHY
+        assert sup.cycle() is True
+        assert calls == [] and sup.silent_probes == 0

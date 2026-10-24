@@ -1,9 +1,11 @@
 import asyncio
+import faulthandler
 import json
 import os
 import re
 from pathlib import Path
 import subprocess
+import threading
 import time
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
@@ -110,6 +112,51 @@ CODE_FINGERPRINT = _code_fingerprint()
 
 SERVER_PORT = 8000
 
+# ── Why did it stop answering? ───────────────────────────────────────────────
+# A run drives a real browser from a worker thread, and twice now the dashboard
+# has gone silent mid-run: the supervisor's probe timed out, it restarted the
+# server, and the models that were queued died with it (2026-10-24, a 20-model
+# publish stopped 90 seconds in with 1 model reached). Silence like that used to
+# leave NO evidence — the process was alive, so nothing crashed, and the log
+# simply stopped. This is the instrument that answers what the next one is doing:
+# the loop keeps a beat of its own, and a plain thread dumps every stack to the
+# server log when that beat stops.
+LOOP_TICK: dict = {"at": 0.0, "dumped": 0.0}
+STALL_DUMP_S = 25.0
+
+
+async def _loop_beat() -> None:
+    while True:
+        LOOP_TICK["at"] = time.time()
+        await asyncio.sleep(1.0)
+
+
+def _stall_watch(stop: "threading.Event") -> None:
+    while not stop.wait(5.0):
+        now = time.time()
+        gap = now - LOOP_TICK["at"]
+        if LOOP_TICK["at"] and gap > STALL_DUMP_S and now - LOOP_TICK["dumped"] > 120.0:
+            LOOP_TICK["dumped"] = now
+            try:
+                print("[stall] the event loop has not beaten for %.0fs — dumping "
+                      "every thread" % gap, flush=True)
+                faulthandler.dump_traceback(all_threads=True)
+            except Exception:
+                pass
+
+
+_watchdog_started = False
+
+
+def _start_stall_watchdog() -> None:
+    global _watchdog_started
+    if _watchdog_started:
+        return
+    _watchdog_started = True
+    faulthandler.enable()          # a native death at least leaves a trace
+    threading.Thread(target=_stall_watch, args=(threading.Event(),),
+                     daemon=True, name="stall-watchdog").start()
+
 
 @app.on_event("startup")
 async def _start_analytics_auto():
@@ -118,6 +165,8 @@ async def _start_analytics_auto():
     # the account's own model list + every run log on disk. From here on the
     # pipeline refuses to publish any of those again. The account read is a
     # background task (it drives the browser), so booting never waits on it.
+    _start_stall_watchdog()
+    asyncio.create_task(_loop_beat())
     asyncio.create_task(_seed_ledger())
 
 
@@ -736,6 +785,28 @@ def _file_attempt_note(fa: dict) -> str:
 async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
     import time as _time
 
+    def _heartbeat() -> None:
+        """Leave this run's state on disk for the supervisor to read.
+
+        When the dashboard is too busy to answer a probe it cannot be asked
+        whether a publish is in flight — asking is what just timed out — and a
+        restart then destroys the run with it. A file the worker rewrites as it
+        works is the one answer that survives. A run that is no longer live
+        writes its finished state, so a wedged run cannot hide behind a stale
+        note forever.
+        """
+        try:
+            hb = BASE_DIR / "artifacts" / "auto_heartbeat.json"
+            hb.parent.mkdir(exist_ok=True)
+            hb.write_text(json.dumps(
+                {"job_id": AUTO.get("job_id"), "state": AUTO.get("state"),
+                 "at": _time.time(),
+                 "published": sum(1 for i in (AUTO.get("items") or [])
+                                  if i.get("state") == "published"),
+                 "requested": AUTO.get("requested")}), encoding="utf-8")
+        except Exception:
+            pass
+
     def _log() -> str:
         _remember_outcomes()
         path = BASE_DIR / "artifacts" / ("auto_run_%s.json" % job_id)
@@ -755,6 +826,7 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
             "finished": _time.strftime("%Y-%m-%d %H:%M:%S"),
         }
         _write_run_log(path, body)
+        _heartbeat()
         return str(path)
 
     timing.reset()
@@ -764,6 +836,13 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
         # a run starts with an empty queue and empty counters, even when the
         # same worker state was used by an earlier run in this process
         AUTO.update({"items": [], "licence": {}, "note": "", "discovered": 0,
+                     # the run's own identity, written here and not only by the
+                     # start endpoint: every report the worker makes about
+                     # itself — the run log, the heartbeat the supervisor reads
+                     # before it dares a restart — quotes these two, and a run
+                     # that left them at the last job's values would tell the
+                     # supervisor to protect a publish that is not happening.
+                     "job_id": job_id, "requested": count,
                      "rejected_total": 0, "skipped_already": 0, "already_done": [],
                      # per-run flags: a stale one from the last run would stop this
                      # one before it began
@@ -773,6 +852,7 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                      # stopped left it set, and the next one would stop itself at
                      # its first checkpoint without you ever pressing anything.
                      "stop": False})
+        _heartbeat()
         # Models already in the "already published" config are filtered out
         # DURING discovery (not queued and skipped later), so the run never
         # picks a model it has finished before.
@@ -782,6 +862,7 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
 
         def _on_progress(p: dict) -> None:
             AUTO["progress"] = p
+            _heartbeat()      # discovery can run for minutes; say so while it does
 
         def _stop_requested() -> bool:
             return bool(AUTO.get("stop"))

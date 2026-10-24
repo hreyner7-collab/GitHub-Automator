@@ -61,6 +61,17 @@ START_TIMEOUT_S = 60.0
 POLL_EVERY_S = 3.0
 # Consecutive failed probes before a live-but-silent server is called hung.
 HUNG_PROBES = 3
+# While an auto run is going, silence is normal: the process is driving a
+# browser, waiting on downloads and writing the ledger, and a probe that takes
+# more than 3s is a busy machine, not a dead server. Restarting then does not
+# just lose the run — it leaves the models half-published, which is the "I asked
+# for 20 and it stopped working" the user reported (live 2026-10-24: a 20-model
+# publish was killed 90 seconds in, on ONE probe that timed out).
+RUN_HUNG_PROBES = 40
+# The worker's heartbeat is only evidence of a live run this long after its last
+# word; after that it is treated as gone, so a wedged run cannot hide forever.
+HEARTBEAT_FRESH_S = 300.0
+HEARTBEAT_PATH = BASE_DIR / "artifacts" / "auto_heartbeat.json"
 # A stale build must stay stale this long, with the SAME code on disk the whole
 # time, before it is reset. Editing the pipeline makes every few seconds a new
 # "current" code, and a server that read the files a moment ago always looks
@@ -113,6 +124,28 @@ def release_lock() -> None:
                 LOCK_PATH.unlink()
     except Exception:
         pass
+
+
+def run_heartbeat(now: float | None = None) -> dict | None:
+    """The auto run's last word about itself, read from disk, or None.
+
+    A silent dashboard cannot be asked whether it is busy — asking is what just
+    timed out — so this is the one source that works while the server is not
+    answering. `_auto_worker` rewrites it as it works and names its finished
+    state at the end; a heartbeat that is not fresh is worth nothing, so a
+    genuinely wedged run is still restarted.
+    """
+    try:
+        hb = json.loads(HEARTBEAT_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(hb, dict) or hb.get("state") not in ("discovering", "running"):
+        return None
+    try:
+        age = (now if now is not None else time.time()) - float(hb.get("at") or 0)
+    except (TypeError, ValueError):
+        return None
+    return hb if 0 <= age <= HEARTBEAT_FRESH_S else None
 
 
 def log(message: str) -> None:
@@ -378,7 +411,20 @@ class Supervisor:
                 return False
             return self.start()
         if action == guard.RESTART:
-            log("the dashboard is holding port %d but not answering — restarting" % self.port)
+            self.silent_probes += 1
+            hb = run_heartbeat()
+            need = RUN_HUNG_PROBES if hb else HUNG_PROBES
+            if self.silent_probes < need:
+                why = (" — an auto run is in progress (job %s, %s published) and "
+                       "restarting now would leave its models half-published"
+                       % (hb.get("job_id"), hb.get("published"))) if hb else ""
+                log("the dashboard did not answer (%d of %d probes)%s — waiting: "
+                    "a timed-out probe is a busy machine, not a dead server"
+                    % (self.silent_probes, need, why))
+                return True
+            log("the dashboard is holding port %d and has not answered %d probes "
+                "in a row — restarting" % (self.port, self.silent_probes))
+            self.silent_probes = 0
             self.stop_child()
             if not self.clear_port_holder():
                 self.write_report("could not free port %d" % self.port)
