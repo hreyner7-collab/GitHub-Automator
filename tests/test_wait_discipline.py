@@ -253,9 +253,18 @@ class TestTheStepsAreInstrumented:
         assert self._marks(body) == self.PUBLISH
 
     def test_every_fetch_step_marks_itself_in_order(self):
-        body = _body("downloader.py", "def _fetch_creality(")
+        body = _body("downloader.py", "def _fetch_creality_dom(")
         assert "timing.Steps(\"fetch\")" in body
         assert self._marks(body) == self.FETCH
+
+    def test_the_api_first_wrapper_marks_its_fallback(self):
+        """The wrapper owns one mark of its own — how long the API read ran
+        before the rendered-page pass had to start."""
+        body = _body("downloader.py", "def _fetch_creality(")
+        assert "timing.Steps(\"fetch\")" in body
+        assert self._marks(body) == ["dom_fallback"]
+        assert "_fetch_creality_api(" in body
+        assert "_fetch_creality_dom(" in body
 
     def test_both_paths_write_the_one_ledger_the_dashboard_reads(self):
         """Separate copies of timing.py would mean marks that never reach the

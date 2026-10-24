@@ -20,6 +20,10 @@ import timing
 from creality_rules import (LICENCE_ALLOW as CREALITY_LICENCE_ALLOW,
                             LICENCE_DENY as CREALITY_LICENCE_DENY,
                             LICENCE_LABELS)
+# the API path judges each card with the SAME licences judge the DOM path;
+# imported lazily inside the function (downloader is a heavy module that
+# itself imports creality_api lazily, so neither can go in a top-level chain)
+
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
 
@@ -593,7 +597,260 @@ def was_tried_recently(url: str, path=None, now=None) -> bool:
     return current - float(entry.get("when") or 0) < _tried_window(entry)
 
 
+API_SORT_DOWNLOADS = 10     # the value the search page itself sends once sorted
+API_PAGE_SIZE = 20
+API_MAX_PAGES = 50          # 1000 results is the site's own ceiling
+
+
+def _find_creality_api(keywords, count, sort, is_done, progress, should_stop,
+                       exclude, extra, deadline_s):
+    """The listing search through `/api/cxy/smart_search/v1/model`.
+
+    Returns the same dict as `_find_creality_dom`, or None when the search did
+    not answer usably (in which case the rendered listing runs instead).
+
+    THE LICENCE RULE IS STRICTER HERE, ON PURPOSE. The rendered listing could be
+    filtered by clicking the licence panel, and the scan refused to harvest
+    unless that filter read back. The API has no licence parameter, so each card
+    is judged on its OWN `license` field by `classify_license` — the same judge
+    that decides the publish — and a card that names no licence is refused
+    rather than harvested. Sorting by downloads proves the point: the first card
+    of "cable clips" is a `CXY-SL` model, which a filter click would have hidden
+    and a naive API read would have queued.
+    """
+    from browser_opener import sync_playwright_auto
+    from uploader import ensure_browser, CDP_URL
+    import creality_api as cc
+    from downloader import classify_license
+
+    t_total = time.perf_counter()
+    keywords = [k.strip() for k in (keywords or []) if k and k.strip()]
+    if not keywords:
+        # the search endpoint answers 0 for an empty keyword (measured live), and
+        # a real run always passes the default keyword list; the unfiltered
+        # listing has only the rendered page
+        return None
+    count = max(1, int(count or 1))
+    if extra is None:
+        extra = max(3, count // 2)
+    target = count + max(0, int(extra))
+    if deadline_s is None:
+        deadline_s = DISCOVER_DEADLINE_S
+    deadline = t_total + float(deadline_s) if deadline_s else None
+    timed_out = False
+    stopped = False
+
+    # Stop pressed BEFORE any listing is opened: answer "stopped" and touch
+    # nothing. The rendered path had this guard at the top of its loop; the API
+    # path has to make it before ensure_browser(), or a Stop would still open a
+    # page just to close it again.
+    if should_stop and should_stop():
+        timing.record("discover.total", time.perf_counter() - t_total)
+        return {"models": [], "licence": {"opened": False, "verified": False,
+                                          "mode": "api:per-card", "checked": 0,
+                                          "refused": 0, "undecided": 0,
+                                          "ticked_on": [], "ticked_off": []},
+                "keywords": keywords, "note": "", "count": count,
+                "harvested": 0, "timed_out": False, "skipped_done": 0,
+                "already_done": [], "rejected": [], "rejected_total": 0,
+                "stopped": True, "read_via": "api", "pages": 0, "cards_seen": 0}
+    ensure_browser()
+
+    found: dict[str, dict] = {}
+    skip_urls = {_english_url(u) for u in (exclude or ())}
+    skipped_names: list[str] = []
+    skipped_seen: set[str] = set()
+    rejected: list[dict] = []
+    rejected_seen: set = set()
+    seen_cards: set = set()
+    used_families: set = set()
+    spares: list[tuple[str, dict]] = []
+    spare_seen: set = set()
+    lic_checked = lic_refused = lic_undecided = 0
+    cards_seen = 0
+    pages_read = 0
+    note = ""
+
+    def in_hand() -> int:
+        return len(found) + len(spares)
+
+    def report(keyword: str, page: int, cards: int) -> None:
+        if progress:
+            progress({"keyword": keyword or "all models", "pass": page,
+                      "cards": cards, "found": in_hand(), "harvests": len(found),
+                      "count": count, "mode": "api"})
+
+    def refuse(name: str, url: str, reason: str, source: str) -> None:
+        if url in rejected_seen:
+            return
+        rejected_seen.add(url)
+        rejected.append({"name": name, "url": url, "reason": reason,
+                         "source": source})
+
+    with sync_playwright_auto() as pw:
+        ctx = pw.chromium.connect_over_cdp(CDP_URL).contexts[0]
+        reader = cc.get_reader(ctx)
+        try:
+            if "crealitycloud.com" not in reader.url():
+                reader.page.goto("https://www.crealitycloud.com/",
+                                 wait_until="domcontentloaded", timeout=60000)
+            first_kw = keywords[0] if keywords else ""
+            cached = {first_kw: reader.search(first_kw, 1, API_PAGE_SIZE,
+                                              API_SORT_DOWNLOADS)}
+            if cached[first_kw] is None:
+                return None            # no usable answer: the DOM scan owns this run
+            pages_read += 1
+
+            for kw in (keywords or [""]):
+                page = 1
+                while True:
+                    if in_hand() >= target or stopped:
+                        break
+                    if should_stop and should_stop():
+                        stopped = True
+                        break
+                    if deadline and time.perf_counter() > deadline:
+                        timed_out = True
+                        break
+                    j = cached.pop(kw, None) if page == 1 else None
+                    if j is None:
+                        j = reader.search(kw, page, API_PAGE_SIZE, API_SORT_DOWNLOADS)
+                        pages_read += 1
+                    if j is None:
+                        note = (note + " | " if note else "") + (
+                            "the search answered nothing for %r at page %d"
+                            % (kw or "all models", page))
+                        break
+                    items = ((j.get("result") or {}).get("list") or [])
+                    cards_seen += len(items)
+                    for it in items:
+                        if in_hand() >= target:
+                            break
+                        alias = (it.get("urlAlias") or "").strip()
+                        if not alias:
+                            continue
+                        url = "https://www.crealitycloud.com/model-detail/" + alias
+                        if url in seen_cards:
+                            continue
+                        seen_cards.add(url)
+                        if url in found or _english_url(url) in skip_urls:
+                            continue
+                        name = (it.get("groupName") or "").strip()
+                        # the licence decides before the household gate: a card
+                        # that forbids re-publishing must not take a family
+                        lic = classify_license(it.get("license") or "")
+                        lic_checked += 1
+                        if not (lic.get("evidence") or lic.get("restricted")):
+                            lic_undecided += 1
+                            refuse(name, url, "the card names no licence (%r) — "
+                                   "not harvested" % (it.get("license") or ""),
+                                   "licence")
+                            continue
+                        if not lic.get("ok_for_reupload"):
+                            lic_refused += 1
+                            refuse(name, url, "licence refused: %s" % lic.get("note", ""),
+                                   "licence")
+                            continue
+                        verdict = judge_card(name, url, used_families, is_done)
+                        if verdict["state"] == "skipped":
+                            if url not in skipped_seen:
+                                skipped_seen.add(url)
+                                skipped_names.append(name or url)
+                            continue
+                        if verdict["state"] == "spare":
+                            if url not in spare_seen and url not in found:
+                                spare_seen.add(url)
+                                spares.append((url, {
+                                    "name": name, "url": url,
+                                    "keyword": kw, "family": verdict["family"],
+                                    "spare": True}))
+                            continue
+                        if verdict["state"] == "rejected":
+                            refuse(name, url, verdict["reason"],
+                                   verdict.get("source", ""))
+                            continue
+                        found[url] = {"name": name, "url": url, "keyword": kw}
+                    report(kw, page, len(items))
+                    if in_hand() >= target or not items or len(items) < API_PAGE_SIZE:
+                        break
+                    if page >= API_MAX_PAGES:
+                        break
+                    page += 1
+        except Exception as e:
+            note = (note + " | " if note else "") + ("search failed: " + str(e)[:160])
+
+        # repeats of a family fill the count once the fresh ones are exhausted
+        for url, item in spares:
+            if len(found) >= target or stopped:
+                break
+            if url not in found:
+                found[url] = item
+
+    if timed_out and not stopped:
+        note = (note + " | " if note else "") + (
+            "the search stopped at its %d-second ceiling with %d candidate(s) in "
+            "hand (asked for %d) — raise AUTO_DISCOVER_DEADLINE_S for a longer scan"
+            % (int(deadline_s or 0), len(found), count))
+    elif len(found) < count and not note and not stopped:
+        note = ("only %d of the %d models asked for were found in the search"
+                % (len(found), count))
+    if sort and str(sort).lower() != "downloads":
+        note = (note + " | " if note else "") + (
+            "the search always sorts by Downloads (the API's own sort); %r was "
+            "asked for" % sort)
+
+    timing.record("discover.total", time.perf_counter() - t_total)
+    return {"models": list(found.values())[:target],
+            "licence": {"opened": True, "verified": lic_checked > 0,
+                        "mode": "api:per-card", "checked": lic_checked,
+                        "refused": lic_refused, "undecided": lic_undecided,
+                        "ticked_on": [], "ticked_off": []},
+            "keywords": keywords, "note": note, "count": count,
+            "harvested": len(found), "timed_out": timed_out,
+            "skipped_done": len(skipped_names),
+            "already_done": skipped_names[:12],
+            "rejected": rejected[:REJECTED_MAX],
+            "rejected_total": len(rejected), "stopped": stopped,
+            "read_via": "api", "pages": pages_read, "cards_seen": cards_seen}
+
+
 def find_creality(keywords: list[str] | None = None, count: int = 10,
+                  sort: str = "Downloads", is_done=None, progress=None,
+                  should_stop=None, exclude=None, extra: int | None = None,
+                  deadline_s: float | None = None) -> dict:
+    """Find Creality Cloud models worth re-publishing.
+
+    The site's own search answers this as JSON, a page at a time; the rendered
+    listing (scroll passes, sort click, licence-panel clicks) is the fallback and
+    runs only when the search does not answer usably. Both paths return the same
+    record and feed the same `judge_card` rules, `exclude` list and surplus pool.
+
+    The licence guarantee differs by path and is stated in the result: the DOM
+    path harvests only after the licence filter reads back, and the API path
+    checks EVERY card's own licence with `classify_license` (a card naming no
+    licence is refused). Neither harvests a card the judge does not allow.
+    """
+    args = (keywords, count, sort, is_done, progress, should_stop, exclude,
+            extra, deadline_s)
+    api_error = ""
+    try:
+        got = _find_creality_api(*args)
+    except Exception as e:
+        # The fallback is expected (the API can refuse), but a crash inside the
+        # new path must leave a name in the record: swallowing it silently is how
+        # a broken reader looks exactly like a site that had no answer.
+        api_error = "%s: %s" % (type(e).__name__, str(e)[:160])
+        got = None
+    if got is not None:
+        return got
+    out = _find_creality_dom(*args)
+    out["read_via"] = "dom"
+    if api_error:
+        out["api_error"] = api_error
+    return out
+
+
+def _find_creality_dom(keywords: list[str] | None = None, count: int = 10,
                   sort: str = "Downloads", is_done=None, progress=None,
                   should_stop=None, exclude=None, extra: int | None = None,
                   deadline_s: float | None = None) -> dict:

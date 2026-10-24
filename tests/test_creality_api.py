@@ -54,8 +54,18 @@ def test_payload_yields_the_publish_fields():
 
 def test_gallery_is_the_cover_urls_in_order_and_deduped():
     rec = api.parse_payload(_walk())
+    # the live gallery only: editCovers can still hold photos the page dropped
     assert rec["covers"] == ["https://pic2-cdn.creality.com/pic/a.png",
-                             "https://pic2-cdn.creality.com/pic/b.png",
+                             "https://pic2-cdn.creality.com/pic/b.png"]
+    assert rec["edit_covers"] == ["https://pic2-cdn.creality.com/pic/b.png",
+                                  "https://pic2-cdn.creality.com/pic/c.png"]
+
+
+def test_edit_covers_is_only_a_fallback_when_the_gallery_is_empty():
+    node = dict(NODE)
+    node["covers"] = []
+    rec = api.parse_payload(_walk(node))
+    assert rec["covers"] == ["https://pic2-cdn.creality.com/pic/b.png",
                              "https://pic2-cdn.creality.com/pic/c.png"]
 
 
@@ -163,3 +173,44 @@ def test_licence_is_decided_by_the_existing_judge(raw, allowed):
 def test_parse_error_keeps_the_site_code_and_message():
     got = api.parse_error({"code": 517, "msg": "The item does not exist"})
     assert got == {"code": 517, "msg": "The item does not exist"}
+
+
+# --- the production fetch: API first, DOM as the fallback -------------------
+
+URL = "https://www.crealitycloud.com/model-detail/modular-mobile-organizer"
+
+
+def test_fetch_uses_the_api_record_without_running_the_dom_pass(monkeypatch):
+    import downloader
+    calls = []
+    monkeypatch.setattr(downloader, "_fetch_creality_api",
+                        lambda u: {"name": "x", "read_via": "api"})
+    monkeypatch.setattr(downloader, "_fetch_creality_dom",
+                        lambda u: calls.append("dom") or {})
+    got = downloader._fetch_creality(URL)
+    assert got["read_via"] == "api"
+    assert calls == []
+
+
+def test_fetch_falls_back_to_the_dom_pass_and_says_so(monkeypatch):
+    import downloader
+    from uploader import UPLOAD_VERIFY
+    monkeypatch.setattr(downloader, "_fetch_creality_api", lambda u: None)
+    monkeypatch.setattr(downloader, "_fetch_creality_dom",
+                        lambda u: {"read_via": "dom"})
+    got = downloader._fetch_creality(URL)
+    assert got["read_via"] == "dom"
+    assert UPLOAD_VERIFY["read_via"] == "dom"
+
+
+def test_a_decisive_refusal_is_not_swallowed_into_a_dom_retry(monkeypatch):
+    import downloader
+
+    def refuse(u):
+        raise RuntimeError("Licence refused — CC BY-NC")
+
+    monkeypatch.setattr(downloader, "_fetch_creality_api", refuse)
+    monkeypatch.setattr(downloader, "_fetch_creality_dom",
+                        lambda u: pytest.fail("the DOM pass must not run"))
+    with pytest.raises(RuntimeError, match="Licence refused"):
+        downloader._fetch_creality(URL)

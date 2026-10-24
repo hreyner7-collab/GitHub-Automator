@@ -1325,11 +1325,124 @@ def classify_license(raw: str, icons=None) -> dict:
             "ok_for_reupload": ok, "note": note}
 
 
+def _fetch_creality_api(url: str):
+    """Read the listing from the page's own payload and API. None = use the DOM.
+
+    Returns the same record shape as `_fetch_creality_dom`. It returns None —
+    never a guess — whenever the answer is not complete enough to publish on: an
+    unread field, no decisive licence, no photos, no file. The caller then runs
+    the rendered-page pass once.
+
+    RuntimeError is raised only when a slower second read cannot change the
+    answer: the listing is gone, the browser is signed out, or the licence is
+    refused by `classify_license` — the same judge the DOM path uses.
+    """
+    import creality_api as cc
+    from browser_opener import sync_playwright_auto
+    from uploader import ensure_browser, CDP_URL, UPLOAD_VERIFY, _verify_model_files
+
+    model_url = _canon_model_url(url)
+    if not ensure_browser():
+        raise RuntimeError("Creality Cloud needs the logged-in debug Chrome: "
+                           "start it once (debug port 9222), log in, then retry.")
+    os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+    mark = timing.Steps("fetch.api")
+    try:
+        with sync_playwright_auto() as pw:
+            ctx = pw.chromium.connect_over_cdp(CDP_URL).contexts[0]
+            rec = cc.get_reader(ctx).read(model_url, dest_dir=DOWNLOADS_DIR)
+    except Exception:
+        return None
+    mark("read")
+
+    if rec.get("signin"):
+        raise RuntimeError("The Creality session is signed out in the debug Chrome — "
+                           "log in there, then retry.")
+    if rec.get("dead"):
+        raise RuntimeError("The Creality listing is gone (the page says %r) — "
+                           "nothing to publish." % (rec.get("h1") or "Page Not Found"))
+
+    lic = classify_license(rec.get("license_raw") or "")
+    UPLOAD_VERIFY["license_text"] = (rec.get("license_raw") or "")[:600]
+    UPLOAD_VERIFY["license_evidence"] = lic.get("evidence")
+    UPLOAD_VERIFY["license_icons"] = []      # this read draws no badge
+    if not (lic.get("evidence") or lic.get("restricted")):
+        return None            # undecided: the licence card on the page decides
+    if not lic.get("ok_for_reupload"):
+        raise RuntimeError("Licence refused — %s" % (lic.get("note") or lic.get("raw")))
+    if rec.get("unknown") or not rec.get("stl_path") or not rec.get("covers"):
+        return None
+
+    name = (rec.get("name") or "").strip()
+    slug = _slug(name)
+    desc = (rec.get("description")
+            or _plain_text(rec.get("description_html") or ""))[:500]
+    image_paths = _download_images(list(rec["covers"]), slug, strict=False)
+    mark("gallery")
+    if not image_paths:
+        return None                     # the rendered gallery may still have them
+    if not _verify_model_files([rec["stl_path"]], model_url):
+        raise RuntimeError("The downloaded file from Creality Cloud is not real "
+                           "model geometry (3MF/STL check failed) — not uploading junk.")
+    mark("file")
+
+    gallery = {"scope": "api:covers", "images": len(rec["covers"]),
+               "downloaded": len(image_paths), "found_by": ["api"],
+               "paths": [u.replace("https://pic2-cdn.creality.com", "")[:80]
+                         for u in rec["covers"][:12]]}
+    UPLOAD_VERIFY["gallery"] = gallery
+    UPLOAD_VERIFY["read_via"] = "api"
+    return {"name": name, "description": desc, "stl_path": rec["stl_path"],
+            "image_paths": image_paths, "slug": slug,
+            "author": rec.get("author") or "", "license": lic,
+            "source_url": model_url,
+            "file_attempt": {"control": "api:3mfDownload", "downloads": 1,
+                             "api": {k: rec.get(k) for k in
+                                     ("files_ms", "three_d_ms", "download_url_ms")},
+                             "bytes": (rec.get("file") or {}).get("bytes")},
+            "signin_required": False, "gallery": gallery, "read_via": "api"}
+
+
+def _plain_text(html: str) -> str:
+    """The model node's HTML description as one plain line."""
+    s = re.sub(r"<[^>]+>", " ", html or "")
+    for a, b in (("&nbsp;", " "), ("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"),
+                 ("&quot;", '"'), ("&#39;", "'")):
+        s = s.replace(a, b)
+    return re.sub(r"\s+", " ", s).strip()
+
+
 def _fetch_creality(url: str) -> dict:
-    """Fetch a Creality Cloud model: metadata + original photos + the real
-    3MF file. The file download is login/Cloudflare-gated, so this drives
-    the user's logged-in debug Chrome over CDP (same bootstrap as the
-    uploader). Raises RuntimeError when that browser is unavailable."""
+    """A Creality Cloud fetch: the API read first, the rendered page as fallback.
+
+    `_fetch_creality_api` answers in ~2-3 s from the page's own payload and
+    endpoints. `_fetch_creality_dom` is the slow path it replaces; it runs only
+    when the API read could not prove a field the publish depends on.
+    """
+    from uploader import UPLOAD_VERIFY
+    _mark = timing.Steps("fetch")
+    try:
+        got = _fetch_creality_api(url)
+    except RuntimeError:
+        raise
+    except Exception:
+        got = None
+    if got is not None:
+        return got
+    _mark("dom_fallback")
+    UPLOAD_VERIFY["read_via"] = "dom"
+    return _fetch_creality_dom(url)
+
+
+def _fetch_creality_dom(url: str) -> dict:
+    """Fetch a Creality Cloud model by driving the rendered page.
+
+    This is the fallback half of `_fetch_creality`: metadata + original photos +
+    the real 3MF file, read from a logged-in Chrome over CDP. It is the slow path
+    (25.3 s measured) and stays exactly as it was, because everything it proves
+    on screen — the licence card, the gallery, the download dialog — is the
+    evidence a fallback exists for.
+    """
     from browser_opener import sync_playwright_auto
     from uploader import ensure_browser, CDP_URL, UPLOAD_VERIFY
 
@@ -1980,7 +2093,7 @@ def _fetch_creality(url: str) -> dict:
             "license": license_info, "source_url": model_url,
             "file_attempt": file_try,    # what the download step really saw
             "signin_required": bool(file_try.get("signin")),
-            "gallery": gallery_info}   # proof of WHICH images were taken
+            "gallery": gallery_info, "read_via": "dom"}   # proof of WHICH images were taken
 
 
 def _english_site_url(url: str) -> str:

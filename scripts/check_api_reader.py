@@ -176,7 +176,7 @@ def main() -> int:
 
     import downloader
     print("\nrunning the production DOM fetch on the same model (this is the slow path)...")
-    dom = downloader._fetch_creality(url)
+    dom = downloader._fetch_creality_dom(url)   # the fallback path, deliberately
     api_lic = license_of(rec.get("license_raw"))
     bad = compare(rec, dom, api_lic)
     if bad:

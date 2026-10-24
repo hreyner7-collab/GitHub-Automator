@@ -210,16 +210,17 @@ def parse_payload(raw: dict) -> dict:
         # the same record shape, every field empty and named as unknown: a caller
         # that indexes rec["name"] must get "" and fall back, never a KeyError
         return {"name": "", "author": "", "license_raw": "", "description": "",
-                "description_html": "", "covers": [], "model_id": "", "share_id": "",
+                "description_html": "", "covers": [], "edit_covers": [],
+                "model_id": "", "share_id": "",
                 "total_file_size": None, "alias": "", "dead": False,
                 "unknown": ["payload"], "evidence": {},
                 "h1": raw.get("h1") or "", "title": raw.get("title") or ""}
     node = raw.get("model") or {}
-    covers = []
-    for k in ("covers", "editCovers", "pcCovers", "appCovers"):
-        for u in node.get(k) or []:
-            if u not in covers:
-                covers.append(u)
+    # the listing's own gallery; editCovers is only a fallback, because it can
+    # still hold photos the live page no longer shows
+    covers = list(node.get("covers") or [])
+    if not covers:
+        covers = list(node.get("editCovers") or [])
     rec = {
         "name": (node.get("groupName") or "").strip(),
         "author": (node.get("nickName") or node.get("userName") or "").strip(),
@@ -228,6 +229,7 @@ def parse_payload(raw: dict) -> dict:
         "description_html": (node.get("groupDesc") or node.get("originalGroupDesc")
                              or node.get("description") or "").strip(),
         "covers": covers,
+        "edit_covers": list(node.get("editCovers") or []),
         "model_id": (node.get("nodeId") or "").strip(),
         "share_id": str(node.get("shareId") or "").strip(),
         "total_file_size": _int(node.get("totalFileSize")),
@@ -476,6 +478,25 @@ class Reader:
         out = parse_3mf_list(r["json"])
         out["ms"] = r.get("ms")
         return out if out["shape_ok"] else None
+
+    def search(self, keyword: str, page: int = 1, page_size: int = 20,
+               sort_type: int = 10) -> dict | None:
+        """One page of the site's own model search (sorted by downloads).
+
+        The body is the site's: `sortType: 10` is the Downloads sort the
+        listing page applies with a click, and the empty `printers` list keeps
+        the result unfiltered by machine. There is no licence parameter here —
+        that is why every card's own `license` is re-checked by the caller.
+        """
+        r = self.post("/api/cxy/smart_search/v1/model", {
+            "page": page, "pageSize": page_size, "keyword": keyword,
+            "sortType": sort_type, "printers": [], "promoType": 0,
+            "isVip": 0, "trendType": 1, "multiMark": 0})
+        if not r or not r.get("ok") or not isinstance(r.get("json"), dict):
+            return None
+        if r["json"].get("code") not in (0, "0", None):
+            return None
+        return r["json"]
 
     def download_url(self, three_d_id: str) -> dict | None:
         r = self.post("/api/cxy/v3/model/3mfDownload", {"id": three_d_id}, token=True)

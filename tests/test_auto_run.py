@@ -343,9 +343,12 @@ def test_discovery_never_hands_over_a_model_that_is_already_done():
     """The run used to queue models it had already published and skip them later
     (or worse, look at them again at the very start). The harvester itself must
     drop them, so nothing already done is ever picked."""
-    from discover import find_creality
+    from discover import find_creality, _find_creality_api, _find_creality_dom
     import inspect
-    src = inspect.getsource(find_creality)
+    # the wrapper dispatches, so the filter has to be read from BOTH harvesters
+    src = (inspect.getsource(find_creality)
+           + inspect.getsource(_find_creality_api)
+           + inspect.getsource(_find_creality_dom))
     assert "is_done" in src and "skipped_names" in src
 
     done = {"https://x/model-detail/already-done"}
