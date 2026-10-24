@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Creality Pipeline V4</title>
+<title>Creality Pipeline V5</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -232,7 +232,7 @@
 
 <div class="topbar">
   <h1>Creality <span>Pipeline</span></h1>
-  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V4</span>
+  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V5</span>
   <span class="build" id="build-stamp" title="Which code this dashboard process is serving"></span>
   <button id="analytics-btn" onclick="toggleAnalytics()">&#128202; Analytics</button>
 </div>
@@ -869,7 +869,8 @@
           '”' + (s.progress
             ? ' — listing “' + esc(s.progress.keyword || 'all models') + '”, scroll ' +
               s.progress.pass + ', ' + s.progress.cards + ' cards on the page, ' +
-              s.progress.found + ' of ' + s.progress.count + ' found'
+              s.progress.found + ' candidates in hand for the ' +
+              s.progress.count + ' asked for'
             : ', ticking the licence filter and reading it back…')
         : st === 'running'
           ? '<span class="spinner"></span>Publishing ' + (counts.published || 0) +
