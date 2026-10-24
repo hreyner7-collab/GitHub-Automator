@@ -1298,7 +1298,8 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                     "remix_declared_by", "remix_registered_href",
                     "remix_suggestion_clicked",
                     "remix_suggestions_seen", "remix_suggestions_refused",
-                    "attach", "attach_registered", "attach_note") if k in _v}
+                    "attach", "attach_registered", "attach_note",
+                    "read_via") if k in _v}
                 continue
             if up.get("stopped"):
                 # Stop was pressed before Submit: nothing was submitted, so the

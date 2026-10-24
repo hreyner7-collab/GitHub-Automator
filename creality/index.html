@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Creality Pipeline V11</title>
+<title>Creality Pipeline V12</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -232,7 +232,7 @@
 
 <div class="topbar">
   <h1>Creality <span>Pipeline</span></h1>
-  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V11</span>
+  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V12</span>
   <span class="build" id="build-stamp" title="Which code this dashboard process is serving"></span>
   <button id="analytics-btn" onclick="toggleAnalytics()">&#128202; Analytics</button>
 </div>
@@ -896,8 +896,14 @@
       ((st === 'done') ? short : ''));
 
     const already = s.skipped_already || 0;
+    const licMode = lic.mode || '';
     document.getElementById('auto-summary').innerHTML =
-      (lic.verified
+      (licMode === 'api:per-card'
+        ? 'Licence judged on every card in the search answer — <b>' +
+          (lic.checked || 0) + '</b> checked, <b>' + (lic.refused || 0) +
+          '</b> refused, <b>' + (lic.undecided || 0) + '</b> unreadable ' +
+          '(CXY-SL and blank cards) — none of those were queued.'
+        : lic.verified
         ? 'Licence filter verified on the live listing — ticked: <b>' +
           esc((lic.ticked_on || []).join(', ')) + '</b> · left unticked: <b>' +
           esc((lic.ticked_off || []).join(', ')) + '</b>'
@@ -906,7 +912,8 @@
              'fetched from an unfiltered list.</span>'
            : '')) +
       (already
-        ? (lic.verified ? '<br>' : '') + '<span style="color:#b0bec5">' + already +
+        ? ((lic.verified || licMode === 'api:per-card') ? '<br>' : '') +
+          '<span style="color:#b0bec5">' + already +
           ' model(s) already published — skipped before queueing (the config knows them).</span>'
         : '');
 
