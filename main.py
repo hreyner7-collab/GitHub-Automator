@@ -28,6 +28,8 @@ import proof
 import selector
 import timing
 import uploader        # the module, for the evidence dict a raised publish leaves
+from origin import library as originals_lib
+from origin import publish as originals_publish
 
 load_dotenv()
 
@@ -100,7 +102,9 @@ def _code_fingerprint() -> str:
     import hashlib
     root = Path(__file__).resolve().parent
     parts = []
-    for f in sorted(root.glob("*.py")) + [root / "creality" / "index.html"]:
+    for f in (sorted(root.glob("*.py"))
+              + sorted((root / "origin").glob("*.py"))
+              + [root / "creality" / "index.html"]):
         try:
             st = f.stat()
             parts.append("%s:%d:%d" % (f.name, st.st_mtime_ns, st.st_size))
@@ -245,6 +249,22 @@ class AutoRequest(BaseModel):
     niches to search for. The count is typed by the user (any number, 1 or more)."""
     count: int = 5
     keywords: list[str] | None = None
+
+
+class OriginalsRequest(BaseModel):
+    """How many original models this run should have ready for the owner."""
+    count: int = 5
+
+
+class OriginalPublishRequest(BaseModel):
+    """The owner's yes for ONE finished original, by its folder key.
+
+    The click that sends this is the explicit per-model approval: the endpoint
+    records it against the exact STL, contact sheet and five photos on disk,
+    then publishes that one model through the gated originals publisher.
+    """
+    key: str
+    note: str = ""
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -1444,6 +1464,335 @@ async def auto_status():
     out["selector"] = selector.policy()
     out["timings"] = timing.snapshot()
     return out
+
+
+# ── Originals: our own models, photographed from their own STL ──────────────
+# The dashboard's "Find & Publish" no longer re-uploads another designer's
+# model or photos. It builds original household designs from seeded specs,
+# renders the exact STL it will upload, and puts each finished preview on the
+# shelf. Publishing one is a separate, explicit click: that click is the owner's
+# yes for that one model, recorded against the hashes on screen, and only then
+# does the gated originals publisher open the Creality form.
+ORIGINALS: dict = {
+    "state": "idle", "job_id": None, "requested": 0, "items": [],
+    "note": "", "started": None, "finished": None, "stop": False,
+    "progress": {}, "log_path": None, "publishing": "",
+}
+ORIGINALS_TASK: asyncio.Task | None = None
+ORIGINALS_PUBLISH_LOCK = asyncio.Lock()
+
+
+def _originals_root() -> Path:
+    override = (os.environ.get("CREALITY_ORIGINALS_DIR") or "").strip()
+    return Path(override) if override else (BASE_DIR / "artifacts" / "originals")
+
+
+def _originals_shelf() -> list[dict]:
+    """Every finished preview on disk, with the state the dashboard shows.
+
+    A `PUBLISHED.json` marker is the first answer; the ledger is the second, so
+    a listing made by the CLI is never offered for a second publish.
+    """
+    root = _originals_root()
+    publishing = ORIGINALS.get("publishing") or ""
+    shelf = []
+    for p in originals_lib.complete_previews(root):
+        marker = originals_lib.published_marker(root / p["key"])
+        state, url = "preview", ""
+        if marker:
+            state, url = "published", marker.get("url") or ""
+        else:
+            hit = ledger.find(name=p["title"], file_path=p["stl"])
+            if hit["found"]:
+                state = "published"
+                url = (hit.get("entry") or {}).get("published_url") or ""
+        if state != "published" and p["approved"]:
+            state = "approved"
+        if p["key"] == publishing:
+            state = "publishing"
+        shelf.append({
+            "key": p["key"], "title": p["title"], "family": p["family"],
+            "state": state, "published_url": url,
+            "contact_url": "/originals/contact/" + p["key"],
+            "photo_urls": ["/originals/photo/%s/%s"
+                           % (p["key"], Path(x).name) for x in p["photos"]],
+            "dims_mm": p["dims_mm"], "licence": p["licence"] or originals_publish.LICENCE,
+            "photos": len(p["photos"]), "seconds": p["seconds"],
+        })
+    return shelf
+
+
+def _originals_counts(shelf: list[dict]) -> dict:
+    run_items = ORIGINALS.get("items") or []
+    counts = {"ready": 0, "approved": 0, "published": 0, "publishing": 0,
+              "prepared": 0, "working": 0, "queued": 0, "failed": 0}
+    for p in shelf:
+        st = p["state"]
+        counts[st] = counts.get(st, 0) + 1
+        if st in ("preview", "approved"):
+            counts["ready"] += 1
+    for it in run_items:
+        st = it.get("state") or "queued"
+        if st in ("working", "queued"):
+            counts[st] += 1
+        elif st == "failed":
+            counts["failed"] += 1
+        if it.get("key") and st in ("preview", "approved", "published",
+                                   "publishing"):
+            counts["prepared"] += 1
+    return counts
+
+
+def _set_original_item(key: str, state: str, *, reason: str = "",
+                       result: str = "") -> None:
+    for it in ORIGINALS.get("items") or []:
+        if it.get("key") == key:
+            it["state"] = state
+            it["reason"] = reason
+            if result:
+                it["result"] = result
+            return
+
+
+async def _originals_worker(count: int, job_id: str) -> None:
+    """Design, build and photograph originals until `count` are ready.
+
+    Nothing is uploaded here. Each finished model is written to disk with its
+    five 4:3 photos, contact sheet and exact STL; the owner's per-model click
+    publishes it afterwards.
+    """
+    import time as _time
+
+    def _log() -> None:
+        path = BASE_DIR / "artifacts" / ("originals_run_%s.json" % job_id)
+        body = {
+            "job_id": job_id, "requested": count,
+            "state": ORIGINALS.get("state"), "note": ORIGINALS.get("note"),
+            "items": ORIGINALS.get("items") or [],
+            "counts": _originals_counts(_originals_shelf()),
+            "finished": ORIGINALS.get("finished"),
+        }
+        _write_run_log(path, body)
+        ORIGINALS["log_path"] = str(path)
+
+    try:
+        ORIGINALS.update({
+            "state": "preparing", "job_id": job_id, "requested": count,
+            "items": [], "note": "", "stop": False, "progress": {},
+            "started": _time.strftime("%Y-%m-%d %H:%M:%S"), "finished": None,
+            "log_path": None, "publishing": "",
+        })
+        root = _originals_root()
+        root.mkdir(parents=True, exist_ok=True)
+
+        items: list[dict] = []
+        shelf = _originals_shelf()
+        for p in shelf:
+            if len(items) >= count:
+                break
+            if p["state"] in ("preview", "approved"):
+                items.append({
+                    "key": p["key"], "family": p["family"], "title": p["title"],
+                    "state": p["state"], "reason": "", "result": "",
+                    "contact_url": p["contact_url"],
+                })
+        ORIGINALS["items"] = items
+        prepared = len(items)
+
+        # Spare family slots: a build that fails must not make the run short.
+        families = originals_lib.families_for(count - prepared + 4, root)
+        fi = 0
+        while prepared < count and fi < len(families):
+            if ORIGINALS.get("stop"):
+                break
+            family = families[fi]
+            fi += 1
+            item = {"key": "", "family": family,
+                    "title": originals_lib.spec.FAMILIES.get(family, family),
+                    "state": "working", "reason": "", "result": "",
+                    "started_at": _time.time()}
+            items.append(item)
+            ORIGINALS["progress"] = {"index": prepared + 1, "total": count,
+                                     "family": family,
+                                     "title": item["title"]}
+            ORIGINALS["state"] = "preparing"
+            _log()
+            try:
+                made = await asyncio.to_thread(
+                    originals_lib.prepare, root, family,
+                    samples=originals_lib.SAMPLES, res=originals_lib.RES)
+            except Exception as e:
+                item["state"] = "failed"
+                item["reason"] = str(e)[:400]
+                _log()
+                continue
+            item.update({
+                "key": made["key"], "title": made["title"],
+                "state": "preview", "contact_url":
+                    "/originals/contact/" + made["key"],
+                "seconds": made.get("seconds"),
+            })
+            prepared += 1
+            ORIGINALS["progress"] = {"index": prepared, "total": count,
+                                     "family": family, "title": made["title"]}
+            _log()
+
+        ORIGINALS["state"] = "stopped" if ORIGINALS.get("stop") else "done"
+        if prepared < count:
+            ORIGINALS["note"] = (
+                "%d of the %d asked for could not be prepared — the rows say why."
+                % (count - prepared, count))
+    except Exception as e:
+        ORIGINALS["state"] = "error"
+        ORIGINALS["note"] = "run failed: " + str(e)[:200]
+        for it in ORIGINALS.get("items") or []:
+            if it.get("state") in ("working", "queued"):
+                it["state"] = "failed"
+                it["reason"] = "run error: " + str(e)[:160]
+    finally:
+        ORIGINALS["finished"] = _time.strftime("%Y-%m-%d %H:%M:%S")
+        ORIGINALS["progress"] = {}
+        try:
+            _log()
+        except Exception:
+            pass
+
+
+@app.post("/originals/start")
+async def originals_start(req: OriginalsRequest):
+    """Design and photograph original models; nothing is uploaded."""
+    global ORIGINALS_TASK
+    if ORIGINALS.get("state") == "preparing":
+        raise HTTPException(status_code=409, detail=
+            "An originals run is already working — stop it or wait for it to finish.")
+    if ORIGINALS.get("publishing"):
+        raise HTTPException(status_code=409, detail=
+            "A model is publishing right now — wait for it to finish.")
+    count = int(req.count or 0)
+    if count < 1:
+        raise HTTPException(status_code=400, detail=
+            "Type how many originals you want, 1 or more (you sent %s)." % req.count)
+    if count > 50:
+        raise HTTPException(status_code=400, detail=
+            "50 originals in one run is the ceiling (each takes about two minutes "
+            "to photograph). You asked for %d." % count)
+    import time as _time
+    job_id = _time.strftime("%Y%m%d-%H%M%S")
+    ORIGINALS_TASK = asyncio.create_task(_originals_worker(count, job_id))
+    return {"ok": True, "job_id": job_id, "requested": count}
+
+
+@app.post("/originals/stop")
+async def originals_stop():
+    ORIGINALS["stop"] = True
+    return {"ok": True, "state": ORIGINALS.get("state")}
+
+
+@app.get("/originals/status")
+async def originals_status():
+    shelf = _originals_shelf()
+    return {
+        "state": ORIGINALS.get("state"), "job_id": ORIGINALS.get("job_id"),
+        "requested": ORIGINALS.get("requested"),
+        "items": ORIGINALS.get("items") or [], "shelf": shelf,
+        "counts": _originals_counts(shelf), "note": ORIGINALS.get("note") or "",
+        "stop": bool(ORIGINALS.get("stop")),
+        "progress": ORIGINALS.get("progress") or {},
+        "publishing": ORIGINALS.get("publishing") or "",
+        "started": ORIGINALS.get("started"),
+        "finished": ORIGINALS.get("finished"),
+        "licence": originals_publish.LICENCE,
+    }
+
+
+@app.post("/originals/publish")
+async def originals_publish_endpoint(req: OriginalPublishRequest):
+    """Publish ONE finished original, after the owner's explicit yes.
+
+    The click is the approval: the hashes of the STL, contact sheet and five
+    photos on disk are recorded first, and the same gated publisher used by the
+    CLI does the name check and the upload. Nothing here can publish a model
+    that has no finished preview, and a second click cannot publish it twice.
+    """
+    if AUTO.get("state") in ("discovering", "running"):
+        raise HTTPException(status_code=409, detail=
+            "An auto run is using the Creality form — stop it first, or wait "
+            "until it finishes, then publish this original.")
+    if ORIGINALS.get("publishing") or ORIGINALS_PUBLISH_LOCK.locked():
+        raise HTTPException(status_code=409, detail=
+            "Another original is publishing right now — wait for it to finish.")
+    key = (req.key or "").strip()
+    if not originals_lib.KEY_RE.fullmatch(key):
+        raise HTTPException(status_code=400, detail="Not a valid model key.")
+    model_dir = _originals_root() / key
+    if not model_dir.is_dir() or not originals_lib.is_complete(model_dir):
+        raise HTTPException(status_code=404, detail=
+            "No finished preview for that model — design and photograph it first.")
+    rec = originals_lib.read_record(model_dir) or {}
+    title = (rec.get("spec") or {}).get("title") or key
+    stl = (rec.get("files") or {}).get("stl") or ""
+    marker = originals_lib.published_marker(model_dir)
+    if marker:
+        raise HTTPException(status_code=409, detail=
+            "This original is already published: %s" % (marker.get("url") or key))
+    hit = ledger.find(name=title, file_path=stl)
+    if hit["found"]:
+        originals_lib.write_published(
+            model_dir, (hit.get("entry") or {}).get("published_url") or "",
+            title, time.strftime("%Y-%m-%d %H:%M:%S"))
+        raise HTTPException(status_code=409, detail=ledger.describe(hit))
+
+    async with ORIGINALS_PUBLISH_LOCK:
+        ORIGINALS["publishing"] = key
+        _set_original_item(key, "publishing")
+        try:
+            approval = await asyncio.to_thread(
+                originals_publish.write_approval, model_dir,
+                req.note.strip() or "approved in the dashboard")
+            async with UPLOAD_LOCK:
+                plan = await asyncio.to_thread(
+                    originals_publish.publish, model_dir, live=True)
+            url = plan.get("url") or ""
+            originals_lib.write_published(
+                model_dir, url, title, time.strftime("%Y-%m-%d %H:%M:%S"))
+            _set_original_item(key, "published", result=url)
+            return {
+                "ok": True, "published": True, "key": key, "title": title,
+                "url": url, "approval": approval,
+                "novelty": plan.get("novelty") or {},
+                "ledger_recorded": plan.get("ledger_recorded"),
+            }
+        except originals_publish.PublishRefused as e:
+            _set_original_item(key, "failed", reason=str(e))
+            raise HTTPException(status_code=400, detail=str(e))
+        except originals_publish.PublishError as e:
+            _set_original_item(key, "failed", reason=str(e))
+            raise HTTPException(status_code=502, detail=str(e))
+        finally:
+            ORIGINALS["publishing"] = ""
+
+
+@app.get("/originals/contact/{key}")
+async def originals_contact(key: str):
+    key = Path(key).name
+    if not originals_lib.KEY_RE.fullmatch(key):
+        raise HTTPException(status_code=404, detail="File not found")
+    path = _originals_root() / key / ("%s_contact.jpg" % key)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(str(path))
+
+
+@app.get("/originals/photo/{key}/{name}")
+async def originals_photo(key: str, name: str):
+    key, name = Path(key).name, Path(name).name
+    if (not originals_lib.KEY_RE.fullmatch(key) or not name.endswith(".jpg")
+            or name != Path(name).name):
+        raise HTTPException(status_code=404, detail="File not found")
+    path = _originals_root() / key / "photos" / name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(str(path))
 
 
 # ── Diagnostics: the dashboard checking itself ──────────────────────────────

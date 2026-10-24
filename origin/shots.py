@@ -198,6 +198,8 @@ def make_photos(mesh, spec, check, dims, outdir: Path, samples: int = 64,
         "photos_4x3": [str(p) for p in crops_43],
         "photos_3x4": [str(p) for p in crops_34],
         "contact": str(sheet), "brightness": stats,
+        "dims_mm": [round(float(v), 1) for v in dims],
+        "check": check.as_dict(),
         "licence": licence,
     }
     (outdir / ("%s_photos.json" % spec.key)).write_text(

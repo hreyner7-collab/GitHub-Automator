@@ -153,14 +153,15 @@ class TestGalleryReaderSeesLazyPhotos:
 
 
 class TestDashboardShowsTheEvidence:
-    """A row that only says "0 photo(s), 0 usable" cannot be acted on from the
-    dashboard, so the evidence the run now records is shown on the row."""
+    """The dashboard's publish path must show the originals shelf and say, in
+    the page itself, that no designer's model or photo is reused."""
 
     HTML = _repo_file("creality", "index.html")
 
     @pytest.mark.parametrize("needle", [
-        "creator_images", "remix_source_why", "uv.attach", "attach_registered",
-        "remix_declared_by",
+        "originals-grid", "Approve &amp; publish", "contact_url",
+        "no designer's photos are edited or re-uploaded",
+        "/originals/status", "/originals/publish",
     ])
-    def test_the_failed_row_quotes_what_it_saw(self, needle):
+    def test_the_originals_path_is_on_the_page(self, needle):
         assert needle in self.HTML

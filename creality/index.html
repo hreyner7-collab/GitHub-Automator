@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Creality Pipeline V12</title>
+<title>Creality Pipeline V13</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -141,7 +141,32 @@
   .autorow .astate.failed, .autorow .astate.duplicate { border-color: #b71c1c; color: #ef9a9a; }
   /* turned down by the household gate before it was ever fetched */
   .autorow .astate.rejected { border-color: #4e342e; color: #bcaaa4; }
+  .autorow .astate.preview, .autorow .astate.approved { border-color: #e65100; color: #ffcc80; }
+  .autorow .astate.working, .autorow .astate.queued,
+  .autorow .astate.publishing { border-color: #1565c0; color: #90caf9; }
   .autorow .areason { flex: 1 1 40%; color: #888; font-size: .78rem; }
+
+  .originals-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px; margin-top: 16px;
+  }
+  .ocard { background: #111; border: 1px solid #2a2a2a; border-radius: 10px;
+          overflow: hidden; }
+  .ocard img { width: 100%; display: block; aspect-ratio: 8 / 5; object-fit: cover;
+               background: #000; }
+  .ocard .obody { padding: 12px 14px 14px; }
+  .ocard .otitle { font-size: .9rem; color: #eee; font-weight: 600;
+                   margin-bottom: 4px; }
+  .ocard .ometa { font-size: .75rem; color: #888; }
+  .ocard .ometa a { color: #90caf9; text-decoration: none; }
+  .ocard .astate { display: inline-block; font-size: .72rem; padding: 2px 8px;
+                   border-radius: 999px; border: 1px solid #333; color: #aaa; }
+  .ocard .astate.published { border-color: #2e7d32; color: #a5d6a7; }
+  .ocard .astate.preview, .ocard .astate.approved { border-color: #e65100; color: #ffcc80; }
+  .ocard .astate.publishing { border-color: #1565c0; color: #90caf9; }
+  .ocard button { margin-top: 10px; width: 100%; }
+  .ocard .btn-link { display: inline-block; margin-top: 10px; color: #a5d6a7;
+                     font-size: .85rem; text-decoration: none; }
 
   .discover-grid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
@@ -232,7 +257,7 @@
 
 <div class="topbar">
   <h1>Creality <span>Pipeline</span></h1>
-  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V12</span>
+  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V13</span>
   <span class="build" id="build-stamp" title="Which code this dashboard process is serving"></span>
   <button id="analytics-btn" onclick="toggleAnalytics()">&#128202; Analytics</button>
 </div>
@@ -287,34 +312,28 @@
   <div id="an-models"></div>
 </div>
 
-<!-- Auto: find models, then publish each one -->
+<!-- Originals: design and photograph our own models, publish only on your yes -->
 <div class="card" id="auto-card">
-  <h2>Auto · Find &amp; Publish</h2>
+  <h2>Originals · Find &amp; Publish</h2>
   <div class="row">
-    <label for="auto-count" style="font-size:.85rem;color:#aaa">How many models do you want me to find?</label>
-    <input type="number" id="auto-count" min="1" value="5"
-           style="width:90px" placeholder="e.g. 20"
-           title="Type how many models you want (1 or more)">
-    <input type="text" id="auto-keywords" style="min-width:280px"
-           placeholder="cable organizer, phone holder, cotton bud holder…">
-    <button id="auto-start" onclick="autoStart()">Find &amp; publish</button>
-    <button id="auto-stop" class="btn-outline" onclick="autoStop()" disabled>Stop</button>
+    <label for="auto-count" style="font-size:.85rem;color:#aaa">How many original models do you want?</label>
+    <input type="number" id="auto-count" min="1" max="50" value="5"
+           style="width:90px" placeholder="e.g. 5"
+           title="Type how many originals you want (1–50). Each takes about two minutes to photograph.">
+    <button id="auto-start" onclick="originalsStart()">Find &amp; publish</button>
+    <button id="auto-stop" class="btn-outline" onclick="originalsStop()" disabled>Stop</button>
   </div>
-  <div id="auto-families" class="note" style="margin:6px 0"></div>
   <div id="auto-status" class="status"></div>
   <div id="auto-summary" class="count" style="margin:8px 0"></div>
   <div id="auto-list"></div>
-  <p class="note">Finds models with the licence filter on — <strong>CC0, CC BY, CC BY-SA</strong>
-    ticked, and CC BY-NC / CC BY-NC-SA / CC BY-ND / CC BY-NC-ND / Standard License left
-    unticked (the ticked set is read back before anything is fetched) — most-downloaded
-    first, then re-uploads each one with credit to the designer. Only licences that allow
-    redistribution, remixing <em>and commercial use</em> are published: a NonCommercial
-    source is refused because a listing here can earn, and a No-Derivatives one cannot be
-    remixed at all. Only the useful household
-    families listed above are harvested: a toilet, a bathroom set, garage or workshop gear,
-    a novelty and a decorative trinket can never reach the uploader, and every candidate the
-    gate turns down is listed below with the reason. ND- and NC-licensed finds are skipped and
-    the next model is used; anything that fails is logged with its reason and the run carries on.</p>
+  <div id="originals-grid" class="originals-grid"></div>
+  <p class="note">This designs <strong>original household models</strong> here — cable clips, phone stands,
+    wall hooks, desk organisers, parts trays, cup holders, clothes pegs and cotton bud holders — then
+    photographs the exact STL that would be uploaded. Nothing is copied or re-photographed from another
+    designer's listing, and no designer's photos are edited or re-uploaded. Each model appears below with
+    its five photos and a contact sheet; it goes live only when you press
+    <strong>Approve &amp; publish</strong> on that model, one at a time. Photographing one takes about
+    two minutes, so a run of five takes roughly ten minutes.</p>
 </div>
 
 <!-- Find Top Models (research only) -->
@@ -653,16 +672,13 @@
     }
   }
 
-  // ── Auto: find N models with the licence filter, then publish each one ──
-  let _autoTimer = null;
-  // The household gate's own lists, straight from /selector (selector.py): the
-  // dashboard does not keep its own idea of what is worth publishing.
-  let SEL = {default_keywords: [], families: [], rejects: []};
-
+  // ── Originals: our own models, photographed from their exact STL ──
   let _proof = null;            // the proof built at fetch time
   let _model = {name: '', source_url: '', licence_raw: '',
                 proof_ok: false, proof_why: ''};
   let _licenseBlocked = false;  // the licence alone refuses this link
+  // key → title, so the confirm dialog names the model before anything is sent
+  let _origByKey = {};
 
   // The ONE place that paints the preview tiles: the fetch, the AI re-edit and
   // the photo switch all come through here, so the tiles can never disagree
@@ -811,27 +827,6 @@
     }
   }
 
-  function selLoad() {
-    fetch('/selector').then(r => r.json()).then(j => {
-      SEL = j || SEL;
-      const f = document.getElementById('auto-keywords');
-      if (f && !f.value && (SEL.default_keywords || []).length)
-        f.placeholder = SEL.default_keywords.join(', ');
-      const box = document.getElementById('auto-families');
-      if (box) box.innerHTML = selSummary();
-    }).catch(() => {});
-  }
-
-  function selSummary() {
-    const fams = (SEL.families || []).map(f => esc(f.label)).join(' · ');
-    const no = (SEL.rejects || []).map(r => esc(r.reason)).join(' · ');
-    if (!fams) return '';
-    return '<b>Only useful household items are harvested:</b> ' + fams +
-      '<br><span style="color:#b0bec5">Never published: ' + no +
-      ', anything outside those families, or a second item from a family already '
-      'going out in the same run.</span>';
-  }
-
   // Seconds the way a human reads them: 42.5s, 3m 05s.
   function fmtSec(v) {
     const n = Number(v || 0);
@@ -839,180 +834,208 @@
     return n.toFixed(n < 10 ? 2 : 1) + 's';
   }
 
-  function autoRender(s) {
-    const counts = s.counts || {};
+  // ── Originals: design our own models, then publish only on your yes ──
+  // Find & publish only prepares models and photos; it never uploads. The one
+  // upload path is originalsPublish(), one model per explicit confirmation.
+  let _origFlash = null;        // kept across polls so a publish URL stays readable
+
+  function fmtOriginalState(st) {
+    return ({
+      preview: 'ready for your yes', approved: 'approved',
+      publishing: 'publishing…', published: 'published',
+      working: 'designing…', queued: 'queued', failed: 'failed'
+    })[st] || st || 'queued';
+  }
+
+  function originalsRender(s) {
     const st = s.state || 'idle';
-    const lic = s.licence || {};
-    // the rows below are capped, so the true number of candidates the gate turned
-    // down is the larger of the listed rows and the run's own total
-    const filtered = Math.max(counts.rejected || 0, s.rejected_total || 0);
-    // Stop was pressed and the run has not ended yet: say so, every poll
-    const stopping = !!s.stop && (st === 'discovering' || st === 'running');
-    // A run that published fewer models than were asked for did NOT finish, and
-    // saying "Run finished" over 3 of 20 is how a 20-model request looked like a
-    // complete run while publishing nothing. The run records the number and why.
-    const short = (s.shortfall || 0) > 0
-      ? ' <b>Short by ' + s.shortfall + '</b> of the ' + (s.requested || 0) +
-        ' asked for — ' + esc(s.shortfall_reason || 'the run did not say why.') +
-        ' Start it again and it picks up with fresh candidates.'
-      : '';
-    setStatus('auto-status',
-      stopping ? 'warn' : ((s.shortfall || 0) > 0 ? 'warn'
-        : (st === 'discovering' ? 'info' : (st === 'running' ? 'info'
-        : (st === 'error' ? 'error' : 'ok')))),
-      (stopping ? 'Stop requested — ' + (st === 'discovering'
-        ? 'the listing scan ends at its next step'
-        : 'the run stops at its next checkpoint; a Submit already pressed still completes, nothing new is submitted') + '. ' : '') +
-      (st === 'discovering'
-        ? '<span class="spinner"></span>Finding models — searching “' +
-          esc((s.keywords || []).join(', ') || 'all models') +
-          '”' + (s.progress
-            ? ' — listing “' + esc(s.progress.keyword || 'all models') + '”, scroll ' +
-              s.progress.pass + ', ' + s.progress.cards + ' cards on the page, ' +
-              s.progress.found + ' candidates in hand for the ' +
-              s.progress.count + ' asked for'
-            : ', ticking the licence filter and reading it back…')
-        : st === 'running'
-          ? '<span class="spinner"></span>Publishing ' + (counts.published || 0) +
-            ' of ' + (s.discovered || 0) + ' — ' +
-            (counts.working || 0) + ' in progress, ' +
-            (counts.skipped || 0) + ' skipped, ' +
-            (counts.fetch_failed || 0) + ' could not be fetched, ' +
-            (counts.failed || 0) + ' failed, ' +
-            filtered + ' filtered out as not useful'
-          : st === 'done'
-            ? (counts.published || 0
-               ? 'Run finished — ' + (counts.published || 0) + ' published, '
-               : 'Run finished — nothing was published, ') +
-              (counts.skipped || 0) + ' skipped, ' +
-              (counts.fetch_failed || 0) + ' could not be fetched, ' +
-              (counts.duplicate || 0) +
-              ' already on Creality Cloud, ' + (counts.failed || 0) + ' failed, ' +
-              filtered + ' filtered out as not useful.'
-            : st === 'stopped'
-              ? 'Stopped — ' + (counts.published || 0) + ' published before you stopped it.' + short
-              : st === 'error' ? 'Run failed: ' + esc(s.note || 'unknown error') + short
-              : 'Ask me for a number of models and I will find them, then publish them.') +
-      ((st === 'done') ? short : ''));
+    const counts = s.counts || {};
+    const items = s.items || [];
+    const shelf = s.shelf || [];
+    const note = s.note || '';
+    const busy = st === 'preparing' || !!s.publishing;
+    _origByKey = Object.fromEntries(shelf.map(p => [p.key, p.title]));
 
-    const already = s.skipped_already || 0;
-    const licMode = lic.mode || '';
+    let kind = 'ok';
+    let msg = '';
+    if (st === 'preparing') {
+      kind = 'info';
+      const p = s.progress || {};
+      msg = '<span class="spinner"></span>Designing and photographing originals — ' +
+        (counts.preview || 0) + ' ready, ' + (counts.working || 0) + ' in progress' +
+        (p.title ? ' (now: ' + esc(p.title) + ')' : '') +
+        '. Each one takes about two minutes, and nothing is uploaded.';
+    } else if (s.publishing) {
+      kind = 'info';
+      msg = '<span class="spinner"></span>Publishing “' +
+        esc(_origByKey[s.publishing] || s.publishing) +
+        '” — the upload is running now. Nothing else starts until it finishes.';
+    } else if (_origFlash) {
+      kind = _origFlash.kind;
+      msg = _origFlash.html;
+    } else if (st === 'done') {
+      kind = ((counts.preview || 0) + (counts.approved || 0)) > 0 ? 'ok' : 'warn';
+      msg = 'Run finished — ' + (counts.preview || 0) +
+        ' original(s) ready for your yes. Nothing has been uploaded: each one goes ' +
+        'live only when you press Approve &amp; publish.' +
+        (note ? ' ' + esc(note) : '');
+    } else if (st === 'stopped') {
+      kind = 'warn';
+      msg = 'Stopped — ' + (counts.preview || 0) +
+        ' original(s) were ready before you stopped it. Nothing was uploaded.';
+    } else if (st === 'error') {
+      kind = 'error';
+      msg = 'Run failed: ' + esc(note || 'unknown error');
+    } else {
+      kind = 'info';
+      msg = 'Press Find &amp; publish to design original household models. The page ' +
+        'photographs the exact STL it exports; nothing goes to Creality Cloud until ' +
+        'you press Approve &amp; publish on a model.';
+    }
+    setStatus('auto-status', kind, msg);
+
+    const bits = [
+      '<b>' + shelf.length + '</b> original(s) on the shelf',
+      '<b>' + (counts.preview || 0) + '</b> ready for your yes'
+    ];
+    if (counts.approved) bits.push('<b>' + counts.approved + '</b> approved');
+    bits.push('<b>' + (counts.published || 0) + '</b> published');
+    if (counts.failed) bits.push('<b style="color:#ef9a9a">' + counts.failed + '</b> failed');
     document.getElementById('auto-summary').innerHTML =
-      (licMode === 'api:per-card'
-        ? 'Licence judged on every card in the search answer — <b>' +
-          (lic.checked || 0) + '</b> checked, <b>' + (lic.refused || 0) +
-          '</b> refused, <b>' + (lic.undecided || 0) + '</b> unreadable ' +
-          '(CXY-SL and blank cards) — none of those were queued.'
-        : lic.verified
-        ? 'Licence filter verified on the live listing — ticked: <b>' +
-          esc((lic.ticked_on || []).join(', ')) + '</b> · left unticked: <b>' +
-          esc((lic.ticked_off || []).join(', ')) + '</b>'
-        : (lic.opened === false && st !== 'idle'
-           ? '<span style="color:#ffcc80">The Filters panel did not open — nothing was ' +
-             'fetched from an unfiltered list.</span>'
-           : '')) +
-      (already
-        ? ((lic.verified || licMode === 'api:per-card') ? '<br>' : '') +
-          '<span style="color:#b0bec5">' + already +
-          ' model(s) already published — skipped before queueing (the config knows them).</span>'
-        : '');
+      bits.join(' · ') + ' · licence <b>' + esc(s.licence || 'CC BY 4.0') + '</b>';
 
-    // Where the time actually went. The pipeline recorded no timings at all
-    // before, so "it is faster now" had no number to check; this is that number,
-    // straight from the run's own table (see /timings for the full list).
-    const ph = (s.timings && s.timings.phases) || [];
-    const slow = ph.slice(0, 5).map(r =>
-      esc(r.phase) + ' ' + fmtSec(r.total_s) + (r.count > 1 ? ' \u00d7' + r.count : '')
-    ).join(' \u00b7 ');
-    document.getElementById('auto-summary').innerHTML +=
-      (slow ? '<br><span style="color:#b0bec5">Time: ' + slow + '</span>' : '');
-
-    const list = document.getElementById('auto-list');
-    list.innerHTML = (s.items || []).map((it, i) => {
+    // Models already on the shelf are cards below; this list is the live run.
+    const rows = items.filter(it => it.state !== 'preview' && it.state !== 'approved');
+    document.getElementById('auto-list').innerHTML = rows.map((it, i) => {
       const st2 = esc(it.state || 'queued');
-      const nm = esc(it.name || it.url || 'model');
-      // the rule that decided it (creality_rules) — shown when one refused it
-      const rule = (it.policy && it.policy.allowed === false && it.policy.rule)
-        ? '<span class="arule" style="color:#ffcc80">[' + esc(it.policy.rule) + ']</span> '
-        : '';
-      const proofBad = (it.proof && it.proof.ok === false)
-        ? '<span style="color:#ef9a9a">[no proof]</span> ' : '';
-      // WHAT the failure was made of, on hover. A row that reads "0 photo(s), 0
-      // usable" or "refusing to publish without declaring the source" is only
-      // actionable if the page also shows what it actually saw.
-      const ev = [];
-      if (it.gallery) {
-        ev.push('photos: ' + (it.gallery.images || 0) + ' found, '
-          + (it.gallery.downloaded || 0) + ' kept, the page held '
-          + (it.gallery.creator_images || 0) + ' creator photo(s)'
-          + (it.gallery.found_by && it.gallery.found_by.length
-            ? ', read from ' + it.gallery.found_by.join('/') : '')
-          + (it.gallery.dropped && it.gallery.dropped.length
-            ? ', first drop: ' + (it.gallery.dropped[0].reason || '') : ''));
-      }
-      const uv = it.upload_verify || {};
-      if (uv.remix_source_why) ev.push('source: ' + uv.remix_source_why);
-      // how the source got credited: a picked suggestion row, or the pasted URL
-      if (uv.remix_declared_by) ev.push('declared by ' + uv.remix_declared_by);
-      if (uv.attach) ev.push('attach: ' + uv.attach
-        + (uv.attach_registered === false ? ' — name never showed in the form' : ''));
-      const tip = ev.length ? ' title="' + esc(ev.join(' · ')) + '"' : '';
-      return '<div class="autorow"><span class="aname">' + (i + 1) + '. ' +
-        '<a href="' + esc(it.url || '#') + '" target="_blank" rel="noopener">' + nm +
-        '</a></span><span class="astate ' + st2 + '">' + st2 + '</span>' +
-        '<span class="areason"' + tip + '>' + rule + proofBad +
-        esc(it.reason || it.result || '') + '</span></div>';
+      const nm = esc(it.title || it.family || 'model');
+      const secs = it.seconds ? ' · ' + fmtSec(it.seconds) : '';
+      return '<div class="autorow"><span class="aname">' + (i + 1) + '. ' + nm +
+        ' <span style="color:#666">' + esc(it.family || '') + '</span></span>' +
+        '<span class="astate ' + st2 + '">' + esc(fmtOriginalState(it.state)) + '</span>' +
+        '<span class="areason">' + esc(it.reason || it.result || '') + secs + '</span></div>';
     }).join('');
-    document.getElementById('auto-stop').disabled =
-      !(st === 'discovering' || st === 'running');
-    document.getElementById('auto-start').disabled =
-      (st === 'discovering' || st === 'running');
-    return st;
-  }
 
-  async function autoPoll() {
-    try {
-      const r = await fetch('/auto/status');
-      const s = await r.json();
-      const st = autoRender(s);
-      if (st !== 'discovering' && st !== 'running') {
-        clearInterval(_autoTimer); _autoTimer = null;
-      }
-    } catch (e) { /* keep polling */ }
-  }
+    document.getElementById('auto-start').disabled = busy;
+    document.getElementById('auto-stop').disabled = st !== 'preparing';
 
-  async function autoStart() {
-    const raw = document.getElementById('auto-count').value;
-    const count = parseInt(raw, 10);
-    if (!count || count < 1) {
-      setStatus('auto-status', 'error',
-        'Enter how many models to find: a whole number, 1 or more.');
+    const grid = document.getElementById('originals-grid');
+    if (!shelf.length) {
+      grid.innerHTML = '<p class="note" style="grid-column:1/-1">No originals on the ' +
+        'shelf yet. Press Find &amp; publish and the first previews appear here.</p>';
       return;
     }
-    const kw = (document.getElementById('auto-keywords').value || '')
-      .split(',').map(s => s.trim()).filter(Boolean);
-    setStatus('auto-status', 'info', '<span class="spinner"></span>Starting…');
-    autoRender({state: 'discovering', keywords: kw.length ? kw : SEL.default_keywords,
-                items: [], counts: {}, licence: {}});
+    grid.innerHTML = shelf.map(p => {
+      const state = p.state || 'preview';
+      const dims = (p.dims_mm && p.dims_mm.length)
+        ? '<div class="ometa">' + p.dims_mm.map(v => esc(v)).join(' × ') + ' mm</div>' : '';
+      const photos = (p.photo_urls && p.photo_urls.length)
+        ? '<a href="' + esc(p.photo_urls[0]) + '" target="_blank" rel="noopener">' +
+          (p.photos || p.photo_urls.length) + ' photos</a>' : '';
+      const meta = [photos, p.seconds ? fmtSec(p.seconds) : '',
+                    esc(p.licence || 'CC BY 4.0')].filter(Boolean).join(' · ');
+      let action;
+      if (state === 'published') {
+        action = p.published_url
+          ? '<a class="btn-link" href="' + esc(p.published_url) +
+            '" target="_blank" rel="noopener">View listing →</a>'
+          : '<div class="ometa">Published</div>';
+      } else if (state === 'publishing') {
+        action = '<button type="button" disabled>Publishing…</button>';
+      } else {
+        action = '<button type="button" data-key="' + esc(p.key) +
+          '" onclick="originalsPublish(this.dataset.key, this)">' +
+          'Approve &amp; publish</button>';
+      }
+      return '<div class="ocard">' +
+        '<a href="' + esc(p.contact_url) + '" target="_blank" rel="noopener">' +
+        '<img src="' + esc(p.contact_url) + '" loading="lazy" alt="Contact sheet of ' +
+        esc(p.title) + '"></a>' +
+        '<div class="obody"><div class="otitle">' + esc(p.title) + '</div>' + dims +
+        '<div class="ometa">' + meta + '</div>' +
+        '<div style="margin-top:8px"><span class="astate ' + esc(state) + '">' +
+        esc(fmtOriginalState(state)) + '</span></div>' +
+        action + '</div></div>';
+    }).join('');
+  }
+
+  async function originalsPoll() {
     try {
-      const r = await fetch('/auto/start', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({count: count, keywords: kw})
-      });
-      const j = await r.json();
-      if (!r.ok) { setStatus('auto-status', 'error', esc(j.detail || 'could not start')); return; }
-      if (_autoTimer) clearInterval(_autoTimer);
-      _autoTimer = setInterval(autoPoll, 3000);
-      autoPoll();
+      const r = await fetch('/originals/status');
+      if (!r.ok) throw new Error('status ' + r.status);
+      originalsRender(await r.json());
     } catch (e) {
-      setStatus('auto-status', 'error', 'Could not start the run: ' + esc(String(e)));
+      /* keep the last good shelf on screen while the server is busy */
     }
   }
 
-  async function autoStop() {
-    setStatus('auto-status', 'warn', 'Stop requested…');
-    try { await fetch('/auto/stop', {method: 'POST'}); } catch (e) {}
-    autoPoll();
+  async function originalsStart() {
+    const raw = document.getElementById('auto-count').value;
+    const count = parseInt(raw, 10);
+    if (!count || count < 1 || count > 50) {
+      setStatus('auto-status', 'error',
+        'Enter how many original models to design: a whole number from 1 to 50.');
+      return;
+    }
+    _origFlash = null;
+    setStatus('auto-status', 'info',
+      '<span class="spinner"></span>Starting — the first preview takes about two minutes…');
+    document.getElementById('auto-start').disabled = true;
+    try {
+      const r = await fetch('/originals/start', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({count: count})
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        setStatus('auto-status', 'error', esc(j.detail || 'could not start'));
+        document.getElementById('auto-start').disabled = false;
+        return;
+      }
+      await originalsPoll();
+    } catch (e) {
+      setStatus('auto-status', 'error', 'Could not start the run: ' + esc(String(e)));
+      document.getElementById('auto-start').disabled = false;
+    }
+  }
+
+  async function originalsStop() {
+    _origFlash = null;
+    setStatus('auto-status', 'warn',
+      'Stop requested — the model being photographed finishes first.');
+    try { await fetch('/originals/stop', {method: 'POST'}); } catch (e) {}
+    originalsPoll();
+  }
+
+  async function originalsPublish(key, btn) {
+    const title = _origByKey[key] || key;
+    if (!confirm('Publish “' + title + '” to Creality Cloud?\n\n' +
+        'This is permanent. The listing goes live on your public account under ' +
+        'CC BY 4.0, using our own photos of the exact STL. No designer’s model or ' +
+        'photo is uploaded.')) return;
+    if (btn) btn.disabled = true;
+    _origFlash = null;
+    setStatus('auto-status', 'info',
+      '<span class="spinner"></span>Publishing “' + esc(title) + '” — do not close the page…');
+    try {
+      const r = await fetch('/originals/publish', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({key: key, note: 'approved in the dashboard'})
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        _origFlash = {kind: 'error', html: 'Could not publish “' + esc(title) +
+          '”: ' + esc(j.detail || 'unknown error')};
+      } else {
+        _origFlash = {kind: 'ok', html: '&#10003; Published “' + esc(j.title || title) +
+          '” — <a href="' + esc(j.url || '#') + '" target="_blank" rel="noopener">' +
+          esc(j.url || '') + '</a>'};
+      }
+    } catch (e) {
+      _origFlash = {kind: 'error', html: 'Could not publish “' + esc(title) +
+        '”: ' + esc(String(e))};
+    }
+    await originalsPoll();
   }
 
   async function discoverModels() {
@@ -1255,19 +1278,15 @@
     if (e.key === 'Enter') fetchModel();
   });
 
-  // Enter in the "how many models" box starts the run — it's a number, not a picker
+  // Enter in the "how many models" box starts designing — it's a number, not a picker
   document.getElementById('auto-count').addEventListener('keydown', e => {
-    if (e.key === 'Enter') autoStart();
-  });
-  document.getElementById('auto-keywords').addEventListener('keydown', e => {
-    if (e.key === 'Enter') autoStart();
+    if (e.key === 'Enter') originalsStart();
   });
 
-  // show a run that is already going (or its results) after a reload
+  // show the shelf and any run already going after a reload
   loadBuild();
-  selLoad();
-  autoPoll();
-  _autoTimer = setInterval(autoPoll, 5000);
+  originalsPoll();
+  setInterval(originalsPoll, 4000);
 
 </script>
 </body>
