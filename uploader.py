@@ -999,6 +999,14 @@ SUBMIT_JS = r"""
     }
 """
 
+DISMISS_SURVEY_JS = r"""
+    () => {
+        const cards = [...document.querySelectorAll('.page-survey-comp')];
+        for (const e of cards) e.style.display = 'none';
+        return cards.length;
+    }
+"""
+
 
 # What the form LOOKS like after a failed Submit: which wizard step it went back
 # to, which field Creality put in its error state, and any message it printed.
@@ -2249,7 +2257,8 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                     " in_footer: !!e.closest('footer'),"
                     " in_consent: !!e.closest('label.el-checkbox'),"
                     " is_picker: !!e.closest('.origin-choose-mark'),"
-                    " is_submit: !!e.closest('.submit')} : null; }",
+                    " is_submit: !!e.closest('.submit'),"
+                    " is_survey: !!e.closest('.page-survey-comp')} : null; }",
                     [ox, oy]) or {}
             except Exception:
                 return {}
@@ -2289,6 +2298,11 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
             dx, dy = dismiss_at if dismiss_at else (x, y)
             hit = await _topmost_at(x, y)
             record.append([kind, "topmost", hit.get("tag"), hit.get("cls")])
+            if hit.get("is_survey"):
+                await _hide_survey()
+                hit = await _topmost_at(x, y)
+                record.append([kind, "after-survey", hit.get("tag"),
+                               hit.get("cls")])
             if reaches(hit):
                 return True
             for _ in range(2):
@@ -2317,6 +2331,25 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                 if reaches(hit):
                     return True
             return reaches(await _topmost_at(x, y))
+
+        async def _hide_survey() -> int:
+            """Hide Creality's fixed satisfaction card, and only that card.
+
+            Measured live: the card (`section.page-survey-comp`) sat over the
+            centre of Submit, `elementFromPoint` returned the section, and the
+            mouse click was absorbed without a create request. Error boxes,
+            the consent row and every Creality check are left alone.
+            """
+            n = 0
+            for scope in ([page, work] if is_frame else [page]):
+                try:
+                    n += int(await scope.evaluate(DISMISS_SURVEY_JS) or 0)
+                except Exception:
+                    pass
+            if n:
+                UPLOAD_VERIFY["survey_hidden"] = (
+                    UPLOAD_VERIFY.get("survey_hidden", 0) + n)
+            return n
 
         async def _consent_info() -> dict:
             try:
@@ -2507,6 +2540,10 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
 
             async def _click_submit() -> bool:
                 nonlocal target, clicked_submit
+                try:                       # the survey card covers Submit
+                    await _hide_survey()
+                except Exception:
+                    pass
                 try:                       # re-locate: the form may have re-rendered
                     fresh = await work.evaluate(SUBMIT_JS)
                     if fresh:
@@ -2523,6 +2560,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                     reach = UPLOAD_VERIFY.setdefault("submit_reach", [])
                     await _clear_picker_overlay(target["x"], target["y"],
                                                 "submit", reach)
+                    await _hide_survey()         # it can reappear before the press
                     fresh = await work.evaluate(SUBMIT_JS)   # the form may move
                     if fresh:
                         target = fresh
@@ -2578,6 +2616,11 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
             AGREE_BLOCK = SUBMIT_AGREE_BLOCK_RE
             REJECT = SUBMIT_REJECT_RE
             if target:
+                try:
+                    await _hide_survey()     # before the pre-submit screenshot
+                    await page.wait_for_timeout(150)
+                except Exception:
+                    pass
                 for attempt in (1, 2):
                     if should_stop and should_stop():
                         # Stop was pressed before Submit: nothing is pressed

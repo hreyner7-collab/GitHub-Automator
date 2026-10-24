@@ -277,6 +277,8 @@ def publish(model_dir: Path, *, live: bool = False, search_fn=None,
         result = upload_fn(built.title, description, plan["stl"],
                            plan["photos"], source_url="",
                            dry_run=False, license_raw=LICENCE)
+        if asyncio.iscoroutine(result):
+            result = asyncio.run(result)
         url = (result or {}).get("url") or ""
         if not result or not result.get("success") or \
                 not url or "/create-model" in url:

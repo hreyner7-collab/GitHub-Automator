@@ -215,6 +215,23 @@ def test_approve_and_publish_uploads_once_then_refuses_a_second_click(
     assert len(uploads) == 1
 
 
+def test_an_unexpected_publish_error_is_reported_and_unsticks(shelf, monkeypatch):
+    _plant(shelf)
+    monkeypatch.setattr(main.originals_publish, "write_approval",
+                        lambda d, n: {"note": n})
+
+    def boom(*a, **k):
+        raise ValueError("uploader exploded")
+
+    monkeypatch.setattr(main.originals_publish, "publish", boom)
+    client = TestClient(main.app)
+    r = client.post("/originals/publish", json={"key": KEY})
+    assert r.status_code == 502
+    assert "uploader exploded" in r.text
+    s = client.get("/originals/status").json()
+    assert s["publishing"] == ""
+
+
 def test_publish_refuses_unknown_and_invalid_keys(shelf):
     client = TestClient(main.app)
     for key, code in (("../../etc/passwd", 400), ("nope", 400),
@@ -226,7 +243,7 @@ def test_publish_refuses_unknown_and_invalid_keys(shelf):
 def test_the_dashboard_card_is_the_originals_path():
     html = (Path(__file__).resolve().parents[1] / "creality" / "index.html"
             ).read_text(encoding="utf-8")
-    assert "<title>Creality Pipeline V14</title>" in html
+    assert "<title>Creality Pipeline V15</title>" in html
     assert "/originals/start" in html and "/originals/publish" in html
     assert "Approve &amp; publish" in html
     assert "no designer's photos are edited or re-uploaded" in html

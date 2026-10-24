@@ -4,6 +4,7 @@ A fake uploader stands in for uploader.upload: these tests prove the arguments
 it would receive (no source, CC BY, this model's five photos) and that every
 refusal happens before it is called.
 """
+import asyncio
 import json
 from pathlib import Path
 
@@ -111,6 +112,29 @@ def test_live_publishes_original_work_with_no_source(tmp_path):
     assert recorded and recorded[0]["source_url"] == ""
     assert recorded[0]["published_url"] == plan["url"]
     assert not (d.parent / ".publishing.lock").exists()
+
+
+def test_live_publish_awaits_the_async_uploader(tmp_path):
+    """The real uploader is `async def`; publishing it unawaited returned a
+    coroutine and crashed after approval was recorded, uploading nothing."""
+    d, _ = _model_dir(tmp_path)
+    publish.write_approval(d, note="async owner yes")
+    calls = []
+    recorded = []
+
+    async def async_upload(*a, **kw):
+        await asyncio.sleep(0)
+        calls.append(kw)
+        return {"success": True, "verify": {},
+                "url": "https://www.crealitycloud.com/model-detail/async-clip"}
+
+    plan = publish.publish(d, live=True, search_fn=CLEAN,
+                           upload_fn=async_upload,
+                           record_fn=lambda **kw: recorded.append(kw))
+    assert plan["published"] is True
+    assert plan["url"].endswith("/async-clip")
+    assert len(calls) == 1 and calls[0]["dry_run"] is False
+    assert len(recorded) == 1
 
 
 def test_title_already_on_the_site_blocks_even_with_approval(tmp_path):

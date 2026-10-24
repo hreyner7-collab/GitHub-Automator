@@ -1789,6 +1789,12 @@ async def originals_publish_endpoint(req: OriginalPublishRequest):
         except originals_publish.PublishError as e:
             _set_original_item(key, "failed", reason=str(e))
             raise HTTPException(status_code=502, detail=str(e))
+        except Exception as e:
+            # An unexpected publisher fault must leave the row retryable, not
+            # stuck on "publishing", and must say what happened.
+            _set_original_item(key, "failed", reason=str(e)[:400])
+            raise HTTPException(status_code=502, detail=
+                "The publish failed before it was confirmed: %s" % str(e)[:300])
         finally:
             ORIGINALS["publishing"] = ""
 
