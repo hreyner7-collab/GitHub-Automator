@@ -2463,6 +2463,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                                             rejection.get("flagged"),
                                             rejection.get("network"), fallback="")
             return {"success": False, "url": page.url,
+                    "verify": dict(UPLOAD_VERIFY),
                     "error": (f"Creality rejected the submission "
                               f"({reason or 'see the form for the missing field'}). "
                               + extra).strip()}
@@ -2481,5 +2482,11 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                                                "confirmed the submission and showed no "
                                                "reason on the form")
         return {"success": False, "url": page.url,
+                # the form's own report, not only the sentence built from it:
+                # whether the remix source registered, and what the field reads
+                # now, is what separates "Creality refused" from "we never told
+                # it whose model this is". Without this the run log says the
+                # field was in an error state and nothing about why.
+                "verify": dict(UPLOAD_VERIFY),
                 "error": why + ". The form is still open (see "
                          "downloads/_shots/after_submit.png)."}

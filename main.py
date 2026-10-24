@@ -1009,6 +1009,15 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                 continue
             it = AUTO["items"][idx]
             idx += 1
+            # The queue was deliberately harvested a half again bigger than the
+            # run was asked for, so it outlasts the target. Without this the run
+            # drains it to the end: live 2026-10-24, a run asked for 20 published
+            # 22, because the surplus it kept in reserve for the models that
+            # failed was published too. Every one of those is a real listing on
+            # the user's account that they did not ask for, so the target is a
+            # ceiling as well as a floor.
+            if _published_count() >= count:
+                break
             # keep the log current after every model, so a run that is stopped or
             # killed mid-way still leaves what it did on disk
             AUTO["log_path"] = _log()
@@ -1284,6 +1293,15 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                                   outcome="published" if really_published
                                           else "creality-duplicate",
                                   note="run " + job_id)
+        # Say what the ceiling left behind: the run stopped with candidates still
+        # in hand, and a row that still reads "queued" is otherwise a mystery.
+        _left = sum(1 for it in AUTO["items"]
+                    if it.get("state") in ("queued", "fetching"))
+        if _published_count() >= count and _left:
+            _tail = "%d candidate%s the run did not touch, because you already " \
+                    "have the %d you asked for" % (_left, "" if _left == 1 else "s", count)
+            AUTO["note"] = ((AUTO.get("note") + " | ") if AUTO.get("note")
+                            else "") + _tail
         # How far the run came up short, in every ending: "done" with 3 of 20 is
         # not a finished run, and a run that stopped at a sign-out is short by
         # everything it never tried.

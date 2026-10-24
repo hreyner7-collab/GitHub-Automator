@@ -1164,3 +1164,52 @@ def test_a_run_leaves_a_heartbeat_the_supervisor_can_act_on(monkeypatch, tmp_pat
     hb_path.write_text(json.dumps(dict(mid, at=time.time())), encoding="utf-8")
     assert sup.run_heartbeat() is not None, \
         "the beat the worker writes has to be the beat the supervisor reads"
+
+
+def test_a_run_stops_at_the_number_of_models_it_was_asked_for(monkeypatch, tmp_path):
+    """The surplus pool exists to cover the candidates that fail, not to publish
+    more listings than the user typed.
+
+    VERIFIED DEFECT (live 2026-10-24, job 20261024-053132): a run asked for 20
+    published 22. Discovery deliberately harvests half again as many listings as
+    the target, the item loop only re-enters discovery once the queue is empty,
+    and nothing compared the queue head to the target — so the reserve that was
+    meant to backfill the 5 failures became 2 extra real listings on the user's
+    account that nobody asked for.
+    """
+    import main
+
+    cover = _cc_cover(tmp_path)
+    models = [_card("Bottle storage rack", "https://x/model-detail/rack"),
+              _card("Clothes peg", "https://x/model-detail/peg"),
+              _card("Cable organizer", "https://x/model-detail/cable"),
+              _card("Desk organizer", "https://x/model-detail/desk")]
+    opened = []
+
+    def fake_dl(url):
+        opened.append(url)
+        page = _cc_page(url, cover)
+        # its OWN geometry: the ledger identifies a model by its file digest, so
+        # four cards sharing one file are three duplicates, not four candidates.
+        own = tmp_path / ("model_%s.stl" % url.rsplit("/", 1)[-1])
+        data = bytearray(Path(REAL_MODEL).read_bytes())
+        data[-1] = (data[-1] + len(opened)) % 256
+        own.write_bytes(bytes(data))
+        page["stl_path"] = str(own)
+        return page
+
+    monkeypatch.setattr(main, "find_creality",
+                        lambda *a, **k: {"models": models,
+                                         "licence": {"opened": True, "verified": True},
+                                         "note": ""})
+    monkeypatch.setattr(main, "dl_fetch", fake_dl)
+    monkeypatch.setattr(main, "uploader_upload", _publish_upload)
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+
+    asyncio.run(main._auto_worker(2, ["k"], "ceilingjob"))
+
+    counts = main._auto_counts()
+    assert counts["published"] == 2, counts
+    assert len(opened) == 2, "the models past the target must never be opened at all"
+    assert main.AUTO["shortfall"] in (None, 0), main.AUTO["shortfall"]
+    assert "2 candidates the run did not touch" in main.AUTO["note"], main.AUTO["note"]
