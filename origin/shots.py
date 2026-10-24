@@ -19,6 +19,13 @@ ROOT = Path(__file__).resolve().parent.parent
 RENDER_PY = ROOT / "blender" / "render.py"
 STYLE = ROOT / "origin" / "presets" / "style_v1.json"
 
+# Measured on this laptop (3 models x 5 shots at 1000 px): cycles-gpu is
+# pixel-identical to the Cycles CPU baseline and ~3.75x faster. One-line
+# rollback: set this back to "cycles-cpu".
+DEFAULT_ENGINE = "cycles-gpu"
+# Cycles keeps its shipped 28 spp; EEVEE needs more TAA samples to settle.
+ENGINE_SAMPLES = {"cycles-cpu": 28, "cycles-gpu": 28, "eevee": 64}
+
 
 class RenderError(RuntimeError):
     pass
@@ -35,23 +42,24 @@ def find_blender() -> Path:
 
 
 def _blender_cmd(exe, stl: Path, outdir: Path, spec, samples: int, res: int,
-                 style: Path) -> list[str]:
+                 style: Path, engine: str = DEFAULT_ENGINE) -> list[str]:
     return [str(exe), "-b", "--factory-startup", "-noaudio",
             "--python", str(RENDER_PY), "--",
             "--stl", str(stl), "--out", str(outdir), "--slug", spec.key,
             "--name", spec.title, "--colour", spec.colour_hex,
             "--family", spec.family, "--params", json.dumps(spec.params),
             "--style", str(style), "--samples", str(samples),
-            "--res", str(res)]
+            "--res", str(res), "--engine", engine]
 
 
 def _run_blender(stl: Path, outdir: Path, spec, samples: int, res: int,
-                 style: Path, timeout: int = 1200) -> dict:
+                 style: Path, engine: str = DEFAULT_ENGINE,
+                 timeout: int = 1200) -> dict:
     exe = find_blender()
     stl, outdir, style = (Path(stl).resolve(), Path(outdir).resolve(),
                           Path(style).resolve())
     outdir.mkdir(parents=True, exist_ok=True)
-    cmd = _blender_cmd(exe, stl, outdir, spec, samples, res, style)
+    cmd = _blender_cmd(exe, stl, outdir, spec, samples, res, style, engine)
     t0 = time.time()
     p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                        errors="replace", timeout=timeout)
@@ -157,16 +165,22 @@ def order_shots(shots: list[dict]) -> list[dict]:
                                         s["name"]))
 
 
-def make_photos(mesh, spec, check, dims, outdir: Path, samples: int = 64,
+def make_photos(mesh, spec, check, dims, outdir: Path, samples: int | None = None,
                 res: int = 1400, style: Path = STYLE,
-                licence: str = "CC BY 4.0") -> dict:
+                licence: str = "CC BY 4.0",
+                engine: str = DEFAULT_ENGINE) -> dict:
+    if engine not in ENGINE_SAMPLES:
+        raise RenderError("unknown render engine %r (choose %s)"
+                          % (engine, sorted(ENGINE_SAMPLES)))
+    samples = int(samples or ENGINE_SAMPLES[engine])
     outdir = Path(outdir).resolve()
     files = export.export_model(mesh, outdir / "files", spec.key, spec.title,
                                 licence=licence)
     if not files["three_mf_ok"]:
         raise RenderError("3MF failed: %s" % files["three_mf_detail"])
     shots_dir = outdir / "renders"
-    man = _run_blender(Path(files["stl"]), shots_dir, spec, samples, res, style)
+    man = _run_blender(Path(files["stl"]), shots_dir, spec, samples, res, style,
+                       engine)
     man["shots"] = order_shots(man["shots"])
 
     photos_dir = outdir / "photos"
@@ -190,11 +204,19 @@ def make_photos(mesh, spec, check, dims, outdir: Path, samples: int = 64,
         im = Image.open(p).convert("L")
         st = ImageStat.Stat(im)
         stats[p.name] = {"mean": round(st.mean[0], 1),
+                         "std": round(st.stddev[0], 1),
                          "min": int(im.getextrema()[0]),
                          "max": int(im.getextrema()[1])}
+    # A black or blank frame must never reach a listing: the record is written
+    # last, so raising here leaves the folder incomplete rather than "ready".
+    for name, st in stats.items():
+        if st["mean"] < 8 or st["std"] < 2.0:
+            raise RenderError("blank render: %s (mean %.1f, std %.1f)"
+                              % (name, st["mean"], st["std"]))
 
     out = {
         "spec": spec.as_dict(), "files": files, "render": man,
+        "engine": man.get("engine"),
         "photos_4x3": [str(p) for p in crops_43],
         "photos_3x4": [str(p) for p in crops_34],
         "contact": str(sheet), "brightness": stats,

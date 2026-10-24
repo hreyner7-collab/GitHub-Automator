@@ -1635,7 +1635,7 @@ async def _originals_worker(count: int, job_id: str) -> None:
             try:
                 made = await asyncio.to_thread(
                     originals_lib.prepare, root, family,
-                    samples=originals_lib.SAMPLES, res=originals_lib.RES)
+                    res=originals_lib.RES)
             except Exception as e:
                 item["state"] = "failed"
                 item["reason"] = str(e)[:400]
@@ -1695,7 +1695,7 @@ async def originals_start(req: OriginalsRequest):
             "Type how many originals you want, 1 or more (you sent %s)." % req.count)
     if count > 50:
         raise HTTPException(status_code=400, detail=
-            "50 originals in one run is the ceiling (each takes about two minutes "
+            "50 originals in one run is the ceiling (each takes about 35 seconds "
             "to photograph). You asked for %d." % count)
     import time as _time
     job_id = _time.strftime("%Y%m%d-%H%M%S")

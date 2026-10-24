@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Creality Pipeline V15</title>
+<title>Creality Pipeline V16</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -257,7 +257,7 @@
 
 <div class="topbar">
   <h1>Creality <span>Pipeline</span></h1>
-  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V15</span>
+  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V16</span>
   <span class="build" id="build-stamp" title="Which code this dashboard process is serving"></span>
   <button id="analytics-btn" onclick="toggleAnalytics()">&#128202; Analytics</button>
 </div>
@@ -319,7 +319,7 @@
     <label for="auto-count" style="font-size:.85rem;color:#aaa">How many original models do you want?</label>
     <input type="number" id="auto-count" min="1" max="50" value="5"
            style="width:90px" placeholder="e.g. 5"
-           title="Type how many originals you want (1–50). Each takes about two minutes to photograph.">
+           title="Type how many originals you want (1–50). Each takes about 35 seconds to photograph.">
     <button id="auto-start" onclick="originalsStart()">Find &amp; publish</button>
     <button id="auto-stop" class="btn-outline" onclick="originalsStop()" disabled>Stop</button>
   </div>
@@ -334,8 +334,8 @@
     its five photos and a contact sheet; it goes live only when you press
     <strong>Approve &amp; publish</strong> on that model, one at a time. Every press of Find &amp; publish
     starts a fresh set: previews you have not published are replaced by the new ones, while anything you
-    have already published stays. Photographing one takes about two minutes, so a run of five takes
-    roughly ten minutes.</p>
+    have already published stays. Photographing one takes about 35 seconds, so a run of five takes
+    roughly three minutes.</p>
 </div>
 
 <!-- Find Top Models (research only) -->
@@ -866,7 +866,7 @@
       msg = '<span class="spinner"></span>Designing and photographing originals — ' +
         (counts.preview || 0) + ' ready, ' + (counts.working || 0) + ' in progress' +
         (p.title ? ' (now: ' + esc(p.title) + ')' : '') +
-        '. Each one takes about two minutes, and nothing is uploaded.';
+        '. Each one takes about 35 seconds, and nothing is uploaded.';
     } else if (s.publishing) {
       kind = 'info';
       msg = '<span class="spinner"></span>Publishing “' +
@@ -981,7 +981,7 @@
     }
     _origFlash = null;
     setStatus('auto-status', 'info',
-      '<span class="spinner"></span>Starting — the first preview takes about two minutes…');
+      '<span class="spinner"></span>Starting — the first preview takes about 35 seconds…');
     document.getElementById('auto-start').disabled = true;
     try {
       const r = await fetch('/originals/start', {

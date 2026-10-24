@@ -243,7 +243,7 @@ def test_publish_refuses_unknown_and_invalid_keys(shelf):
 def test_the_dashboard_card_is_the_originals_path():
     html = (Path(__file__).resolve().parents[1] / "creality" / "index.html"
             ).read_text(encoding="utf-8")
-    assert "<title>Creality Pipeline V15</title>" in html
+    assert "<title>Creality Pipeline V16</title>" in html
     assert "/originals/start" in html and "/originals/publish" in html
     assert "Approve &amp; publish" in html
     assert "no designer's photos are edited or re-uploaded" in html

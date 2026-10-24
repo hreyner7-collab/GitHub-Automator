@@ -104,6 +104,13 @@ def test_render_command_carries_family_and_params(tmp_path):
     assert cmd[cmd.index("--family") + 1] == "phone_stand"
     assert json.loads(cmd[cmd.index("--params") + 1]) == s.params
     assert cmd[cmd.index("--colour") + 1] == s.colour_hex
+    assert cmd[cmd.index("--engine") + 1] == shots.DEFAULT_ENGINE
+
+
+def test_every_engine_has_a_measured_sample_count():
+    assert set(shots.ENGINE_SAMPLES) == {"cycles-cpu", "cycles-gpu", "eevee"}
+    assert shots.ENGINE_SAMPLES["cycles-cpu"] == 28
+    assert shots.DEFAULT_ENGINE in shots.ENGINE_SAMPLES
 
 
 def test_specs_are_deterministic_and_variants_differ():

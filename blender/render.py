@@ -61,7 +61,14 @@ def args():
     ap.add_argument("--style", default="")
     ap.add_argument("--samples", type=int, default=64)
     ap.add_argument("--res", type=int, default=1400)
-    ap.add_argument("--device", default="CPU", choices=["CPU", "GPU"])
+    ap.add_argument("--device", default="CPU", choices=["CPU", "GPU"],
+                    help="legacy switch; --engine supersedes it")
+    ap.add_argument("--engine", default="",
+                    choices=["", "cycles-cpu", "cycles-gpu", "eevee"],
+                    help="cycles-cpu (baseline), cycles-gpu (OptiX/CUDA) "
+                         "or eevee (EEVEE Next)")
+    ap.add_argument("--mask", action="store_true",
+                    help="bench only: transparent product-only silhouettes")
     return ap.parse_args(argv)
 
 
@@ -497,6 +504,76 @@ def fit_camera(cam, corners, target, azimuth, elevation, fill, lens=None):
     return need
 
 
+def _cycles(scene, samples: int, device: str) -> dict:
+    scene.render.engine = "CYCLES"
+    scene.cycles.samples = samples
+    scene.cycles.use_denoising = True
+    scene.cycles.use_adaptive_sampling = True
+    scene.cycles.adaptive_threshold = 0.02
+    scene.cycles.max_bounces = 6
+    scene.cycles.device = device
+    info = {"device": device}
+    if device != "GPU":
+        return info
+    # OptiX first, CUDA second. Only the GPU is enabled: a CPU+GPU hybrid
+    # render on this 4-thread laptop adds sync cost and starves the desktop.
+    prefs = bpy.context.preferences.addons["cycles"].preferences
+    compute = ""
+    for kind in ("OPTIX", "CUDA"):
+        try:
+            prefs.compute_device_type = kind
+            prefs.get_devices()
+            if any(d.type in ("OPTIX", "CUDA") for d in prefs.devices):
+                compute = kind
+                break
+        except Exception:
+            continue
+    if not compute:
+        # Never pretend a GPU run happened: fall back and say so.
+        scene.cycles.device = "CPU"
+        info.update(device="CPU", fallback="no OptiX/CUDA device")
+        return info
+    for d in prefs.devices:
+        d.use = d.type == compute
+    info.update(compute=compute,
+                devices=[d.name for d in prefs.devices if d.use])
+    return info
+
+
+def configure_engine(scene, engine: str, samples: int) -> dict:
+    """Point the scene at one measured engine and report what it settled on."""
+    if engine == "eevee":
+        scene.render.engine = "BLENDER_EEVEE_NEXT"
+        e = scene.eevee
+        e.taa_render_samples = samples
+        # Screen-space ray tracing plus fast GI is what keeps the sweep and
+        # the part's bounce light close to Cycles; without both they go flat.
+        e.use_raytracing = True
+        e.ray_tracing_method = "SCREEN"
+        e.use_fast_gi = True
+        e.fast_gi_method = "GLOBAL_ILLUMINATION"
+        try:
+            e.ray_tracing_options.resolution_scale = "1"
+            e.ray_tracing_options.use_denoise = True
+            e.ray_tracing_options.trace_max_roughness = 0.5
+        except Exception:
+            pass
+        e.shadow_ray_count = 2
+        e.shadow_step_count = 6
+        # Area lights need jitter for a soft shadow at the sweep contact.
+        for light in bpy.data.lights:
+            if light.type == "AREA":
+                try:
+                    light.use_shadow_jitter = True
+                except Exception:
+                    pass
+        return {"engine": "eevee", "device": "GPU", "samples": samples}
+    device = "GPU" if engine == "cycles-gpu" else "CPU"
+    info = _cycles(scene, samples, device)
+    info.update(engine=engine, samples=samples)
+    return info
+
+
 def main():
     a = args()
     t0 = time.time()
@@ -540,13 +617,18 @@ def main():
                    soft * 0.7, target, (1.0, 1.0, 1.0))
 
     cam = camera_for(scene, style)
-    scene.render.engine = "CYCLES"
-    scene.cycles.samples = a.samples
-    scene.cycles.use_denoising = True
-    scene.cycles.use_adaptive_sampling = True
-    scene.cycles.adaptive_threshold = 0.02
-    scene.cycles.max_bounces = 6
-    scene.cycles.device = a.device
+    engine = a.engine or ("cycles-gpu" if a.device == "GPU" else "cycles-cpu")
+    # A silhouette is geometry coverage, not light: one sample is exact for
+    # the bench mask pass and keeps it cheap.
+    samples = 1 if a.mask else a.samples
+    engine_info = configure_engine(scene, engine, samples)
+    if a.mask:
+        try:
+            scene.cycles.use_denoising = False
+            scene.eevee.taa_render_samples = 1
+            scene.eevee.use_raytracing = False
+        except Exception:
+            pass
     scene.render.resolution_x = a.res
     scene.render.resolution_y = a.res
     scene.render.resolution_percentage = 100
@@ -563,10 +645,14 @@ def main():
     fill = float(style.get("subject_fill", 0.68))
     angles = list(style.get("angles_deg", DEFAULTS["angles_deg"]))
     studio = []
+    fits = []
     # The old left-hero angle is replaced by the in-use photo, so five photos
     # stay five and the first one shows what the part does.
     names = ["front", "hero_right", "high"]
     for i, (az, el) in enumerate(angles[1:4]):
+        fits.append((names[i], corners, target, az, el, fill, None))
+        if a.mask:
+            continue
         fit_camera(cam, corners, target, az, el, fill)
         dest = out / ("%s_%s.png" % (a.slug, names[i]))
         scene.render.filepath = str(dest)
@@ -578,36 +664,63 @@ def main():
 
     az, el = style.get("detail_angle", DEFAULTS["detail_angle"])
     detail_target = target + Vector((0, 0, size.z * 0.07))
-    fit_camera(cam, corners, detail_target, az, el, 1.15,
-               lens=float(style.get("focal_mm", 70)) * 1.15)
-    dest = out / ("%s_detail.png" % a.slug)
-    scene.render.filepath = str(dest)
-    t1 = time.time()
-    bpy.ops.render.render(write_still=True)
-    studio.append({"name": "detail", "azimuth": az, "elevation": el,
-                   "file": str(dest), "seconds": round(time.time() - t1, 1)})
-    print("RENDERED detail", studio[-1]["seconds"], "s")
+    detail_lens = float(style.get("focal_mm", 70)) * 1.15
+    fits.append(("detail", corners, detail_target, az, el, 1.15, detail_lens))
+    if not a.mask:
+        fit_camera(cam, corners, detail_target, az, el, 1.15,
+                   lens=detail_lens)
+        dest = out / ("%s_detail.png" % a.slug)
+        scene.render.filepath = str(dest)
+        t1 = time.time()
+        bpy.ops.render.render(write_still=True)
+        studio.append({"name": "detail", "azimuth": az, "elevation": el,
+                       "file": str(dest), "seconds": round(time.time() - t1, 1)})
+        print("RENDERED detail", studio[-1]["seconds"], "s")
 
     ctx_corners, ctx_target, ctx_az, ctx_el, ctx_fill = setup_context(
         a.family, params, obj, sweep, rim, style)
     bpy.context.view_layer.update()
-    fit_camera(cam, ctx_corners, ctx_target, ctx_az, ctx_el, ctx_fill,
-               lens=float(style.get("focal_mm", 70)))
-    dest = out / ("%s_in_use.png" % a.slug)
-    scene.render.filepath = str(dest)
-    t1 = time.time()
-    bpy.ops.render.render(write_still=True)
-    in_use = {"name": "in_use", "azimuth": ctx_az, "elevation": ctx_el,
-              "file": str(dest), "seconds": round(time.time() - t1, 1)}
-    print("RENDERED in_use", in_use["seconds"], "s")
+    lens = float(style.get("focal_mm", 70))
+    fits.append(("in_use", ctx_corners, ctx_target, ctx_az, ctx_el,
+                 ctx_fill, lens))
+    in_use = None
+    if not a.mask:
+        fit_camera(cam, ctx_corners, ctx_target, ctx_az, ctx_el, ctx_fill,
+                   lens=lens)
+        dest = out / ("%s_in_use.png" % a.slug)
+        scene.render.filepath = str(dest)
+        t1 = time.time()
+        bpy.ops.render.render(write_still=True)
+        in_use = {"name": "in_use", "azimuth": ctx_az, "elevation": ctx_el,
+                  "file": str(dest), "seconds": round(time.time() - t1, 1)}
+        print("RENDERED in_use", in_use["seconds"], "s")
+
+    if a.mask:
+        # Product only, transparent film: alpha is the silhouette the parity
+        # bench compares. Lights and props are hidden; alpha ignores them.
+        for o in scene.objects:
+            if o is not obj and o.type != "CAMERA":
+                o.hide_render = True
+        scene.render.film_transparent = True
+        scene.render.image_settings.color_mode = "RGBA"
+        for name, cs, tgt, maz, mel, mfill, mlens in fits:
+            fit_camera(cam, cs, tgt, maz, mel, mfill, lens=mlens)
+            dest = out / ("%s_%s_mask.png" % (a.slug, name))
+            scene.render.filepath = str(dest)
+            bpy.ops.render.render(write_still=True)
+            print("MASKED", name)
 
     manifest = {
         "stl": str(Path(a.stl).resolve()), "slug": a.slug, "name": a.name,
         "family": a.family,
         "colour": a.colour, "samples": a.samples, "resolution": a.res,
+        "engine": engine_info.get("engine", engine),
+        "device": engine_info.get("device", a.device),
+        "engine_info": engine_info,
+        "mask": bool(a.mask),
         "seconds": round(time.time() - t0, 1),
         "dims_mm": [round(v * 1000, 1) for v in (size.x, size.y, size.z)],
-        "shots": [in_use] + studio,
+        "shots": [] if a.mask else [in_use] + studio,
     }
     (out / ("%s_render.json" % a.slug)).write_text(
         json.dumps(manifest, indent=1), encoding="utf-8")

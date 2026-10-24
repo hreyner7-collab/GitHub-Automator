@@ -14,7 +14,6 @@ from pathlib import Path
 from origin import build, printcheck, shots, spec
 
 KEY_RE = re.compile(r"^([a-z_]+)-(\d{1,3})-([0-9a-f]{8})$")
-SAMPLES = 28
 RES = 1000
 
 
@@ -136,8 +135,9 @@ def families_for(count: int, root: Path) -> list[str]:
     return [names[(start + i) % len(names)] for i in range(count)]
 
 
-def prepare(root: Path, family: str, samples: int = SAMPLES,
-            res: int = RES, tries: int = 16) -> dict:
+def prepare(root: Path, family: str, samples: int | None = None,
+            res: int = RES, engine: str = shots.DEFAULT_ENGINE,
+            tries: int = 16) -> dict:
     """Build the next printable variant of `family` and photograph it.
 
     A variant whose title is already on the shelf is skipped: two listings with
@@ -169,7 +169,7 @@ def prepare(root: Path, family: str, samples: int = SAMPLES,
             shutil.rmtree(out)
         dims = [round(float(v), 1) for v in (mesh.bounds[1] - mesh.bounds[0])]
         report = shots.make_photos(mesh, s, check, dims, out,
-                                   samples=samples, res=res)
+                                   samples=samples, res=res, engine=engine)
         return {"key": s.key, "family": family, "variant": variant,
                 "title": s.title, "contact": report["contact"],
                 "photos": report["photos_4x3"],

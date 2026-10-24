@@ -92,7 +92,7 @@ def cmd_preview(args):
         dims = [round(float(v), 1) for v in (m.bounds[1] - m.bounds[0])]
         out = out_root / s.key
         report = shots.make_photos(m, s, c, dims, out, samples=args.samples,
-                                   res=args.res)
+                                   res=args.res, engine=args.engine)
         made.append({"key": s.key, "title": s.title, "reseeds": reseeds,
                      "contact": report["contact"], "seconds": round(time.time() - t0, 1),
                      "check": c.as_dict(), "photos": report["photos_4x3"]})
@@ -154,7 +154,8 @@ def cmd_soak(args):
                     raise SystemExit("soak sample no longer rebuilds: %s" % rec["key"])
                 dims = [round(float(v), 1) for v in (m.bounds[1] - m.bounds[0])]
                 report = shots.make_photos(m, s, c, dims, Path(tmp) / s.key,
-                                           samples=args.samples, res=args.res)
+                                           samples=args.samples, res=args.res,
+                                           engine=args.engine)
                 seconds.append(report["render"]["wall_seconds"])
         render = {"models": len(seconds),
                   "seconds_per_model": seconds,
@@ -235,7 +236,10 @@ def main():
 
     p = sub.add_parser("preview", help="build + Blender photos + contact sheet")
     p.add_argument("keys", nargs="+")
-    p.add_argument("--samples", type=int, default=28)
+    p.add_argument("--engine", default=shots.DEFAULT_ENGINE,
+                   choices=sorted(shots.ENGINE_SAMPLES))
+    p.add_argument("--samples", type=int, default=None,
+                   help="default: the engine's measured sample count")
     p.add_argument("--res", type=int, default=1000)
     p.add_argument("--out", default=str(DEFAULT_OUT))
     p.set_defaults(fn=cmd_preview)
@@ -244,7 +248,10 @@ def main():
     p.add_argument("--count", type=int, default=100)
     p.add_argument("--render-sample", type=int, default=3,
                    help="models to render fully for a time measurement")
-    p.add_argument("--samples", type=int, default=28)
+    p.add_argument("--engine", default=shots.DEFAULT_ENGINE,
+                   choices=sorted(shots.ENGINE_SAMPLES))
+    p.add_argument("--samples", type=int, default=None,
+                   help="default: the engine's measured sample count")
     p.add_argument("--res", type=int, default=1000)
     p.add_argument("--out", default=str(DEFAULT_OUT / "soak"))
     p.set_defaults(fn=cmd_soak)
