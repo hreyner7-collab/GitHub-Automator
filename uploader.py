@@ -1106,6 +1106,72 @@ def _stopped_result() -> dict:
             "verify": dict(UPLOAD_VERIFY)}
 
 
+# Playwright reads a set_input_files payload off disk and STREAMS the bytes to
+# the browser, capped at 50 MB unless the browser shares the driver's machine —
+# and a CDP connection to the account's own Chrome always reads as "not
+# co-located". A 73.55 MB 3MF on 2026-10-24 was refused with "Cannot transfer
+# files larger than 50Mb to a browser not co-located with the server": a
+# transport limit, not Creality's, since the same file uploads by hand. CDP's
+# DOM.setFileInputFiles passes the file PATHS to the browser process instead of
+# the bytes, so it carries no size cap.
+ATTACH_CDP_CAP_S = 50 * 1024 * 1024
+
+
+def attach_needs_cdp(paths, cap: int = ATTACH_CDP_CAP_S) -> bool:
+    """True when the payload is big enough that Playwright would refuse it."""
+    try:
+        return sum(os.path.getsize(p) for p in paths) >= cap
+    except OSError:
+        return True          # a size we cannot read: take the path-based route
+
+
+def file_input_nodes(root: dict, wants=("stl", "step", "3mf", "obj")) -> list:
+    """The model-file <input type=file> nodes of a DOM.getDocument tree.
+
+    Read with pierce:true, so a form living in the legacy same-origin iframe is
+    walked like one on the page. CDP hands attributes back as a flat
+    ["name", "value", ...] list, so pairs are zipped here."""
+    found = []
+    stack = [root]
+    while stack:
+        n = stack.pop()
+        if not isinstance(n, dict):
+            continue
+        for key in ("children", "pierceChildren"):
+            stack.extend(n.get(key) or [])
+        if (n.get("nodeName") or "").upper() != "INPUT":
+            continue
+        a = n.get("attributes") or []
+        attrs = {}
+        for i in range(0, len(a) - 1, 2):
+            attrs[str(a[i]).lower()] = str(a[i + 1])
+        if attrs.get("type", "").lower() != "file":
+            continue
+        accept = (attrs.get("accept") or "").lower()
+        if n.get("nodeId") is not None and any(w in accept for w in wants):
+            found.append(n["nodeId"])
+    return sorted(found)
+
+
+async def _attach_files_by_path(ctx, page, paths, wants=("stl", "step", "3mf", "obj")) -> str:
+    """Give the browser the file paths through CDP — no 50 MB streaming cap."""
+    cdp = await ctx.new_cdp_session(page)
+    try:
+        doc = await cdp.send("DOM.getDocument", {"depth": -1, "pierce": True})
+        nodes = file_input_nodes(doc.get("root") or {}, wants)
+        if not nodes:
+            raise RuntimeError("no model-file input in the DOM tree")
+        await cdp.send("DOM.setFileInputFiles",
+                       {"files": [os.path.abspath(p) for p in paths],
+                        "nodeId": nodes[0]})
+        return "cdp paths, input node %d, %d file(s)" % (nodes[0], len(list(paths)))
+    finally:
+        try:
+            await cdp.detach()
+        except Exception:
+            pass
+
+
 async def upload(name: str, description: str, stl_path: str, image_paths: list[str],
                  source_url: str = "", dry_run: bool = False,
                  license_raw: str = "", should_stop=None) -> dict:
@@ -1310,23 +1376,46 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
         # 4) Attach the model file(s) to the model-files input. Upload ALL real
         #    parts at once; if the input rejects multiples, fall back to the
         #    largest single file so the primary geometry still gets in.
+        #    A payload over Playwright's 50 MB streaming cap goes through CDP as
+        #    file PATHS instead, which is how a 73 MB part gets attached at all.
+        total_mb = round(sum(os.path.getsize(p) for p in model_files) / 1e6, 1)
+        attach_how = ""
         try:
             model_input = work.locator("input[type=file][accept*='.step'], input[type=file][accept*='.stl']").first
-            try:
-                await model_input.set_input_files(model_files)
-            except Exception:
-                await model_input.set_input_files(model_files[0])
+            if attach_needs_cdp(model_files):
+                try:
+                    attach_how = await _attach_files_by_path(ctx, page, model_files)
+                except Exception as cdp_err:
+                    return {"success": False,
+                            "error": ("Could not attach the %.1f MB model file(s) by path: %s"
+                                      % (total_mb, str(cdp_err)[:180])),
+                            "verify": dict(UPLOAD_VERIFY)}
+            else:
+                try:
+                    await model_input.set_input_files(model_files)
+                    attach_how = "playwright, %d file(s)" % len(model_files)
+                except Exception:
+                    await model_input.set_input_files(model_files[0])
+                    attach_how = "playwright, largest file only"
         except Exception as e:
             return {"success": False, "error": f"Could not attach the model file: {e}"}
+        UPLOAD_VERIFY["attach"] = attach_how
         # Wait only until the file name registers (fast poll, not a fixed sleep)
         stem = os.path.splitext(os.path.basename(model_files[0]))[0][:18]
+        registered = False
         for _ in range(40):
             try:
                 if await work.evaluate(f"() => document.body.innerText.includes({stem!r})"):
+                    registered = True
                     break
             except Exception:
                 pass
             await page.wait_for_timeout(300)
+        UPLOAD_VERIFY["attach_registered"] = registered
+        if not registered:
+            UPLOAD_VERIFY["attach_note"] = (
+                "the form never showed the file name %r after %s — the attach "
+                "itself is what to look at, not the later steps" % (stem, attach_how))
 
         if _stop_pressed(should_stop):
             return _stopped_result()

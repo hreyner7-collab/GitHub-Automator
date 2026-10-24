@@ -1213,3 +1213,47 @@ def test_a_run_stops_at_the_number_of_models_it_was_asked_for(monkeypatch, tmp_p
     assert len(opened) == 2, "the models past the target must never be opened at all"
     assert main.AUTO["shortfall"] in (None, 0), main.AUTO["shortfall"]
     assert "2 candidates the run did not touch" in main.AUTO["note"], main.AUTO["note"]
+
+
+def test_a_refused_publish_keeps_its_whole_reason_and_its_evidence(
+        monkeypatch, tmp_path):
+    """A publish that RAISES returns no result, so everything explaining it lives
+    in uploader.UPLOAD_VERIFY — and the run used to cut the sentence at 200
+    characters, which is precisely where the half naming what the form showed
+    began (job 20261024-131810 ended at "the registered source read", leaving no
+    way to tell a wrong-source refusal from any other)."""
+    import main
+    import uploader
+    models = [{"name": "Modular phone organizer cable holder",
+               "url": "https://x/model-detail/modular-mobile-organizer",
+               "keyword": "k"}]
+    imgs = _written_images(tmp_path, 2)
+    uploader.UPLOAD_VERIFY.clear()
+    uploader.UPLOAD_VERIFY.update({
+        "remix_source_declared": False,
+        "remix_source_why": "the form shows 'Modular Desk Organizer System', which "
+                            "does not identify the source model",
+        "remix_registered_href": "",
+        "remix_suggestion_clicked": "Modular Desk Organizer System",
+        "attach": "cdp paths, input node 41, 2 file(s)"})
+
+    mid = ("the registered source reads 'Modular Desk Organizer System|MagSafe "
+           "Phone Stand' (" + "d" * 90 + ")")
+    msg = ("Refusing to publish without declaring the source model (Remix Models): "
+           "the form does not show OUR source model — clicked 'Modular Desk "
+           "Organizer System', " + mid
+           + ", so submitting would credit a model this listing was not made from")
+    assert 200 < len(msg) <= 400, "the message must cross the old 200-char cap"
+
+    async def boom(*a, **k):
+        raise RuntimeError(msg)
+
+    items = _run(monkeypatch, tmp_path, models,
+                 lambda url: _fetched("Modular phone organizer", url, imgs),
+                 boom, "refusejob")
+    it = items["modular-mobile-organizer"]
+    assert it["state"] == "failed"
+    assert it["reason"].endswith("was not made from")
+    assert it["upload_verify"]["remix_source_why"].startswith("the form shows")
+    assert it["upload_verify"]["remix_suggestion_clicked"] == "Modular Desk Organizer System"
+    assert it["upload_verify"]["attach"].startswith("cdp paths")

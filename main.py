@@ -27,6 +27,7 @@ import ledger
 import proof
 import selector
 import timing
+import uploader        # the module, for the evidence dict a raised publish leaves
 
 load_dotenv()
 
@@ -291,6 +292,35 @@ def _upload_images(source_images: list, proof_info: dict, stl_path: str,
         note = ("photos: no usable creator photo on disk — nothing to publish "
                 "with (renders of the model are never uploaded)")
     return own, note, cover_ok
+
+
+def cover_failure_reason(g: dict) -> str:
+    """Why a model had no cover photo, in the page's own terms.
+
+    A bare "the listing showed 0 photo(s), 0 usable" could not be acted on: it
+    did not say whether the model has no pictures at all or whether the reader
+    failed to see the ones it has. The gallery block now reports both, so the
+    run log names which of the two happened."""
+    g = g or {}
+    got = g.get("images") or 0
+    kept = g.get("downloaded") or 0
+    page_imgs = g.get("page_images")
+    creator = g.get("creator_images")
+    out = ("could not fetch this model's cover photos: %d photo(s) found, "
+           "%d usable" % (got, kept))
+    if got == 0 and creator == 0:
+        out += (" — the listing has no picture of the model at all (it shows %s "
+                "image(s) on the page, none of them a creator photo), so "
+                "nothing can be published for it"
+                % (page_imgs if page_imgs is not None else "an unknown number of"))
+    elif got == 0:
+        out += (" — the page carries %s creator photo(s) that the gallery rules "
+                "did not accept; found_by=%s"
+                % (creator, ",".join(g.get("found_by") or []) or "nothing"))
+    else:
+        first = ((g.get("dropped") or [{}])[0]).get("reason", "")
+        out += "; first one dropped: %s" % (first or "no reason recorded")
+    return out + " — the run skipped it and moved on"
 
 
 @app.get("/policy")
@@ -1216,11 +1246,8 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
             if not cover_ok:
                 it["state"] = FETCH_FAILED
                 g = res.get("gallery") or {}
-                first_drop = ((g.get("dropped") or [{}])[0]).get("reason", "")
-                it["reason"] = ("could not fetch this model's cover photos: the listing showed "
-                                "%d photo(s), %d usable" % (g.get("images", 0), g.get("downloaded", 0))
-                                + (("; first one dropped: " + first_drop) if first_drop else "")
-                                + " — the run skipped it and moved on")
+                it["gallery"] = g        # the evidence, on the row, not only on disk
+                it["reason"] = cover_failure_reason(g)
                 continue
             if AUTO.get("stop"):
                 # Stop was pressed while this model was fetched: nothing has been
@@ -1246,7 +1273,18 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                                                    should_stop=_stop_requested)
             except Exception as e:
                 it["state"] = "failed"
-                it["reason"] = str(e)[:200]
+                # The whole sentence, not its first 200 characters: a Model-Source
+                # refusal lands here, and the half that says WHAT the form showed
+                # was exactly the part the cap cut off (job 20261024-131810 ended
+                # at "the registered source read"). The uploader's own evidence
+                # goes on the row too, so the next run needs no browser to see why.
+                it["reason"] = str(e)[:400]
+                _v = getattr(uploader, "UPLOAD_VERIFY", {}) or {}
+                it["upload_verify"] = {k: _v[k] for k in (
+                    "remix_source_declared", "remix_source_why",
+                    "remix_registered_href", "remix_suggestion_clicked",
+                    "remix_suggestions_seen", "remix_suggestions_refused",
+                    "attach", "attach_registered", "attach_note") if k in _v}
                 continue
             if up.get("stopped"):
                 # Stop was pressed before Submit: nothing was submitted, so the

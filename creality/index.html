@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Creality Pipeline V8</title>
+<title>Creality Pipeline V9</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -232,7 +232,7 @@
 
 <div class="topbar">
   <h1>Creality <span>Pipeline</span></h1>
-  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V8</span>
+  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V9</span>
   <span class="build" id="build-stamp" title="Which code this dashboard process is serving"></span>
   <button id="analytics-btn" onclick="toggleAnalytics()">&#128202; Analytics</button>
 </div>
@@ -930,10 +930,28 @@
         : '';
       const proofBad = (it.proof && it.proof.ok === false)
         ? '<span style="color:#ef9a9a">[no proof]</span> ' : '';
+      // WHAT the failure was made of, on hover. A row that reads "0 photo(s), 0
+      // usable" or "refusing to publish without declaring the source" is only
+      // actionable if the page also shows what it actually saw.
+      const ev = [];
+      if (it.gallery) {
+        ev.push('photos: ' + (it.gallery.images || 0) + ' found, '
+          + (it.gallery.downloaded || 0) + ' kept, the page held '
+          + (it.gallery.creator_images || 0) + ' creator photo(s)'
+          + (it.gallery.found_by && it.gallery.found_by.length
+            ? ', read from ' + it.gallery.found_by.join('/') : '')
+          + (it.gallery.dropped && it.gallery.dropped.length
+            ? ', first drop: ' + (it.gallery.dropped[0].reason || '') : ''));
+      }
+      const uv = it.upload_verify || {};
+      if (uv.remix_source_why) ev.push('source: ' + uv.remix_source_why);
+      if (uv.attach) ev.push('attach: ' + uv.attach
+        + (uv.attach_registered === false ? ' — name never showed in the form' : ''));
+      const tip = ev.length ? ' title="' + esc(ev.join(' · ')) + '"' : '';
       return '<div class="autorow"><span class="aname">' + (i + 1) + '. ' +
         '<a href="' + esc(it.url || '#') + '" target="_blank" rel="noopener">' + nm +
         '</a></span><span class="astate ' + st2 + '">' + st2 + '</span>' +
-        '<span class="areason">' + rule + proofBad +
+        '<span class="areason"' + tip + '>' + rule + proofBad +
         esc(it.reason || it.result || '') + '</span></div>';
     }).join('');
     document.getElementById('auto-stop').disabled =

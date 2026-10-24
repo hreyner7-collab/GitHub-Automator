@@ -1377,7 +1377,7 @@ def _fetch_creality(url: str) -> dict:
             # div.model-gallery, and every rule rejects the plate/related rails.
             # The strip's next-arrow is then clicked so thumbnails paged behind
             # it are collected too.
-            gallery_js = """
+            gallery_js = r"""
                 () => {
                     // Host/path rules, re-measured live 2026-10-09:
                     //   model photos : .../crealityCloud/upload/…, .../comp/model/…
@@ -1434,14 +1434,104 @@ def _fetch_creality(url: str) -> dict:
                     const badPromo = (el) => badWith(el, PROMO);
                     // avatars carry a <=99px resize; gallery thumbs are 240-400px
                     const isTinyVariant = (s) =>
-                        /resize[,\\/]+(?:h|w)_(?:[1-9]|[1-9][0-9]),/i.test(s);
+                        /resize[,/]+(?:h|w)_(?:[1-9]|[1-9][0-9]),/i.test(s);
+                    // the rules as predicates, so one image can be asked for the
+                    // first URL that passes all of them (see goodSrc)
+                    const notNonPhoto = (s) => !isNonPhoto(s);
+                    const notTiny = (s) => !isTinyVariant(s);
                     const out = [];
+                    const how = [];
                     // Every caller filters first; `add` stores the URL WITHOUT
                     // its query, which is the full-size original the CDN serves
                     // (the rendered thumbnail is a resize,w_40 variant).
-                    const add = (s) => {
+                    // `how` records WHICH rule found each photo: a run that
+                    // reported "0 photo(s)" said nothing about why, because the
+                    // evidence of what the page held was never kept.
+                    const add = (s, tag) => {
                         const key = (s || '').split('?')[0];
-                        if (key && out.indexOf(key) < 0) out.push(key);
+                        if (key && out.indexOf(key) < 0) {
+                            out.push(key);
+                            how.push(tag || '?');
+                        }
+                    };
+                    // Absolutise a lazy attribute value (data-src is often a bare
+                    // path) so a photo found in an attribute downloads like one
+                    // found in src.
+                    const absu = (v) => {
+                        if (!v) return '';
+                        const s = v.trim();
+                        // no backslashes in this test: scripts/check_gallery_js.js
+                        // reads the Python string raw, so an escape would differ
+                        if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return s;
+                        if (s.indexOf('//') === 0) return 'https:' + s;
+                        try { return new URL(s, document.baseURI).href; }
+                        catch (e) { return s; }
+                    };
+                    // EVERY photo URL one element carries. A lazy <img> keeps a
+                    // 1x1 transparent gif (or a site placeholder) in src and the
+                    // real URL in data-src / srcset / a <picture> <source>:
+                    // reading only the FIRST attribute present looked at the
+                    // placeholder, failed the folder rule, and three listings on
+                    // 2026-10-24 were skipped as "the listing showed 0 photo(s),
+                    // 0 usable" while their files downloaded fine. So each image
+                    // contributes all of its URLs and the folder rules below
+                    // choose which one is the photo.
+                    const srcOf = (im) => {
+                        const list = [];
+                        const push = (v) => { const u = absu(v); if (u) list.push(u); };
+                        push(im.currentSrc); push(im.getAttribute('src'));
+                        for (const a of ['data-src', 'data-original', 'data-actualsrc',
+                                         'data-lazy-src', 'data-image', 'data-url'])
+                            push(im.getAttribute(a));
+                        const pict = im.closest ? im.closest('picture') : null;
+                        const sources = pict ? [...pict.querySelectorAll('source')] : [];
+                        for (const el of [im, ...sources]) {
+                            const ss = el.getAttribute('srcset')
+                                    || el.getAttribute('data-srcset');
+                            if (!ss) continue;
+                            let best = '', bestW = -1;
+                            for (const part of ss.split(',')) {
+                                const bits = part.trim().split(/\s+/);
+                                if (!bits[0]) continue;
+                                const w = parseInt((bits[1] || '1w').replace(/w$/i, ''), 10) || 1;
+                                if (w > bestW) { bestW = w; best = bits[0]; }
+                            }
+                            push(best);
+                        }
+                        return list;
+                    };
+                    // the element's URLs that pass a step's folder rules
+                    const goodSrc = (im, rules) => {
+                        for (const s of srcOf(im)) {
+                            if (rules.every(r => r(s))) return s;
+                        }
+                        return '';
+                    };
+                    // a CSS background-image is a photo too — some Creality
+                    // layouts paint the cover as a div's background, never an <img>
+                    const bgSrc = (root) => {
+                        const found = [];
+                        const els = [...root.querySelectorAll('div,span,a,li,figure')].slice(0, 500);
+                        for (const el of els) {
+                            let bi = '';
+                            try { bi = getComputedStyle(el).backgroundImage || ''; }
+                            catch (e) { continue; }
+                            if (bi.indexOf('url(') < 0) continue;
+                            const m = bi.match(/url\(["']?([^"')]+)["']?\)/);
+                            if (m) found.push(absu(m[1]));
+                        }
+                        return found;
+                    };
+                    // a small LOADED image is a thumbnail, not a photo — but the
+                    // element's naturalWidth describes the bitmap it shows, which
+                    // for a lazy image is the placeholder, while the real photo
+                    // sits in srcset/data-src. So the size floor only applies when
+                    // the URL we chose IS the one being displayed.
+                    const displayedSmall = (im, s) => {
+                        const nw = im.naturalWidth || 0;
+                        if (!nw || nw >= 200) return false;
+                        return s === absu(im.getAttribute('src'))
+                            || (im.currentSrc && s === absu(im.currentSrc));
                     };
                     // 1) THE STRIP — what the inspector shows: every thumbnail
                     const strip = document.querySelector('.swiper-thumb') ||
@@ -1452,11 +1542,9 @@ def _fetch_creality(url: str) -> dict:
                         const imgs = [...strip.querySelectorAll('img')];
                         stripCount = imgs.length;
                         for (const im of imgs) {
-                            const s = im.currentSrc || im.src ||
-                                      im.getAttribute('data-src') || '';
-                            if (!isGalleryPhoto(s) || isNonPhoto(s) ||
-                                isTinyVariant(s) || bad(im)) continue;
-                            add(s);
+                            if (bad(im)) continue;
+                            const s = goodSrc(im, [isGalleryPhoto, notNonPhoto, notTiny]);
+                            if (s) add(s, 'strip');
                         }
                     }
                     // 2) the gallery SLIDES (full-res twins of the strip
@@ -1477,11 +1565,9 @@ def _fetch_creality(url: str) -> dict:
                     if (!galleryRoot) galleryRoot = document.querySelector('.model-content');
                     if (galleryRoot) {
                         for (const im of galleryRoot.querySelectorAll('img')) {
-                            const s = im.currentSrc || im.src || '';
-                            if (!isGalleryPhoto(s) || isNonPhoto(s) ||
-                                isTinyVariant(s)) continue;
-                            if ((im.naturalWidth || 0) < 200) continue;
                             if (bad(im)) continue;
+                            const s = goodSrc(im, [isGalleryPhoto, notNonPhoto, notTiny]);
+                            if (s && displayedSmall(im, s)) continue;
                             // The .cover/.thumb wrapper requirement is GONE: Creality
                             // rolled layouts where the gallery renders photos without
                             // those wrappers (and lazy swipers that show one slide
@@ -1490,7 +1576,14 @@ def _fetch_creality(url: str) -> dict:
                             // plate cards live in .print-config-comp / .list-3mf,
                             // measured OUTSIDE div.model-gallery, and bad() rejects
                             // those containers anyway.
-                            add(s);
+                            if (s) add(s, 'slide');
+                        }
+                        // a gallery painted as CSS backgrounds, not <img>
+                        if (!out.length) {
+                            for (const u of bgSrc(galleryRoot)) {
+                                if (isGalleryPhoto(u) && !isNonPhoto(u) && !isTinyVariant(u))
+                                    add(u, 'css');
+                            }
                         }
                     }
                     // 2b) last resort on unusual layouts: any creator photo on
@@ -1498,12 +1591,31 @@ def _fetch_creality(url: str) -> dict:
                     // Guarantees the listing is never left with zero photos.
                     if (!out.length) {
                         for (const im of document.querySelectorAll('img')) {
-                            const s = im.currentSrc || im.src || '';
-                            if (!isCreator(s) || isNonPhoto(s) ||
-                                isTinyVariant(s)) continue;
-                            if ((im.naturalWidth || 0) < 200 || bad(im) ||
-                                badPromo(im)) continue;
-                            add(s);
+                            if (bad(im) || badPromo(im)) continue;
+                            const s = goodSrc(im, [isCreator, notNonPhoto, notTiny]);
+                            if (s && displayedSmall(im, s)) continue;
+                            if (s) add(s, 'page');
+                        }
+                        if (!out.length) {
+                            for (const u of bgSrc(document)) {
+                                if (isCreator(u) && !isNonPhoto(u) && !isTinyVariant(u))
+                                    add(u, 'pagecss');
+                            }
+                        }
+                    }
+                    // 2c) the page's own declared cover picture. A model page
+                    // says what its photo is twice over — in og:image (the card
+                    // social shows) and in any image preload — so a listing whose
+                    // gallery never rendered is still published with the creator's
+                    // own photo instead of being skipped.
+                    if (!out.length) {
+                        const metas = [...document.querySelectorAll(
+                            'meta[property="og:image"], meta[name="twitter:image"], '
+                            + 'link[rel="preload"][as="image"], link[rel="image_src"]')];
+                        for (const el of metas) {
+                            const s = absu(el.getAttribute('content')
+                                        || el.getAttribute('href') || '');
+                            if (isCreator(s) && !isNonPhoto(s)) add(s, 'meta');
                         }
                     }
                     // 3) the strip's own arrow pages the remaining thumbnails.
@@ -1520,8 +1632,19 @@ def _fetch_creality(url: str) -> dict:
                         return {x: Math.round(r.x + r.width/2),
                                 y: Math.round(r.y + r.height/2)};
                     })() : null;
+                    // what the page held in total, so a "0 photos" read is
+                    // evidence rather than a dead end: 0 images on the whole page
+                    // means the listing really has none, while N images and 0 kept
+                    // means a rule here rejected them (see `how` and `dropped`).
+                    let creatorImgs = 0;
+                    for (const im of document.querySelectorAll('img')) {
+                        if (srcOf(im).some(isCreator)) creatorImgs++;
+                    }
                     return {urls: out, strip: stripCount,
                             strip_cls: strip ? (strip.className||'').toString().slice(0,44) : '',
+                            imgs: document.querySelectorAll('img').length,
+                            creator_imgs: creatorImgs,
+                            how: how.slice(0, 12),
                             next: nb};
                 }
             """
@@ -1530,14 +1653,21 @@ def _fetch_creality(url: str) -> dict:
                 """Read the gallery rule and merge any new creator photos."""
                 g = page.evaluate(gallery_js)
                 added = 0
-                for u in g.get("urls", []):
+                urls = g.get("urls", []) or []
+                tags = g.get("how", []) or []
+                for i, u in enumerate(urls):
                     if u not in gallery_imgs:
                         gallery_imgs.append(u)
+                        # which rule found it, kept per photo across every read
+                        gallery_how[u] = tags[i] if i < len(tags) else "?"
                         added += 1
                 _grab.strip = max(getattr(_grab, "strip", 0), g.get("strip", 0) or 0)
+                _grab.page = g.get("imgs", 0) or 0
+                _grab.creator = g.get("creator_imgs", 0) or 0
                 return g, added
 
             gallery_imgs, stale = [], 0
+            gallery_how: dict = {}
             gallery_scope, gallery_steps = "", 0
 
             # WAIT FOR STABLE: the gallery is Vue-rendered AFTER the page loads, so a
@@ -1591,6 +1721,13 @@ def _fetch_creality(url: str) -> dict:
                 "arrow_clicks": gallery_steps,
                 "all_creator": True,   # every one is the model's own photo
                                        # (/crealityCloud/upload/ or /common/)
+                # which rule produced each photo, and what the page held in
+                # total — so a "0 photos" skip names the cause instead of being
+                # a dead end (0 creator images = the listing truly has none;
+                # creator images > 0 and none kept = a rule rejected them).
+                "found_by": sorted({gallery_how.get(u, "?") for u in gallery_imgs}),
+                "page_images": getattr(_grab, "page", 0),
+                "creator_images": getattr(_grab, "creator", 0),
                 "paths": [u.replace("https://pic2-cdn.creality.com", "")[:80]
                           for u in gallery_imgs[:12]],
             }

@@ -609,7 +609,7 @@ def _gallery_js():
     test can run it in a DOM without a browser session."""
     import re as _re
     src = Path(downloader.__file__).read_text(encoding="utf-8")
-    m = _re.search(r'gallery_js = """\n(.*?)\n\s*"""', src, _re.S)
+    m = _re.search(r'gallery_js = r?"""\n(.*?)\n\s*"""', src, _re.S)
     assert m, "gallery_js not found in downloader.py"
     return m.group(1)
 
