@@ -662,6 +662,36 @@ def pick_source_suggestion(rows, source_name: str = "", slug: str = "",
 CERTAIN_SCORE = 80
 
 
+def remix_refusal(cand, declared: bool, why: str, mark_text: str, result: dict,
+                  source_name: str, slug: str) -> str:
+    """The sentence to raise when this source may not be submitted, else "".
+
+    The only bar is `declared`: the form must be showing OUR source model,
+    proven by its own identity (registered slug / URL printed / title) inside
+    declares_our_source(). Which suggestion row was clicked matters only as
+    extra evidence, never as the reason to refuse — the picker's title search
+    returns nothing for a non-English source title, and job 20261024-131810
+    refused a model whose URL had registered on the form correctly.
+    """
+    if declared:
+        return ""
+    if not cand:
+        if result.get("flagged"):
+            return ("Creality's picker marks the source model No-Derivatives "
+                    "(%s) — it cannot be declared as a remix"
+                    % ", ".join(r.get("name", "")
+                                for r in result["flagged"])[:160])
+        return ("Creality's picker did not offer a clean match for the source "
+                "model (%s), and pasting its URL did not register it either; "
+                "shown: %s"
+                % (source_name or slug,
+                   ", ".join(result.get("rows", [])[:6])[:200]))
+    return ("the form does not show OUR source model — clicked %r, the "
+            "registered source reads %r (%s), so submitting would credit a "
+            "model this listing was not made from"
+            % (cand.get("name", ""), (why or "")[:80], why or "-"))
+
+
 async def _registered_mark(work) -> dict:
     """What the form is showing as the chosen source.
 
@@ -1848,7 +1878,9 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
 
                 last: dict = {}
                 result: dict = {}
-                for query in [q for q in (name, " ".join(words), source_url) if q]:
+                # titles only — the URL is pasted on its own afterwards, where
+                # Enter registers it instead of feeding a search list.
+                for query in [q for q in (name, " ".join(words)) if q]:
                     await src_input.fill("")
                     await src_input.fill(query)
                     await page.wait_for_timeout(3500)
@@ -1868,6 +1900,18 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
 
                 clicked_name = ""
                 cand = result.get("pick")
+                # The paste box takes the source model's own URL as well as a
+                # search ("Paste the URL or directly search for models within
+                # Creality Cloud"). When the title search offered nothing
+                # certain, pasting the exact URL is STRONGER evidence than any
+                # look-alike row, so try it before refusing.
+                if cand is None and source_url:
+                    try:
+                        await src_input.fill(source_url)
+                        await src_input.press("Enter")
+                        await page.wait_for_timeout(3000)
+                    except Exception:
+                        pass
                 if cand:
                     await page.mouse.click(cand["x"], cand["y"])
                     clicked_name = cand.get("name", "")
@@ -1921,28 +1965,20 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                 UPLOAD_VERIFY["remix_suggestions_seen"] = result.get("rows", [])[:8]
                 UPLOAD_VERIFY["remix_suggestions_refused"] = [r.get("name")
                                                               for r in result.get("flagged", [])][:8]
-                if not cand:
-                    why = ("Creality's picker marks the source model No-Derivatives "
-                           "(%s) — it cannot be declared as a remix"
-                           % ", ".join(r.get("name", "") for r in result["flagged"])[:160]
-                           if result.get("flagged") else
-                           "Creality's picker did not offer a clean match for the "
-                           "source model (%s); shown: %s"
-                           % (name or slug, ", ".join(result.get("rows", [])[:6])[:200]))
-                    raise RuntimeError(why)
-                if not declared:
-                    raise RuntimeError(
-                        "the form does not show OUR source model — clicked %r, "
-                        "the registered source reads %r (%s), so submitting "
-                        "would credit a model this listing was not made from"
-                        % (clicked_name, mark_text[:80], why))
+                UPLOAD_VERIFY["remix_declared_by"] = (
+                    "row click" if declared and cand else
+                    "url paste" if declared else "")
+                refuse = remix_refusal(cand, declared, why, mark_text, result,
+                                       name, slug)
+                if refuse:
+                    raise RuntimeError(refuse)
             except Exception as e:
                 UPLOAD_VERIFY["remix_source_declared"] = False
-                UPLOAD_VERIFY["remix_source_error"] = str(e)[:200]
+                UPLOAD_VERIFY["remix_source_error"] = str(e)[:500]
                 # A re-upload MUST declare its source: never fill in the licence
                 # answers and submit a form that credits nobody.
                 raise RuntimeError("Refusing to publish without declaring the "
-                                   "source model (Remix Models): " + str(e)[:200])
+                                   "source model (Remix Models): " + str(e)[:500])
 
         # 8d) New-listing LICENSE — must match the SOURCE license (the form's
         # three questions drive the CC badge: adaptations, commercial, and

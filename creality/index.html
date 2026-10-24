@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Creality Pipeline V9</title>
+<title>Creality Pipeline V10</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -232,7 +232,7 @@
 
 <div class="topbar">
   <h1>Creality <span>Pipeline</span></h1>
-  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V9</span>
+  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V10</span>
   <span class="build" id="build-stamp" title="Which code this dashboard process is serving"></span>
   <button id="analytics-btn" onclick="toggleAnalytics()">&#128202; Analytics</button>
 </div>
@@ -945,6 +945,8 @@
       }
       const uv = it.upload_verify || {};
       if (uv.remix_source_why) ev.push('source: ' + uv.remix_source_why);
+      // how the source got credited: a picked suggestion row, or the pasted URL
+      if (uv.remix_declared_by) ev.push('declared by ' + uv.remix_declared_by);
       if (uv.attach) ev.push('attach: ' + uv.attach
         + (uv.attach_registered === false ? ' — name never showed in the form' : ''));
       const tip = ev.length ? ' title="' + esc(ev.join(' · ')) + '"' : '';

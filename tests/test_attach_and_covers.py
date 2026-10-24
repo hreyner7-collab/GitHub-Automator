@@ -160,6 +160,7 @@ class TestDashboardShowsTheEvidence:
 
     @pytest.mark.parametrize("needle", [
         "creator_images", "remix_source_why", "uv.attach", "attach_registered",
+        "remix_declared_by",
     ])
     def test_the_failed_row_quotes_what_it_saw(self, needle):
         assert needle in self.HTML

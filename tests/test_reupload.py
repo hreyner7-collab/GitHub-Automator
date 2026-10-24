@@ -276,6 +276,52 @@ def test_a_one_word_short_title_is_not_certain_enough_to_click():
     assert ok["score"] >= CERTAIN_SCORE
 
 
+def test_the_source_is_submitted_whenever_the_form_proves_it():
+    """What may be submitted is decided by ONE thing: the form showing OUR
+    source model. Which row was clicked is only extra evidence.
+
+    The old code raised as soon as the title search returned no clean row,
+    BEFORE reading that verdict — so a source that had registered correctly was
+    still refused. Job 20261024-131810 lost "Organizador de móviles modular"
+    that way: Creality's search returned English look-alikes for the Spanish
+    title, nothing was clicked, and the run refused a model whose own URL the
+    box accepts directly."""
+    from uploader import remix_refusal
+    src_title = "Organizador de móviles modular"
+    slug = "modular-mobile-organizer"
+    result = {"rows": ["Modular Desk Organizer System", "MagSafe Phone Stand"],
+              "flagged": []}
+
+    # no row clicked, but the form credits our exact source -> publishable
+    assert remix_refusal(None, True, "the source URL is printed on the form",
+                         src_title, result, src_title, slug) == ""
+    # and the same with the registered link's slug
+    assert remix_refusal(None, True, "the registered source links the source "
+                         "model (%s)" % slug, "", result, src_title,
+                         slug) == ""
+
+    # nothing clicked AND nothing proven -> the honest refusal, naming both
+    # the look-alikes it would not click and the URL route that failed
+    r = remix_refusal(None, False, "nothing is registered as the source",
+                      "Modular Desk Organizer System", result, src_title, slug)
+    assert "did not offer a clean match" in r
+    assert "did not register it either" in r
+    assert "Modular Desk Organizer System" in r
+
+    # a row was clicked but it credits somebody else -> still refused
+    r2 = remix_refusal({"name": "MagSafe Phone Stand"}, False,
+                       "the form shows 'x', which does not identify",
+                       "MagSafe Phone Stand", result, src_title, slug)
+    assert "does not show OUR source model" in r2
+    assert "MagSafe Phone Stand" in r2
+
+    # a No-Derivatives source is refused in its own words, never guessed past
+    nd = remix_refusal(None, False, "", "",
+                       {"rows": [], "flagged": [{"name": "Cable Holder Sprite"}]},
+                       src_title, slug)
+    assert "No-Derivatives" in nd and "Cable Holder Sprite" in nd
+
+
 def test_creality_url_dispatches_to_creality_fetcher(monkeypatch):
     called = {}
 

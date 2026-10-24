@@ -812,6 +812,20 @@ def _file_attempt_note(fa: dict) -> str:
                (" then %r" % fa["step2"]) if fa.get("step2") else ""))
 
 
+def topup_budget(count: int) -> int:
+    """How many extra listing scans a run may spend chasing its target.
+
+    A scan costs ~40s, so the old fixed 6 was fine for a small ask — but a
+    20-model run does not need 6 scans, it needs 6 scans PER handful of models
+    it still owes. Job 20261024-131810 measured why: of the 65 candidates the
+    first scan harvested, the licence and household gates refused 35 and only
+    11 were ever attempted, so a fixed ceiling was what would make a big ask
+    come up short even with nothing broken. The budget now grows with the ask
+    and never drops below the 6 a small run already had.
+    """
+    return max(6, (count or 0) // 2)
+
+
 async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
     import time as _time
 
@@ -993,10 +1007,9 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
         idx = 0
         topups = 0
         # A top-up costs a whole listing scan, so it is a last resort now that the
-        # first scan harvests a surplus. Six of them is plenty for a 20-model run
-        # and, unlike the old fixed 4, it cannot be the only reason a big run came
-        # up short.
-        max_topups = 6
+        # first scan harvests a surplus — but it must scale with the ask, or a
+        # 20-model run stops chasing its target after 6 scans. See topup_budget().
+        max_topups = topup_budget(count)
         while True:
             if idx >= len(AUTO["items"]):
                 # The queue is used up. Anything that did not publish (refused,
@@ -1282,7 +1295,8 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                 _v = getattr(uploader, "UPLOAD_VERIFY", {}) or {}
                 it["upload_verify"] = {k: _v[k] for k in (
                     "remix_source_declared", "remix_source_why",
-                    "remix_registered_href", "remix_suggestion_clicked",
+                    "remix_declared_by", "remix_registered_href",
+                    "remix_suggestion_clicked",
                     "remix_suggestions_seen", "remix_suggestions_refused",
                     "attach", "attach_registered", "attach_note") if k in _v}
                 continue
@@ -1301,6 +1315,7 @@ async def _auto_worker(count: int, keywords: list[str], job_id: str) -> None:
                 it["upload_verify"] = {k: _v[k] for k in (
                     "images", "consent", "copyright_agreed", "license_answers",
                     "remix_source_declared", "remix_registered_href",
+                    "remix_declared_by",
                     "remix_suggestion_clicked", "remix_source_why",
                     "submit_rejection") if k in _v}
             if up.get("success"):

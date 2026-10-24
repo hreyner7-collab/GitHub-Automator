@@ -797,6 +797,44 @@ def test_a_failed_model_is_replaced_by_a_fresh_candidate_never_a_repeat(monkeypa
     assert main.AUTO["state"] == "done"
 
 
+def test_a_big_ask_keeps_scanning_past_six_top_ups(monkeypatch, tmp_path):
+    """The top-up budget scales with the ask. A fixed 6 was fine for 5 models,
+    but job 20261024-131810 showed why a 20-ask needs more: of the 65 cards the
+    first scan harvested, the licence and household gates refused 35 and only
+    11 were attempted, so six scans could not cover a 20-model target even with
+    nothing broken. Every refused model must buy another scan until the ask is
+    met or the listings genuinely run dry."""
+    import main
+
+    assert main.topup_budget(5) == 6          # the floor a small run already had
+    assert main.topup_budget(20) == 10        # a 20-ask may chase it further
+
+    cover = _cc_cover(tmp_path)
+    scans = []
+
+    def fake_find(keywords, count, sort="Downloads", is_done=None, progress=None,
+                  should_stop=None, exclude=None, extra=None, deadline_s=None):
+        scans.append(count)
+        n = len(scans)
+        return {"models": [_card("Clothes peg %d" % n,
+                                 "https://x/model-detail/peg-%d" % n)],
+                "licence": {"opened": True, "verified": True}, "note": ""}
+
+    monkeypatch.setattr(main, "find_creality", fake_find)
+    monkeypatch.setattr(main, "dl_fetch",
+                        lambda url: _cc_page(url, cover))
+    monkeypatch.setattr(main, "uploader_upload", _refuse_upload)
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+
+    asyncio.run(main._auto_worker(20, ["k"], "budgetjob"))
+    # the first scan plus one per top-up, and that number is the budget + 1
+    assert len(scans) == main.topup_budget(20) + 1
+    assert len(scans) > 7              # the old fixed ceiling stopped at 7
+    assert main.AUTO["published"] == 0
+    assert main.AUTO["shortfall"] == 20
+    assert "gave no more candidates" in main.AUTO["shortfall_reason"]
+
+
 def test_a_pool_that_runs_dry_ends_the_run_honestly(monkeypatch, tmp_path):
     """Asking for 3 when only one candidate exists: the run publishes it, tops
     up once, finds nothing new, and ends instead of looping."""
