@@ -52,11 +52,14 @@ with sync_playwright() as pw:
         for h in out["handlers"]:
             if not h["defined"]:
                 fails.append("handler missing: %s (%r)" % (h["fn"], h["text"]))
+        # The dashboard's old build card stays retired. Originals are made by the
+        # offline CLI (scripts/make_originals.py), not by a page button.
         if page.evaluate("() => !!document.getElementById('generate-file')"):
-            fails.append("the build/generate card is still on the page")
+            fails.append("the retired build card is back on the dashboard "
+                         "(originals are made by the offline CLI)")
         for fn in ("generateFile", "acceptGenerated"):
             if page.evaluate("() => typeof window['%s']" % fn) == "function":
-                fails.append("generator function still defined: %s" % fn)
+                fails.append("the retired dashboard generator function is back: %s" % fn)
 
         def feedback(sel, status_id, label):
             page.evaluate("""() => ['preview-section','upload-section']

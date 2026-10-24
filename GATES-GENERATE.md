@@ -1,23 +1,37 @@
-# Gates: STL Generator — RETIRED (2026-10-09, by the user's instruction)
+# Gates: generation — the dashboard card stays retired; originals are made offline
 
-RETIRED. The dashboard must NOT offer "Make a file". `scripts/verify_buttons.py` pins the
-retirement (it fails if `#generate-file` or the `generateFile` / `acceptGenerated` handlers come
-back), and the user confirmed it on the dashboard: "Remove this too". The engine, its oracle and
-this gate file's original claims are kept in git commits `8913258` and `3259463`, recoverable if
-the feature is ever wanted again — nothing in the working tree serves or imports it any more:
+## 2026-10-24 — the capability is authorised again, the dashboard card is not
 
-  · `generator/` (the design brain + forge + verifier) — deleted
-  · `scripts/verify_generate.py` (its 11 gates) — deleted with it
-  · `scripts/time_nemotron.py` (measured that brain) — deleted with it
-  · `POST /generate`, `GenerateRequest`, the dashboard card and its JS/CSS — removed
-  · `requirements.txt`: `trimesh` / `manifold3d` were used by nothing else — removed
+The user approved `C:\Users\henry\.qoder\plans\polished-ledge-char.md`: instead of
+copying Creality models, the pipeline now designs NEW household models and renders
+its own photos of that exact geometry. That is generation, so the blanket ban in
+this file's first version no longer applies to the offline pipeline.
 
-WHY: the user never ordered the generator on this dashboard, and asked for it to be gone
-(twice — once implicitly by the earlier `verify_buttons.py` assertion, once explicitly on the
-dashboard). The earlier reading of the tree that treated the card's absence as an unauthorised
-deletion was wrong: `verify_buttons.py` — written during the same campaign — already asserted
-"the generator section is gone by design". That is recorded honestly in GATES-REUPLOAD R18.
+What is authorised, and where it lives:
 
-The rest of the app's gates are unaffected: `scripts/verify_buttons.py` (dashboard handlers +
-a real fetch), `scripts/check_page_syntax.py` (served inline script), and every gate in
-GATES-REUPLOAD.md.
+  · `origin/spec.py` — seeded parameter families (8 household types)
+  · `origin/build.py` — trimesh + manifold3d geometry, no fetched meshes as input
+  · `origin/printcheck.py` — watertight, single-shell, bed contact, dimensions
+  · `blender/render.py` + `origin/shots.py` — Blender photos of the exported STL
+  · `origin/publish.py` — original-work route (`source_url=""`), CC BY, novelty guard
+  · `scripts/make_originals.py` — the only entry point; dry run by default
+
+Still forbidden:
+
+  · No fetched or downloaded model is ever passed to the generator, and no
+    designer's photo is reused, recoloured, or mutated. Geometry is new; photos
+    show the geometry we actually upload.
+  · The dashboard must NOT grow a "Make a file" card. `scripts/verify_buttons.py`
+    pins the absence of `#generate-file` / `generateFile` / `acceptGenerated`.
+    The originals CLI is offline; its results reach the dashboard only as
+    finished, owner-approved listings (V13).
+  · No live publish from the generator. One model is published only after the
+    owner says yes to that specific model.
+
+## History (kept honestly)
+
+The first version of this gate (2026-10-09) retired a dashboard generator the user
+had asked to remove; `generator/`, `scripts/verify_generate.py`,
+`scripts/time_nemotron.py`, `POST /generate` and its card were deleted then. This
+file now records both decisions: the 2026-10-09 removal of the *dashboard card*,
+and the 2026-10-24 approval of a separate, offline *originals* pipeline.

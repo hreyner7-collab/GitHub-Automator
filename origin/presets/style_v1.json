@@ -1,0 +1,215 @@
+{
+ "version": 1,
+ "measured_on": "2026-10-24",
+ "source": {
+  "endpoint": "https://www.crealitycloud.com/api/cxy/smart_search/v1/model",
+  "auth": "none (public search)",
+  "listings": 100,
+  "images_measured": 100,
+  "keywords": [
+   "cable clips",
+   "phone stand",
+   "wall hook"
+  ],
+  "note": "Measured only. No listing image is reused in a render; photos are made from our own exported STL."
+ },
+ "findings": {
+  "images_measured": 100,
+  "photo_count": {
+   "median": 4,
+   "p10": 2,
+   "p90": 8,
+   "share_with_3_plus": 0.82,
+   "share_with_5_plus": 0.42
+  },
+  "aspect": {
+   "portrait": 14,
+   "landscape": 30,
+   "square": 56,
+   "median": 1.0
+  },
+  "background": {
+   "median_rgb": [
+    156,
+    144,
+    137
+   ],
+   "lightness_median": 143,
+   "lightness_p10": 36,
+   "lightness_p90": 227,
+   "saturation_median": 26,
+   "uniformity_sd_median": 13.2
+  },
+  "framing": {
+   "bbox_frac_median": 0.9705,
+   "bbox_frac_p10": 0.5182,
+   "bbox_frac_p90": 0.9823,
+   "occupancy_median": 0.6443,
+   "centring_median": 0.0
+  },
+  "colour": {
+   "subject_lightness_median": 137,
+   "subject_saturation_median": 69,
+   "hue_modes_deg": [
+    [
+     0,
+     32
+    ],
+    [
+     30,
+     30
+    ],
+    [
+     180,
+     10
+    ],
+    [
+     210,
+     8
+    ],
+    [
+     330,
+     7
+    ],
+    [
+     60,
+     4
+    ]
+   ]
+  }
+ },
+ "review_sample": [
+  {
+   "id": "6a69090b0b4a2e9804b4468c",
+   "name": "Headphone Stand with optional cable clips",
+   "keyword": "cable clips"
+  },
+  {
+   "id": "6622079d66bb05cc887351e7",
+   "name": "Office organizer with phone stand",
+   "keyword": "phone stand"
+  },
+  {
+   "id": "69ef46a8389ed2d63d0a6b5f",
+   "name": "Wall hook Bubi - MOK Design",
+   "keyword": "wall hook"
+  },
+  {
+   "id": "68e6b0b6aaaa058eab98ca54",
+   "name": "Cable clips holder",
+   "keyword": "cable clips"
+  },
+  {
+   "id": "695a61ab35130313a0900c94",
+   "name": "FOLDABLE PHONE STAND-keychain",
+   "keyword": "phone stand"
+  },
+  {
+   "id": "69a43656bb1972ee3f3712b5",
+   "name": "Folding Wall Hook",
+   "keyword": "wall hook"
+  },
+  {
+   "id": "66894aa4b9425ee9fb37b311",
+   "name": "Ender 3 v3 CoreXZ Cable Clips - Top & Side",
+   "keyword": "cable clips"
+  },
+  {
+   "id": "66f04dc1bc2db6b0bfb2b73d",
+   "name": "Apple Phone stand, iphone, samsung",
+   "keyword": "phone stand"
+  },
+  {
+   "id": "68e7f6b1aaaa058eaba8af25",
+   "name": "WALL HOOK HOLDER SUPPORT",
+   "keyword": "wall hook"
+  },
+  {
+   "id": "6376d962ea9e3b523f174178",
+   "name": "V-Slot Cable Clips",
+   "keyword": "cable clips"
+  },
+  {
+   "id": "68864d58a85d7a6a0c27ca84",
+   "name": "Phone holder stand with Creality logo | phone stand",
+   "keyword": "phone stand"
+  },
+  {
+   "id": "62a8a67cdb8abff6fe6dd43d",
+   "name": "Button wall hook",
+   "keyword": "wall hook"
+  }
+ ],
+ "palette_hex": [
+  "#C45C54",
+  "#C98E4E",
+  "#5896A8",
+  "#607EAA",
+  "#BE6470",
+  "#D6CAB8"
+ ],
+ "render": {
+  "shots": 5,
+  "focal_mm": 70,
+  "sensor_mm": 36,
+  "angles_deg": [
+   [
+    -38,
+    22
+   ],
+   [
+    0,
+    13
+   ],
+   [
+    34,
+    28
+   ],
+   [
+    18,
+    55
+   ]
+  ],
+  "hero_angles": 4,
+  "closeup": 1,
+  "detail_angle": [
+   26,
+   36
+  ],
+  "subject_fill": 0.64,
+  "background_rgb": [
+   222,
+   217,
+   212
+  ],
+  "backdrop_style": "seamless sweep, soft floor shadow",
+  "lighting": {
+   "key_w": 220,
+   "fill_w": 70,
+   "rim_w": 130,
+   "softbox_m": 1.1,
+   "world_strength": 0.32
+  },
+  "aspects": [
+   1.3333333333333333,
+   1.0
+  ],
+  "palette_hex": [
+   "#C45C54",
+   "#C98E4E",
+   "#5896A8",
+   "#607EAA",
+   "#BE6470",
+   "#D6CAB8"
+  ],
+  "layer_texture": "subtle vertical micro-bump, 0.2 mm period",
+  "review_notes": [
+   "11 of 12 sampled covers are product shots: plain sweep (white or light grey) or a textured table top; only one staged a room.",
+   "The dominant camera is a 3/4 view at about 20-30 deg elevation, subject centred and filling roughly 60-75% of the frame.",
+   "Second most common is a straight-on front/side at 10-15 deg; a high 3/4 or top-down is used when the part has compartments.",
+   "Several covers include a hand for scale or the item in use. Those are real-user photos and are not faked; our contact sheet carries the dimensions instead.",
+   "2x2 collages are common as the first image. We use one clean hero so the uploaded geometry is unambiguous.",
+   "Lighting is soft and diffuse with a gentle contact shadow; backgrounds are low-saturation warm grey or white."
+  ]
+ }
+}
