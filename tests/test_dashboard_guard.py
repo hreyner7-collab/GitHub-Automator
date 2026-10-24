@@ -5,6 +5,8 @@ nothing checked that the server ANSWERED. These tests pin the policy that fixes
 it (dashboard_guard.decide) and the parsers it stands on, using captured
 command output. No server is started and no browser is opened.
 """
+import time
+
 import pytest
 
 import dashboard_guard as guard
@@ -244,3 +246,76 @@ def test_no_answer_is_none_not_zero(monkeypatch):
     monkeypatch.setattr(guard.urllib.request, "urlopen", refused)
     assert guard.http_status("http://127.0.0.1:8000/") is None
     assert guard.health_json("http://127.0.0.1:8000/health") == {}
+
+
+class TestAutoResetGrace:
+    """`auto_reset` serves an update on disk without being asked — but it must
+    not race a tree that is being edited.
+
+    2026-10-24: while the pipeline was being repaired, every edit made the
+    running server read as stale, and the supervisor restarted it for each one.
+    Five restarts in sixty seconds tripped the crash breaker, which exited the
+    supervisor and left the dashboard DOWN with nothing watching it — the cure
+    for staleness became the outage.
+    """
+
+    def _sup(self, sup_mod, monkeypatch, disks, state="idle"):
+        """A supervisor that talks to a fake dashboard, with the restart side
+        effects recorded instead of run."""
+        calls = []
+        queue = list(disks)
+
+        def fake_health_json(url):
+            if url.endswith("auto/status"):
+                return {"state": state, "counts": {"working": 0}}
+            return {"build_is_current": False, "build": "aaaaaaa", "pid": 1,
+                    "disk_fingerprint": queue.pop(0) if queue else disks[-1]}
+
+        monkeypatch.setattr(sup_mod.guard, "health_json", fake_health_json)
+        sup = sup_mod.Supervisor(port=8000, supervise=False)
+        sup.stop_child = lambda: calls.append("stop")
+        sup.clear_port_holder = lambda: calls.append("clear") or True
+        sup.note_restart = lambda: calls.append("note") or True
+        sup.start = lambda: calls.append("start") or True
+        sup.write_report = lambda _reason: calls.append("report")
+        return sup, calls
+
+    def test_the_first_stale_reading_restarts_nothing(self, supervisor, monkeypatch):
+        sup, calls = self._sup(supervisor, monkeypatch, ["fp1"])
+        assert sup.auto_reset() is True
+        assert calls == [], "a stale reading must be watched, not acted on"
+        assert sup.stale_since is not None
+
+    def test_an_actively_edited_tree_is_never_raced(self, supervisor, monkeypatch):
+        """Each edit is a NEW stale build, so the clock restarts and the
+        supervisor keeps waiting — exactly the case that used to thrash."""
+        sup, calls = self._sup(supervisor, monkeypatch, ["fp1", "fp2", "fp3"])
+        for _ in range(3):
+            sup.stale_since = time.time() - (supervisor.STALE_RESET_GRACE_S + 1)
+            assert sup.auto_reset() is True
+        assert calls == [], "a fingerprint that keeps changing must not restart: %s" % calls
+
+    def test_a_build_that_stayed_stale_is_reset(self, supervisor, monkeypatch):
+        sup, calls = self._sup(supervisor, monkeypatch, ["fp1", "fp1"])
+        sup.auto_reset()                       # first look: start the clock
+        sup.stale_since = time.time() - (supervisor.STALE_RESET_GRACE_S + 1)
+        assert sup.auto_reset() is True
+        assert calls == ["stop", "clear", "note", "start"], calls
+        assert sup.stale_since is None, "a completed reset clears the pending one"
+
+    def test_a_run_in_progress_still_defends_the_restart(self, supervisor, monkeypatch):
+        sup, calls = self._sup(supervisor, monkeypatch, ["fp1", "fp1"],
+                               state="running")
+        sup.auto_reset()
+        sup.stale_since = time.time() - (supervisor.STALE_RESET_GRACE_S + 1)
+        assert sup.auto_reset() is True
+        assert calls == [], "a mid-run restart would leave a half-published model"
+
+    def test_a_current_build_resets_the_pending_staleness(self, supervisor, monkeypatch):
+        sup, _calls = self._sup(supervisor, monkeypatch, ["fp1"])
+        sup.auto_reset()
+        assert sup.stale_since is not None
+        monkeypatch.setattr(supervisor.guard, "is_stale_build",
+                            lambda _health: False)
+        assert sup.auto_reset() is True
+        assert sup.stale_since is None, "once it is current, the pending reset goes away"

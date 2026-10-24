@@ -61,6 +61,12 @@ START_TIMEOUT_S = 60.0
 POLL_EVERY_S = 3.0
 # Consecutive failed probes before a live-but-silent server is called hung.
 HUNG_PROBES = 3
+# A stale build must stay stale this long, with the SAME code on disk the whole
+# time, before it is reset. Editing the pipeline makes every few seconds a new
+# "current" code, and a server that read the files a moment ago always looks
+# stale: racing that restarted the dashboard five times in sixty seconds and
+# tripped the crash breaker, which left no dashboard and no watcher at all.
+STALE_RESET_GRACE_S = 30.0
 
 
 def acquire_lock(force: bool = False) -> bool:
@@ -142,6 +148,11 @@ class Supervisor:
         self.restart_times: list[float] = []
         self.silent_probes = 0
         self.gave_up_reason: str | None = None
+        # (when we first saw it, the code on disk we saw it against): a stale
+        # build only earns a reset once it has stayed stale, unchanged, for
+        # STALE_RESET_GRACE_S. See STALE_RESET_GRACE_S for why.
+        self.stale_since: float | None = None
+        self.stale_seen: str | None = None
 
     # ── probes ───────────────────────────────────────────────────────────────
     def probe(self) -> str:
@@ -288,9 +299,28 @@ class Supervisor:
         mid-run: killing the dashboard leaves a half-published model behind, so
         when /auto/status reads busy, the restart is deferred to a later cycle
         and the stale warning stays up until the run settles.
+
+        Staleness is also given STALE_RESET_GRACE_S to settle: a dashboard whose
+        files are being edited is *always* stale against the process that read
+        them seconds ago, and resetting on every one of those reads restarts the
+        dashboard as fast as the edits land.
         """
         health = guard.health_json(guard.health_url(port=self.port))
         if not guard.is_stale_build(health):
+            self.stale_since = self.stale_seen = None
+            return True
+        # what the running server says the disk holds. An older dashboard does
+        # not report a fingerprint, so its build stamp is the best key there is.
+        disk = str(health.get("disk_fingerprint") or health.get("build") or "")
+        now = time.time()
+        if self.stale_seen != disk or self.stale_since is None:
+            self.stale_seen = disk
+            self.stale_since = now
+            log("build %s is behind the code on disk (%s) — watching it for %.0fs "
+                "before resetting, in case the files are still being edited"
+                % (health.get("build", "?"), disk or "?", STALE_RESET_GRACE_S))
+            return True
+        if now - self.stale_since < STALE_RESET_GRACE_S:
             return True
         auto = guard.health_json(guard.auto_status_url(port=self.port))
         if guard.run_in_progress(auto):
@@ -299,6 +329,7 @@ class Supervisor:
             return True
         log("code changed on disk since build %s (pid %s) — auto-resetting"
             % (health.get("build", "?"), health.get("pid", "?")))
+        self.stale_since = self.stale_seen = None
         self.stop_child()
         if not self.clear_port_holder():
             self.write_report("auto-reset could not free port %d" % self.port)
