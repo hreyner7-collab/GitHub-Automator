@@ -23,8 +23,12 @@ A Python / FastAPI pipeline that turns 3D-print model pages (Thingiverse, Printa
    `POST /upload/makerworld/plan`, which tells you what MakerWorld would refuse without
    opening a browser). MakerWorld asks for two things Creality does not: **at least 3
    photographs of a model you actually printed**, and — for the remix path — a source design
-   that already lives on MakerWorld. The Creality page at `/` publishes to Creality only; the
-   two are joined by nothing but a link in the top bar.
+   that already lives on MakerWorld. Step 0 finds candidates for you: `POST /discover` with
+   `site:"makerworld"` reads MakerWorld's trending/popular/hottest listing in a throwaway
+   headless browser (no login, nothing downloaded) and one click sends that design into the
+   remix source box. There is no auto-publish loop for MakerWorld — finding is research,
+   publishing stays a per-listing decision. The Creality page at `/` publishes to Creality
+   only; the two are joined by nothing but a link in the top bar.
 
 ## What you MUST provide before it will run
 1. **Python 3.10+** installed on your machine.

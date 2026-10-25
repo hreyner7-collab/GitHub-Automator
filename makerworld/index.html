@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MakerWorld Pipeline V1</title>
+<title>MakerWorld Pipeline V2</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root { --bg:#101315; --card:#181d20; --line:#2a3135; --ink:#e8eaed; --dim:#9aa4aa;
@@ -62,12 +62,34 @@
 <body>
 <div class="topbar">
   <h1>MakerWorld <span>Pipeline</span></h1>
-  <span class="build" id="mw-version" title="MakerWorld dashboard version: bumped on every update">V1</span>
+  <span class="build" id="mw-version" title="MakerWorld dashboard version: bumped on every update">V2</span>
   <span class="build" id="build-stamp" title="Which code this server process is running"></span>
   <a href="/">Creality dashboard &rarr;</a>
 </div>
 
 <main>
+<!-- 0 -->
+<div class="card">
+  <h2>0 · Find models to remix</h2>
+  <p class="hint">Reads MakerWorld's own popularity listings (trending / popular / hottest) in a
+  throwaway headless browser — no login, no tab of yours, nothing downloaded or published. Pick
+  one and it drops straight into step 1 as the remix source. A trending model is not automatically
+  remixable: the licence is still checked when it loads, and NoDerivatives or NonCommercial sources
+  are refused there.</p>
+  <div class="row">
+    <select id="disc-count" style="width:auto">
+      <option value="12">Top 12</option>
+      <option value="24" selected>Top 24</option>
+      <option value="40">Top 40</option>
+    </select>
+    <button id="disc-btn" onclick="discoverModels()">Find trending on MakerWorld</button>
+    <input type="text" id="disc-filter" placeholder="filter what came back (e.g. clicker, print)"
+           style="flex:1;min-width:220px" oninput="renderFound()">
+  </div>
+  <div id="disc-status" class="status"></div>
+  <div id="disc-grid" class="grid"></div>
+</div>
+
 <!-- 1 -->
 <div class="card">
   <h2>1 · Source design</h2>
@@ -186,6 +208,77 @@ function _srcImagePaths() {
     ? _src._raw_orig_images : (_src._raw_images || []);
 }
 
+// ── 0 · find ────────────────────────────────────────────────────────────────
+let _found = [];
+
+async function discoverModels() {
+  const btn = document.getElementById('disc-btn');
+  btn.disabled = true;
+  setStatus('disc-status', 'info', 'Reading MakerWorld’s popularity listing in a throwaway '
+    + 'headless browser (no login, about 15 seconds)…');
+  document.getElementById('disc-grid').innerHTML = '';
+  try {
+    const d = await post('/discover', { site: 'makerworld',
+                                        count: parseInt(document.getElementById('disc-count').value, 10) });
+    _found = d.models || [];
+    setStatus('disc-status', _found.length ? 'ok' : 'error',
+      _found.length ? '✓ ' + _found.length + ' trending MakerWorld designs. Click one to load it '
+                    + 'as the remix source.'
+                    : '✗ Nothing came back — MakerWorld changed its listing layout, so the scrape '
+                    + 'has nothing to read. Paste a design URL in step 1 instead.');
+    renderFound();
+  } catch (err) {
+    setStatus('disc-status', 'error', '✗ ' + esc(err.message));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderFound() {
+  const q = document.getElementById('disc-filter').value.trim().toLowerCase();
+  const grid = document.getElementById('disc-grid');
+  grid.innerHTML = '';
+  _found.forEach((m, i) => {
+    if (q && !((m.name || '') + ' ' + (m.url || '')).toLowerCase().includes(q)) return;
+    const card = document.createElement('div');
+    card.className = 'thumb';
+    card.style.cursor = 'pointer';
+    if (m.thumb && String(m.thumb).startsWith('http')) {
+      const img = document.createElement('img');
+      img.src = m.thumb;
+      img.alt = '';
+      img.referrerPolicy = 'no-referrer';
+      card.appendChild(img);
+    } else {
+      const ph = document.createElement('div');
+      ph.className = 'cap';
+      ph.textContent = 'no preview';
+      card.appendChild(ph);
+    }
+    const cap = document.createElement('div');
+    cap.className = 'cap';
+    cap.textContent = (i + 1) + '. ' + (m.name || 'Untitled') + (m.stats ? ' · ' + m.stats : '');
+    card.appendChild(cap);
+    card.addEventListener('click', () => useModel(m));
+    grid.appendChild(card);
+  });
+  if (!grid.children.length) {
+    const p = document.createElement('div');
+    p.className = 'kv';
+    p.textContent = q ? 'Nothing in this batch matches "' + q + '" — try Find again for a new '
+                      + 'sample, or clear the filter.' : '';
+    grid.appendChild(p);
+  }
+}
+
+function useModel(m) {
+  document.getElementById('src-url').value = m.url;
+  document.getElementById('kind').value = 'remix';
+  setStatus('src-status', 'info', 'Loading "' + esc(m.name || '') + '"…');
+  loadSource();
+  document.getElementById('src-url').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 // ── 1 · source ──────────────────────────────────────────────────────────────
 async function loadSource() {
   const url = document.getElementById('src-url').value.trim();
@@ -249,16 +342,32 @@ async function loadFiles() {
 }
 function renderPrints() {
   const box = document.getElementById('print-picks');
-  if (!_files.length) { box.innerHTML = ''; return; }
-  let h = '<div class="grid">';
+  box.innerHTML = '';
+  if (!_files.length) return;
+  const grid = document.createElement('div');
+  grid.className = 'grid';
   _files.forEach(f => {
-    h += '<div class="thumb' + (_prints.has(f.path) ? ' on' : '') + '" onclick="togglePrint(\'' + esc(f.path).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')">'
-       + '<img src="' + esc(f.url) + '" alt=""><div class="cap">' + esc(f.name) + '<br>' + esc(f.modified) + '</div></div>';
+    const t = document.createElement('div');
+    t.className = 'thumb' + (_prints.has(f.path) ? ' on' : '');
+    t.title = f.path;
+    const img = document.createElement('img');
+    img.src = f.url;
+    img.alt = '';
+    t.appendChild(img);
+    const cap = document.createElement('div');
+    cap.className = 'cap';
+    cap.textContent = f.name + ' · ' + f.modified;
+    t.appendChild(cap);
+    t.addEventListener('click', () => {
+      _prints.has(f.path) ? _prints.delete(f.path) : _prints.add(f.path);
+      renderPrints();
+      updatePublish();
+    });
+    grid.appendChild(t);
   });
-  box.innerHTML = h + '</div>';
+  box.appendChild(grid);
   printCount();
 }
-function togglePrint(p) { _prints.has(p) ? _prints.delete(p) : _prints.add(p); renderPrints(); updatePublish(); }
 function printCount() {
   const n = _prints.size, el = document.getElementById('print-count');
   el.className = 'count' + (n >= 3 ? ' met' : '');

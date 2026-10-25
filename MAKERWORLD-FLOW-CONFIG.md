@@ -209,6 +209,7 @@ halves, so the separation cannot rot back into a merged page.
 
 | step on the page | what it calls | what it must not do |
 |---|---|---|
+| 0 · Find models to remix | `POST /discover` with `site:"makerworld"` (trending / popular / hottest, headless, no login) | never fetch, plan or publish by itself — no auto run exists for MakerWorld |
 | 1 · Source design (MakerWorld url) | `POST /fetch` with `edit_images:false` | never the AI re-edit — that is a Creality-side choice |
 | covers grid | the scraped originals (`_raw_orig_images`) | never presented as print photos |
 | 3 · Photographs of your prints | `GET /makerworld/files` → images already in `downloads/` | never fills itself from the gallery |

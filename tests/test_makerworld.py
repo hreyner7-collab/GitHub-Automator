@@ -322,13 +322,27 @@ def test_the_makerworld_page_is_served_at_its_own_address():
 def test_the_makerworld_page_wires_only_makerworld_endpoints():
     html = _page()
     for ep in ("/upload/makerworld/plan", "/upload/makerworld", "/makerworld/files",
-               "/makerworld/published", "/makerworld/forget"):
+               "/makerworld/published", "/makerworld/forget", "/discover"):
         assert ep in html, ep
     # Not the Creality path wearing new labels: no Creality publish, no Creality
     # image re-edit, no Creality auto run, no Creality memory.
     for banned in ("fetch('/upload'", '"/upload"', "/edit-images", "/auto/start",
                    "/published/sync", "crealitycloud"):
         assert banned not in html, banned
+
+
+def test_finding_models_stays_research_on_this_page_too():
+    """Discovery reads a MakerWorld popularity listing and hands the chosen url to
+    step 1. It must not fetch, plan or publish by itself — that is the Creality
+    auto run's shape, and MakerWorld's own guidelines are why it stops here."""
+    html = _page()
+    assert "post('/discover'" in html and "site: 'makerworld'" in html
+    body = re.search(r"async function discoverModels\(\).*?\n\s*function ", html, re.S).group(0)
+    for banned in ("/upload", "/fetch", "/edit-images"):
+        assert banned not in body, banned
+    # the chosen card goes to the remix source box, not to a publisher
+    assert "document.getElementById('src-url').value = m.url" in html
+    assert "loadSource()" in html
 
 
 def test_the_print_photo_assertion_is_what_unlocks_publish():

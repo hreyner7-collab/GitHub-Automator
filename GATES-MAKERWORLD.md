@@ -29,8 +29,8 @@ Baseline: 527 tests passing before this work; the Creality publish path
 
 - [x] G2: MakerWorld's own requirements are refused before a browser opens
   CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py
-  EXPECT: 30 passed
-  EVIDENCE: 2026-10-25, exit 0 — `30 passed, 3 warnings in 2.39s`. Eight
+  EXPECT: 31 passed
+  EVIDENCE: 2026-10-25, exit 0 — `31 passed, 3 warnings in 1.33s`. Eight
   refusal cases each assert the plan blocks (no model file, wrong extension, no cover,
   fewer than 3 print photos, remix with no source, a Thingiverse source under
   `?type=remix`, no name, ND licence). Two more prove the refusal does not touch Chrome:
@@ -76,9 +76,9 @@ Baseline: 527 tests passing before this work; the Creality publish path
 
 - [x] G5: the repair did not break the run (full suite, browser-free)
   CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q
-  EXPECT: 557 passed
-  EVIDENCE: 2026-10-25, exit 0 — `557 passed, 3 warnings in 110.86s` (527 before this work;
-  +30 in tests/test_makerworld.py; the 3 warnings are FastAPI `on_event` deprecations that
+  EXPECT: 558 passed
+  EVIDENCE: 2026-10-25, exit 0 — `558 passed, 3 warnings in 93.78s` (527 before this work;
+  +31 in tests/test_makerworld.py; the 3 warnings are FastAPI `on_event` deprecations that
   predate this work).
 
 - [x] G6: the dashboard serves the build that contains this work and says so
@@ -112,8 +112,8 @@ Baseline: 527 tests passing before this work; the Creality publish path
 
 - [x] G8: MakerWorld has its own dashboard at its own address, and Creality's has none of it
   CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py -k "(page or route) and not step1"
-  EXPECT: 5 passed
-  EVIDENCE: 2026-10-25, exit 0 — `5 passed, 25 deselected in 2.04s`. `makerworld/index.html` is its
+  EXPECT: 6 passed
+  EVIDENCE: 2026-10-25, exit 0 — `6 passed, 25 deselected in 1.31s`. `makerworld/index.html` is its
   own page (`MakerWorld Pipeline V1` in its `<title>`, its own `#mw-version` marker that the
   test requires to agree with it), wired only to `/upload/makerworld*`, `/makerworld/files`,
   `/makerworld/published`, `/makerworld/forget` — and asserted NOT to contain
@@ -129,6 +129,17 @@ Baseline: 527 tests passing before this work; the Creality publish path
   The publish button ships `disabled` and only unlocks on a name + model file + cover + ≥3
   print photos + the assertion tick; `POST /makerworld/forget` with a blank match is a 400,
   never a wipe.
+  Step 0 of the page finds models the way the Creality dashboard does — `POST /discover` with
+  `site:"makerworld"`, which reads MakerWorld's trending/popular/hottest listing in a throwaway
+  headless Chromium (no login, no session of yours, nothing downloaded) and hands the clicked
+  card to the remix source box. A test asserts that function's body contains no `/upload`,
+  `/fetch` or `/edit-images`: finding is research, and there is no auto-publish loop here —
+  the Creality `/auto/start` shape is deliberately absent because MakerWorld's guidelines ban
+  automated manipulation of the platform.
+  OPEN: the discovery scrape itself was not exercised live (AGENTS.md: no page is opened unless
+  asked). The endpoint is the one the Creality dashboard has been using, so the server side is
+  proven; the new client wiring is proven only by the page being served (`GET /makerworld` →
+  V2, three `discover` references) and by the request shape matching `DiscoverRequest`.
 
 <!--
 Notes for whoever works this ledger:
