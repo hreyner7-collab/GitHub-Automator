@@ -107,7 +107,7 @@ def _code_fingerprint() -> str:
     parts = []
     for f in (sorted(root.glob("*.py"))
               + sorted((root / "origin").glob("*.py"))
-              + [root / "creality" / "index.html"]):
+              + [root / "creality" / "index.html", root / "makerworld" / "index.html"]):
         try:
             st = f.stat()
             parts.append("%s:%d:%d" % (f.name, st.st_mtime_ns, st.st_size))
@@ -732,6 +732,58 @@ async def upload_to_makerworld(req: MakerWorldUploadRequest):
     if isinstance(result, dict):
         result.setdefault("platform", "makerworld")
     return result
+
+
+@app.get("/makerworld", response_class=HTMLResponse)
+async def makerworld_dashboard():
+    """The MakerWorld dashboard — its own page at its own address, its own
+    wording, its own memory. The Creality dashboard at / does not mention this
+    one and neither publishes through the other's rules."""
+    return HTMLResponse((BASE_DIR / "makerworld" / "index.html").read_text(encoding="utf-8"))
+
+
+@app.get("/makerworld/files")
+async def makerworld_files():
+    """Images already sitting in downloads/, newest first, for the print-photo
+    picker. MakerWorld wants photographs of a print you made, and those come
+    from your own camera roll, not from the scrape — so the page can only offer
+    files that are really on disk and let you say which ones are prints."""
+    out = []
+    try:
+        cands = sorted((p for p in DOWNLOADS_DIR.iterdir()
+                        if p.suffix.lower() in makerworld_flow.IMAGE_ACCEPT),
+                       key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        cands = []
+    for p in cands[:300]:
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        out.append({"name": p.name, "path": str(p), "url": "/file/" + p.name,
+                    "bytes": st.st_size,
+                    "modified": time.strftime("%Y-%m-%d %H:%M",
+                                              time.localtime(st.st_mtime))})
+    return {"downloads_dir": str(DOWNLOADS_DIR), "files": out}
+
+
+@app.get("/makerworld/published")
+async def makerworld_published():
+    """What the MakerWorld memory holds. Separate file, separate page — the
+    Creality /published list is not this and never locks a MakerWorld publish."""
+    return makerworld_ledger.summary()
+
+
+@app.post("/makerworld/forget")
+async def makerworld_forget(req: ForgetRequest):
+    """You deleted the listing (or it was a dry run gone wrong): allow exactly
+    that one model to be published again. Everything else stays blocked."""
+    if not (req.match or "").strip():
+        raise HTTPException(status_code=400, detail=
+            "Name the listing to forget — its MakerWorld url, design id or model name.")
+    dropped = makerworld_ledger.forget(match=req.match.strip())
+    dropped.update({"count": makerworld_ledger.count()})
+    return dropped
 
 
 # ── Auto: find models, then publish each one ────────────────────────────────

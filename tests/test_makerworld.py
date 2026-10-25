@@ -7,6 +7,7 @@ import ast
 import asyncio
 import json
 import pathlib
+import re
 
 import pytest
 
@@ -294,3 +295,90 @@ def test_every_control_the_driver_reaches_for_is_defined_in_it():
     # negative control: the same check must catch a driver that reads a constant
     # nobody defined.
     assert _undefined_upper_names("A = 1\nprint(A, B)\n") == {"B"}
+
+
+# ── its own dashboard, at its own address ───────────────────────────────────
+ROOT = pathlib.Path(mw.__file__).resolve().parent
+PAGE = ROOT / "makerworld" / "index.html"
+CXY_PAGE = ROOT / "creality" / "index.html"
+
+
+def _page() -> str:
+    assert PAGE.is_file(), "the MakerWorld dashboard is its own file, not a card in Creality's"
+    return PAGE.read_text(encoding="utf-8")
+
+
+def test_the_makerworld_page_is_served_at_its_own_address():
+    import main
+    src = pathlib.Path(main.__file__).read_text(encoding="utf-8")
+    assert '@app.get("/makerworld", response_class=HTMLResponse)' in src
+    assert '"makerworld" / "index.html"' in src
+    html = _page()
+    m = re.search(r"<title>MakerWorld Pipeline (V\d+)</title>", html)
+    assert m, "the page carries MakerWorld's own branding, not the Creality title"
+    assert 'id="mw-version"' in html and ">%s</span>" % m.group(1) in html
+
+
+def test_the_makerworld_page_wires_only_makerworld_endpoints():
+    html = _page()
+    for ep in ("/upload/makerworld/plan", "/upload/makerworld", "/makerworld/files",
+               "/makerworld/published", "/makerworld/forget"):
+        assert ep in html, ep
+    # Not the Creality path wearing new labels: no Creality publish, no Creality
+    # image re-edit, no Creality auto run, no Creality memory.
+    for banned in ("fetch('/upload'", '"/upload"', "/edit-images", "/auto/start",
+                   "/published/sync", "crealitycloud"):
+        assert banned not in html, banned
+
+
+def test_the_print_photo_assertion_is_what_unlocks_publish():
+    html = _page()
+    assert 'id="assert-prints"' in html
+    assert "print_photos.length >= 3" in html
+    assert '<button class="go" id="pub-btn" onclick="publish()" disabled>' in html
+    # the scraped gallery is offered as covers only — never as print photos
+    assert "_raw_orig_images" in html and "print_photos: []" not in html
+
+
+def test_the_creality_page_no_longer_publishes_to_makerworld():
+    html = CXY_PAGE.read_text(encoding="utf-8")
+    for banned in ("/upload/makerworld", "makerworld-section", "mw-real-photos",
+                   "_mwPayload", "print_photos"):
+        assert banned not in html, banned
+    assert 'href="/makerworld"' in html      # one link between them, nothing more
+
+
+def test_the_files_route_lists_only_images_already_in_downloads(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    import main
+    (tmp_path / "print1.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    (tmp_path / "print2.jpg").write_bytes(b"\xff\xd8\xff")
+    (tmp_path / "model.stl").write_text("solid x\nendsolid x\n", encoding="ascii")
+    (tmp_path / "notes.txt").write_text("not an image", encoding="utf-8")
+    monkeypatch.setattr(main, "DOWNLOADS_DIR", tmp_path)
+    d = TestClient(main.app).get("/makerworld/files").json()
+    assert sorted(f["name"] for f in d["files"]) == ["print1.png", "print2.jpg"]
+    for f in d["files"]:
+        assert pathlib.Path(f["path"]).is_absolute()
+        assert pathlib.Path(f["path"]).parent == tmp_path
+        assert f["url"] == "/file/" + f["name"]
+
+
+def test_the_memory_route_shows_the_makerworld_file_and_forget_never_guesses(
+        isolated_ledger, monkeypatch):
+    from fastapi.testclient import TestClient
+    import main
+    monkeypatch.setattr(main, "DOWNLOADS_DIR", isolated_ledger.parent)
+    mwl.record(name="Squishy Clicker", outcome="published",
+               published_url="https://makerworld.com/en/models/7-clicker")
+    mwl.record(name="The One That Failed", outcome="failed")
+    c = TestClient(main.app)
+    d = c.get("/makerworld/published").json()
+    assert d["path"] == str(isolated_ledger)
+    assert (d["count"], d["published"], d["retryable"]) == (2, 1, 1)
+    assert d["entries"][0]["published_url"] == "https://makerworld.com/en/models/7-clicker"
+    # an empty match must not be treated as "forget everything"
+    assert c.post("/makerworld/forget", json={"match": "   "}).status_code == 400
+    assert mwl.count() == 2
+    assert c.post("/makerworld/forget", json={"match": "Squishy Clicker"}).json()["removed"] == 1
+    assert mwl.count() == 1

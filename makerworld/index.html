@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MakerWorld Pipeline V1</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --bg:#101315; --card:#181d20; --line:#2a3135; --ink:#e8eaed; --dim:#9aa4aa;
+          --ok:#4caf50; --bad:#ef5350; --warn:#ffb300; --accent:#37a0ff; }
+  body { background:var(--bg); color:var(--ink); font:15px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif;
+         padding:0 0 60px; }
+  .topbar { display:flex; align-items:center; gap:12px; padding:14px 22px;
+            background:#0c0f11; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+  .topbar h1 { font-size:1.15rem; letter-spacing:.3px; }
+  .topbar h1 span { color:var(--accent); }
+  .build { font-size:.72rem; color:var(--dim); border:1px solid var(--line); border-radius:999px;
+           padding:2px 9px; }
+  .topbar a { margin-left:auto; font-size:.78rem; color:var(--dim); text-decoration:none;
+              border:1px solid var(--line); border-radius:6px; padding:5px 10px; }
+  .topbar a:hover { color:var(--ink); border-color:var(--accent); }
+  main { max-width:1080px; margin:0 auto; padding:18px; display:grid; gap:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
+  .card h2 { font-size:.95rem; text-transform:uppercase; letter-spacing:.7px; color:var(--accent);
+             margin-bottom:10px; }
+  .card p.hint { font-size:.8rem; color:var(--dim); margin-bottom:10px; }
+  label { font-size:.8rem; color:var(--dim); display:block; margin:10px 0 4px; }
+  input[type=text], textarea, select { width:100%; background:#0e1214; color:var(--ink);
+    border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; }
+  textarea { min-height:84px; resize:vertical; }
+  button { background:var(--accent); color:#04121c; border:0; border-radius:6px;
+           padding:9px 14px; font:inherit; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); font-weight:400; }
+  button.go { background:var(--ok); color:#06210a; }
+  button:disabled { opacity:.45; cursor:default; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .status { margin-top:12px; font-size:.85rem; padding:10px 12px; border-radius:8px; display:none;
+            white-space:pre-wrap; word-break:break-word; }
+  .status.info { display:block; background:#12202a; border:1px solid #1f3a4d; }
+  .status.ok { display:block; background:#12251a; border:1px solid #235c31; }
+  .status.error { display:block; background:#2a1416; border:1px solid #6d2b2f; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); gap:10px; margin-top:12px; }
+  .thumb { position:relative; border:2px solid transparent; border-radius:8px; overflow:hidden;
+           cursor:pointer; background:#0e1214; }
+  .thumb img { width:100%; height:100px; object-fit:cover; display:block; }
+  .thumb.on { border-color:var(--accent); }
+  .thumb .cap { font-size:.66rem; color:var(--dim); padding:4px 6px; overflow:hidden;
+                text-overflow:ellipsis; white-space:nowrap; }
+  .kv { font-size:.82rem; color:var(--dim); margin-top:8px; }
+  .kv b { color:var(--ink); font-weight:600; }
+  .bad { color:var(--bad); } .ok { color:var(--ok); } .warn { color:var(--warn); }
+  table { width:100%; border-collapse:collapse; font-size:.8rem; margin-top:10px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-weight:500; text-transform:uppercase; letter-spacing:.5px; font-size:.68rem; }
+  .tick { display:flex; gap:8px; align-items:flex-start; font-size:.82rem; color:var(--ink);
+          background:#12181b; border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-top:12px; }
+  .tick input { margin-top:3px; }
+  .count { font-size:.75rem; color:var(--warn); margin-top:6px; }
+  .count.met { color:var(--ok); }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>MakerWorld <span>Pipeline</span></h1>
+  <span class="build" id="mw-version" title="MakerWorld dashboard version: bumped on every update">V1</span>
+  <span class="build" id="build-stamp" title="Which code this server process is running"></span>
+  <a href="/">Creality dashboard &rarr;</a>
+</div>
+
+<main>
+<!-- 1 -->
+<div class="card">
+  <h2>1 · Source design</h2>
+  <p class="hint">A remix on MakerWorld must name a source that is <b>already a design on
+  MakerWorld</b> — that is the site's own rule, measured from the Model Origin box. A
+  Thingiverse or Printables model can only go out as an original listing here.</p>
+  <div class="row">
+    <input type="text" id="src-url" placeholder="https://makerworld.com/en/models/2964241-gt-r-r34"
+           style="flex:1;min-width:280px">
+    <select id="kind" style="width:auto">
+      <option value="remix">Remix (link the source)</option>
+      <option value="original">Original (no source link)</option>
+    </select>
+    <button class="ghost" id="load-btn" onclick="loadSource()">Load</button>
+  </div>
+  <div id="src-status" class="status"></div>
+  <div id="src-info"></div>
+  <div id="cover-picks"></div>
+</div>
+
+<!-- 2 -->
+<div class="card">
+  <h2>2 · Listing</h2>
+  <label>Model Name <span class="kv" style="display:inline" id="name-count"></span></label>
+  <input type="text" id="name" oninput="nameCount()" maxlength="50">
+  <label>Description</label>
+  <textarea id="desc" placeholder="What you changed and why. The source link and the remix statement are added automatically."></textarea>
+  <div class="row" style="margin-top:10px">
+    <div style="flex:1;min-width:220px">
+      <label>Tags (comma separated)</label>
+      <input type="text" id="tags" placeholder="clicker, fidget, printed">
+    </div>
+    <div style="flex:1;min-width:220px">
+      <label>Category (optional keyword)</label>
+      <input type="text" id="category" placeholder="Toys &amp; Games">
+    </div>
+  </div>
+  <div class="kv" id="lic-line">Licence: nothing loaded yet.</div>
+</div>
+
+<!-- 3 -->
+<div class="card">
+  <h2>3 · Photographs of your prints</h2>
+  <p class="hint">MakerWorld requires <b>at least 3 photos of the model you actually printed</b>,
+  covering 3 views, and says so on the form. The scraped gallery pictures and this pipeline's
+  edited renders are covers, not print photos — so they are never sent here. Pick the files that
+  came off your camera.</p>
+  <button class="ghost" onclick="loadFiles()">List images in downloads/</button>
+  <div id="files-status" class="status"></div>
+  <div id="print-picks"></div>
+  <div class="count" id="print-count">0 of 3 selected</div>
+  <label class="tick">
+    <input type="checkbox" id="assert-prints">
+    <span>Every photo above is a photograph of a print I made myself, and I have the right to
+    post them. Without this tick nothing is sent to MakerWorld.</span>
+  </label>
+</div>
+
+<!-- 4 -->
+<div class="card">
+  <h2>4 · Check, then publish</h2>
+  <p class="hint">Check reads MakerWorld's measured requirements only — no browser, no tab, no
+  draft. Publish opens the wizard in your own logged-in Chrome, fills it, and stops if any
+  read-back disagrees with what the source licence says.</p>
+  <div class="row">
+    <button class="ghost" id="plan-btn" onclick="checkPlan()">Check MakerWorld plan</button>
+    <button class="go" id="pub-btn" onclick="publish()" disabled>Publish to MakerWorld</button>
+  </div>
+  <div id="plan-status" class="status"></div>
+  <div id="pub-status" class="status"></div>
+</div>
+
+<!-- 5 -->
+<div class="card">
+  <h2>5 · What this account already put on MakerWorld</h2>
+  <p class="hint">Its own memory file, separate from the Creality one: a model published here is
+  never published here twice, and that rule does not touch Creality's list.</p>
+  <button class="ghost" onclick="refreshMemory()">Refresh</button>
+  <div id="mem-status" class="status"></div>
+  <div id="mem-list"></div>
+  <div class="row" style="margin-top:12px">
+    <input type="text" id="forget-match" placeholder="forget one: listing url, design id or model name"
+           style="flex:1;min-width:260px">
+    <button class="ghost" onclick="forgetOne()">Forget that one</button>
+  </div>
+</div>
+</main>
+
+<script>
+'use strict';
+let _src = null;                 // what /fetch returned for the source design
+let _covers = new Set();         // indices into _srcImagePaths
+let _prints = new Set();         // absolute paths from /makerworld/files
+let _files = [];
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function setStatus(id, kind, html) {
+  const el = document.getElementById(id);
+  el.className = 'status ' + kind;
+  el.innerHTML = html;
+}
+async function post(url, body) {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                               body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.detail || (url + ' failed with HTTP ' + r.status));
+  return d;
+}
+
+function _srcImagePaths() {
+  if (!_src) return [];
+  return (_src._raw_orig_images && _src._raw_orig_images.length)
+    ? _src._raw_orig_images : (_src._raw_images || []);
+}
+
+// ── 1 · source ──────────────────────────────────────────────────────────────
+async function loadSource() {
+  const url = document.getElementById('src-url').value.trim();
+  if (!url) { setStatus('src-status', 'error', '✗ Paste the design URL first.'); return; }
+  setStatus('src-status', 'info', 'Scraping that MakerWorld page (this opens a background browser render)…');
+  document.getElementById('load-btn').disabled = true;
+  try {
+    // edit_images:false — MakerWorld wants the creator's own pictures as covers,
+    // and the AI re-edit is a Creality-side choice that must not follow here.
+    _src = await post('/fetch', { url: url, edit_images: false });
+    _covers = new Set();
+    setStatus('src-status', 'ok', '✓ Loaded. Tick the pictures to use as covers.');
+    const lic = (_src.license || {}).raw || '';
+    document.getElementById('name').value = (_src.name || '').slice(0, 50);
+    document.getElementById('desc').value = (_src.description || '').slice(0, 2000);
+    document.getElementById('lic-line').innerHTML = 'Source licence: <b>' + (esc(lic) || 'none stated')
+      + '</b> · author <b>' + (esc(_src.author) || '?') + '</b>'
+      + (/(no derivatives|\bnd\b)/i.test(lic) ? '<br><span class="bad">✗ A NoDerivatives source cannot be remixed — MakerWorld refuses it and says so on the form.</span>' : '')
+      + (/(nc|noncommercial|non-commercial)/i.test(lic) ? '<br><span class="bad">✗ NonCommercial source: this account pays creators, so the pipeline refuses these.</span>' : '');
+    nameCount();
+    renderCovers();
+    updatePublish();
+  } catch (err) {
+    setStatus('src-status', 'error', '✗ ' + esc(err.message));
+  } finally {
+    document.getElementById('load-btn').disabled = false;
+  }
+}
+
+function renderCovers() {
+  const paths = _srcImagePaths();
+  const box = document.getElementById('cover-picks');
+  if (!paths.length) { box.innerHTML = '<div class="kv bad">No pictures came off that page — MakerWorld needs cover images, so this listing cannot be published until you add some.</div>'; return; }
+  let h = '<div class="kv">Cover candidates (' + paths.length + ') — the form has two cover slots and both take the first picture you tick:</div><div class="grid">';
+  paths.forEach((p, i) => {
+    h += '<div class="thumb' + (_covers.has(i) ? ' on' : '') + '" onclick="toggleCover(' + i + ')">'
+       + '<img src="/file/' + encodeURIComponent((p.split(/[\\/]/).pop())) + '" alt="">'
+       + '<div class="cap">' + esc(p.split(/[\\/]/).pop()) + '</div></div>';
+  });
+  box.innerHTML = h + '</div>';
+}
+function toggleCover(i) { _covers.has(i) ? _covers.delete(i) : _covers.add(i); renderCovers(); updatePublish(); }
+
+function nameCount() {
+  const v = document.getElementById('name').value;
+  document.getElementById('name-count').innerHTML = v.length + '/50'
+    + (v.length > 47 ? ' <span class="warn">MakerWorld cuts the name at 50</span>' : '');
+}
+
+// ── 3 · print photos ────────────────────────────────────────────────────────
+async function loadFiles() {
+  setStatus('files-status', 'info', 'Reading downloads/…');
+  try {
+    const d = await (await fetch('/makerworld/files')).json();
+    _files = d.files || [];
+    setStatus('files-status', _files.length ? 'ok' : 'error',
+      _files.length ? '✓ ' + _files.length + ' image file(s) in ' + esc(d.downloads_dir)
+                    : '✗ No images in downloads/ yet. Put the photos of your prints there first.');
+    renderPrints();
+  } catch (err) { setStatus('files-status', 'error', '✗ ' + esc(err.message)); }
+}
+function renderPrints() {
+  const box = document.getElementById('print-picks');
+  if (!_files.length) { box.innerHTML = ''; return; }
+  let h = '<div class="grid">';
+  _files.forEach(f => {
+    h += '<div class="thumb' + (_prints.has(f.path) ? ' on' : '') + '" onclick="togglePrint(\'' + esc(f.path).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')">'
+       + '<img src="' + esc(f.url) + '" alt=""><div class="cap">' + esc(f.name) + '<br>' + esc(f.modified) + '</div></div>';
+  });
+  box.innerHTML = h + '</div>';
+  printCount();
+}
+function togglePrint(p) { _prints.has(p) ? _prints.delete(p) : _prints.add(p); renderPrints(); updatePublish(); }
+function printCount() {
+  const n = _prints.size, el = document.getElementById('print-count');
+  el.className = 'count' + (n >= 3 ? ' met' : '');
+  el.textContent = n >= 3 ? n + ' print photos selected — MakerWorld wants 3 or more, covering 3 views'
+                          : n + ' of 3 selected';
+}
+document.getElementById('assert-prints').addEventListener('change', updatePublish);
+
+// ── payload + 4 · check/publish ─────────────────────────────────────────────
+function _payload() {
+  const paths = _srcImagePaths();
+  const picked = [..._covers].sort((a, b) => a - b).map(i => paths[i]).filter(Boolean);
+  const url = document.getElementById('src-url').value.trim();
+  return {
+    name: document.getElementById('name').value.trim(),
+    description: document.getElementById('desc').value.trim(),
+    stl_path: (_src && _src.stl_path) || '',
+    image_paths: picked,
+    print_photos: document.getElementById('assert-prints').checked ? [..._prints] : [],
+    source_url: url,
+    remix_source_url: url,
+    license_raw: (_src && _src.license && _src.license.raw) || '',
+    tags: document.getElementById('tags').value.split(',').map(s => s.trim()).filter(Boolean),
+    category: document.getElementById('category').value.trim(),
+    kind: document.getElementById('kind').value,
+    dry_run: false
+  };
+}
+
+function updatePublish() {
+  const p = _payload();
+  const ready = !!p.name && !!p.stl_path && p.image_paths.length > 0
+    && p.print_photos.length >= 3 && document.getElementById('assert-prints').checked
+    && (p.kind !== 'remix' || /makerworld\.com\/.*\/models\/\d+/i.test(p.remix_source_url));
+  document.getElementById('pub-btn').disabled = !ready;
+  document.getElementById('pub-btn').title = ready ? ''
+    : 'Needs a name, a model file, a cover, 3 print photos with the tick, and (for a remix) a MakerWorld source URL';
+}
+
+function planHtml(d) {
+  let h = d.ok ? '✓ MakerWorld will take this listing as it stands.'
+               : '✗ MakerWorld would refuse this listing right now.';
+  (d.blockers || []).forEach(b => { h += '\n  • ' + esc(b); });
+  (d.warnings || []).forEach(w => { h += '\n  ⚠ ' + esc(w); });
+  const pl = d.plan || {};
+  if (pl.name) {
+    h += '\n\nName "' + esc(pl.name) + '" (' + pl.name.length + '/50) · ' + (pl.covers || []).length
+      + ' cover(s) · ' + (pl.print_photos || []).length + ' print photo(s) · licence '
+      + esc(((pl.license || {}).code || 'cc by').toUpperCase());
+  }
+  return h;
+}
+
+async function checkPlan() {
+  setStatus('plan-status', 'info', 'Checking MakerWorld’s measured requirements (nothing opens)…');
+  try {
+    const d = await post('/upload/makerworld/plan', _payload());
+    setStatus('plan-status', d.ok ? 'ok' : 'error', planHtml(d));
+  } catch (err) { setStatus('plan-status', 'error', '✗ ' + esc(err.message)); }
+}
+
+async function publish() {
+  const btn = document.getElementById('pub-btn');
+  btn.disabled = true;
+  setStatus('pub-status', 'info', 'Opening the MakerWorld wizard in your Chrome and filling it… '
+    + 'this takes a minute. Do not touch that tab while it runs.');
+  try {
+    const d = await post('/upload/makerworld', _payload());
+    const v = d.verify || {};
+    let h = (d.success ? '✓ ' : '✗ ') + esc(d.message || d.error || 'finished');
+    if (v.draft_id) h += '\n Draft ' + esc(v.draft_id);
+    if (d.url) h += '\n ' + esc(d.url);
+    if (v.license) h += '\n Licence MakerWorld renders: ' + esc(v.license.read_back || 'nothing')
+      + ' (source ' + esc(((v.license.code) || '?').toUpperCase()) + ')';
+    if (v.origin) h += '\n Source row picked: ' + esc((v.origin.rows || [])[v.origin.picked] || 'none')
+      + (v.origin.registered ? ' — registered' : ' — NOT registered');
+    if (v.real_photos) h += '\n Print photos on the form: ' + esc(JSON.stringify((v.real_photos || {}).counter || '—'));
+    setStatus('pub-status', d.success ? 'ok' : 'error', h);
+    if (d.success) refreshMemory();
+  } catch (err) {
+    setStatus('pub-status', 'error', '✗ ' + esc(err.message));
+  } finally {
+    updatePublish();
+  }
+}
+
+// ── 5 · memory ──────────────────────────────────────────────────────────────
+async function refreshMemory() {
+  try {
+    const d = await (await fetch('/makerworld/published')).json();
+    setStatus('mem-status', 'ok', '✓ ' + d.published + ' published · ' + d.retryable
+      + ' recorded-but-retryable · file ' + esc(d.path));
+    const rows = (d.entries || []).map(e => '<tr><td>' + esc(e.name || '?')
+      + '<br><span class="kv">' + esc(e.recorded_at) + '</span></td><td>'
+      + (e.published_url ? '<a href="' + esc(e.published_url) + '" target="_blank" style="color:#7fc4ff">'
+                         + esc(e.published_url.replace('https://makerworld.com', '')) + '</a>' : '—')
+      + '</td><td class="' + (e.outcome === 'published' ? 'ok' : 'warn') + '">' + esc(e.outcome)
+      + '</td></tr>').join('');
+    document.getElementById('mem-list').innerHTML = rows
+      ? '<table><tr><th>Model</th><th>Listing</th><th>State</th></tr>' + rows + '</table>'
+      : '<div class="kv">Nothing published to MakerWorld from this pipeline yet.</div>';
+  } catch (err) { setStatus('mem-status', 'error', '✗ ' + esc(err.message)); }
+}
+
+async function forgetOne() {
+  const m = document.getElementById('forget-match').value.trim();
+  if (!m) { setStatus('mem-status', 'error', '✗ Name the listing to forget.'); return; }
+  try {
+    const d = await post('/makerworld/forget', { match: m });
+    setStatus('mem-status', d.removed ? 'ok' : 'info', (d.removed ? '✓ Forgot ' + d.removed
+      + ' entry — it may be published again.' : 'Nothing matched "' + esc(m) + '".')
+      + ' ' + d.count + ' still remembered.');
+    document.getElementById('forget-match').value = '';
+    refreshMemory();
+  } catch (err) { setStatus('mem-status', 'error', '✗ ' + esc(err.message)); }
+}
+
+// ── boot ────────────────────────────────────────────────────────────────────
+(async function () {
+  try {
+    const h = await (await fetch('/health')).json();
+    document.getElementById('build-stamp').textContent = h.build + (h.build_is_current ? '' : ' (stale — restart to load new code)');
+  } catch (e) { document.getElementById('build-stamp').textContent = 'build ?'; }
+  nameCount();
+  refreshMemory();
+})();
+</script>
+</body>
+</html>

@@ -13,14 +13,18 @@ A Python / FastAPI pipeline that turns 3D-print model pages (Thingiverse, Printa
    - refuses to save any composite that fails its built-in sharpness/color QA.
    You then tick exactly which edited images you want to upload.
 3. **Publish** — drives your real Chrome (via CDP, `--remote-debugging-port=9222`) to fill the Creality Cloud upload form and submit.
-4. **Publish to MakerWorld** (added 2026-10-25) — the same listing, the other platform, kept
-   completely separate: its own driver (`makerworld_uploader.py`), its own measured flow map
+4. **MakerWorld — its own dashboard at <http://127.0.0.1:8000/makerworld>** (added 2026-10-25)
+   — the other platform, kept completely separate: its own page
+   (`makerworld/index.html`, `MakerWorld Pipeline V…`), its own driver
+   (`makerworld_uploader.py`), its own measured flow map
    (`MAKERWORLD-FLOW-CONFIG.md`), its own "already published" memory
    (`artifacts/makerworld_published.json`) and its own routes (`POST /upload/makerworld`,
-   plus `POST /upload/makerworld/plan`, which tells you what MakerWorld would refuse without
+   `GET /makerworld/files`, `GET|POST /makerworld/published|forget`, plus
+   `POST /upload/makerworld/plan`, which tells you what MakerWorld would refuse without
    opening a browser). MakerWorld asks for two things Creality does not: **at least 3
    photographs of a model you actually printed**, and — for the remix path — a source design
-   that already lives on MakerWorld.
+   that already lives on MakerWorld. The Creality page at `/` publishes to Creality only; the
+   two are joined by nothing but a link in the top bar.
 
 ## What you MUST provide before it will run
 1. **Python 3.10+** installed on your machine.
@@ -89,6 +93,7 @@ not on the dashboard on purpose, so nothing there can unlock a model by accident
 - `makerworld_uploader.py` — MakerWorld upload via the same Chrome CDP (separate driver)
 - `makerworld_flow.py` — MakerWorld's measured field names, limits and licence plan
 - `makerworld_ledger.py` — permanent "already on MakerWorld" memory (separate file)
+- `makerworld/index.html` — the MakerWorld dashboard, served at `/makerworld` (its own page)
 - `MAKERWORLD-FLOW-CONFIG.md` · `GATES-MAKERWORLD.md` — the measured flow map and its gates
 - `creality/index.html` — dashboard UI
 - `PLAN.md` — runbook + verification plan

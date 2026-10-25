@@ -142,7 +142,8 @@ def describe(hit: dict) -> str:
 
 def forget(*, match: str = "") -> dict:
     """Make one entry publishable again — by listing url, design id, source url
-    or name. Deliberately not wired to the dashboard."""
+    or name. This is the only unlock, and the MakerWorld dashboard asks for it
+    deliberately (the Forget button) rather than offering it as a retry."""
     m = _norm_url(match) or _name_key(match)
     if not m:
         return {"removed": 0}
@@ -164,3 +165,25 @@ def forget(*, match: str = "") -> dict:
 
 def all_entries() -> list[dict]:
     return _load()
+
+
+def count() -> int:
+    return len(_load())
+
+
+def summary(limit: int = 200) -> dict:
+    """What this memory holds, for the MakerWorld dashboard's own panel. It is a
+    different file from the Creality ledger, and the path is shown so the two can
+    never be confused by whoever reads the screen."""
+    entries = _load()
+    published = [e for e in entries if e.get("outcome") == "published"]
+    newest = sorted(entries, key=lambda e: e.get("recorded_at") or "", reverse=True)
+    return {"path": LEDGER_PATH, "count": len(entries),
+            "published": len(published), "retryable": len(entries) - len(published),
+            "entries": [{"name": e.get("name") or "", "author": e.get("author") or "",
+                         "outcome": e.get("outcome") or "",
+                         "published_url": e.get("published_url") or "",
+                         "source_url": e.get("source_url") or "",
+                         "design_ids": sorted((e.get("identity") or {}).get("design_ids") or []),
+                         "recorded_at": e.get("recorded_at") or ""}
+                        for e in newest[:limit]]}

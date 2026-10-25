@@ -195,5 +195,28 @@ account-shaped artefact ever created was the probe draft, and it is deleted.
 - `MAKERWORLD_NO_SUBMIT=1` — fill every field, never press `Publish`, leave the
   wizard open for a human, screenshot to `downloads/_shots/mw_before_submit.png`.
 - `POST /upload/makerworld/plan` — the measured requirements checked with **no
-  browser at all**; this is what the dashboard's "Check MakerWorld plan" button
-  calls.
+  browser at all**; this is what the MakerWorld dashboard's "Check MakerWorld plan"
+  button calls.
+
+## The dashboard is its own page: `/makerworld`
+
+`makerworld/index.html`, served by `GET /makerworld` — its own title
+(`MakerWorld Pipeline V<n>`, bumped on every update like Creality's marker), its own
+layout, its own memory panel. The Creality dashboard at `/` carries no MakerWorld
+publish markup at all: the card that briefly lived there is gone and the only thing
+linking the two pages is one topbar href. `tests/test_makerworld.py` asserts both
+halves, so the separation cannot rot back into a merged page.
+
+| step on the page | what it calls | what it must not do |
+|---|---|---|
+| 1 · Source design (MakerWorld url) | `POST /fetch` with `edit_images:false` | never the AI re-edit — that is a Creality-side choice |
+| covers grid | the scraped originals (`_raw_orig_images`) | never presented as print photos |
+| 3 · Photographs of your prints | `GET /makerworld/files` → images already in `downloads/` | never fills itself from the gallery |
+| 4 · Check | `POST /upload/makerworld/plan` | opens no browser, creates no draft |
+| 4 · Publish (starts disabled) | `POST /upload/makerworld` | unlocks only with a name, a model file, a cover, ≥3 print photos **and** the assertion tick |
+| 5 · Memory | `GET /makerworld/published`, `POST /makerworld/forget` | never reads or writes Creality's `published_models.json` |
+
+The Publish button's lock is the measured rule, not a courtesy: MakerWorld's form
+says "Upload ≥3 photos of the printed model, covering 3 views", so a listing that
+cannot satisfy it is not offered. Forget needs a name, url or design id — an empty
+match is a 400, never "forget everything".

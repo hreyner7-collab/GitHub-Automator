@@ -1,8 +1,9 @@
 # Gates: publish to MakerWorld, learned from MakerWorld, without disturbing Creality
 
 OWNS: makerworld_flow.py, makerworld_ledger.py, makerworld_uploader.py,
-scripts/check_mw_provenance.py, MAKERWORLD-STUDY/, MAKERWORLD-FLOW-CONFIG.md,
-GATES-MAKERWORLD.md, main.py (two new routes), creality/index.html (one new card),
+makerworld/index.html, scripts/check_mw_provenance.py, MAKERWORLD-STUDY/,
+MAKERWORLD-FLOW-CONFIG.md, GATES-MAKERWORLD.md, main.py (its routes),
+creality/index.html (MakerWorld markup removed, marker bumped),
 tests/test_makerworld.py, tests/test_originals_dashboard.py (de-pinned version marker)
 
 Scope: give the pipeline a second publish target — MakerWorld — whose every
@@ -28,8 +29,8 @@ Baseline: 527 tests passing before this work; the Creality publish path
 
 - [x] G2: MakerWorld's own requirements are refused before a browser opens
   CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py
-  EXPECT: 24 passed
-  EVIDENCE: 2026-10-25, exit 0 — `24 passed in 0.27s`. Eight
+  EXPECT: 30 passed
+  EVIDENCE: 2026-10-25, exit 0 — `30 passed, 3 warnings in 2.39s`. Eight
   refusal cases each assert the plan blocks (no model file, wrong extension, no cover,
   fewer than 3 print photos, remix with no source, a Thingiverse source under
   `?type=remix`, no name, ND licence). Two more prove the refusal does not touch Chrome:
@@ -41,7 +42,7 @@ Baseline: 527 tests passing before this work; the Creality publish path
 - [x] G2b: no control the driver reaches for is undefined — checked without a browser
   CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py -k "driver or defined or control"
   EXPECT: 2 passed
-  EVIDENCE: 2026-10-25, exit 0 — `2 passed, 22 deselected in 0.18s`. Rewriting the Model
+  EVIDENCE: 2026-10-25, exit 0 — `2 passed, 28 deselected in 0.57s`. Rewriting the Model
   Origin block left it calling four JS constants (`SOURCE_ROW_SELECTOR`, `SOURCE_ROWS_JS`,
   `SOURCE_ROW_CLICK_JS`, `ORIGIN_STATE_JS`) that were never defined: a NameError that only
   fires inside the live wizard, after a draft already exists. The test parses the driver
@@ -54,8 +55,10 @@ Baseline: 527 tests passing before this work; the Creality publish path
 - [x] G3: the pipeline does not publish the same model to MakerWorld twice, and that
       memory is not the Creality one
   CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py -k "ledger or memory or retryable or unlock or identities"
-  EXPECT: 4 passed
-  EVIDENCE: 2026-10-25, exit 0 — `4 passed, 20 deselected in 0.14s`. A MakerWorld listing is matched by source URL, listing URL,
+  EXPECT: 6 passed
+  EVIDENCE: 2026-10-25, exit 0 — `6 passed, 24 deselected in 1.91s` (two of the six are the
+  dashboard's own memory route, which reads and unlocks this file and never the Creality
+  one). A MakerWorld listing is matched by source URL, listing URL,
   numeric design id, name+designer or the model file's sha256; `outcome: "failed"` stays
   retryable while `published` locks; `forget()` is the only unlock. The separation test
   asserts `ledger.ledger_path()` differs from the MakerWorld file and that a MakerWorld
@@ -73,9 +76,9 @@ Baseline: 527 tests passing before this work; the Creality publish path
 
 - [x] G5: the repair did not break the run (full suite, browser-free)
   CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q
-  EXPECT: 551 passed
-  EVIDENCE: 2026-10-25, exit 0 — `551 passed, 3 warnings in 98.77s` (527 before; +24 in
-  tests/test_makerworld.py; the 3 warnings are FastAPI `on_event` deprecations that
+  EXPECT: 557 passed
+  EVIDENCE: 2026-10-25, exit 0 — `557 passed, 3 warnings in 110.86s` (527 before this work;
+  +30 in tests/test_makerworld.py; the 3 warnings are FastAPI `on_event` deprecations that
   predate this work).
 
 - [x] G6: the dashboard serves the build that contains this work and says so
@@ -106,6 +109,26 @@ Baseline: 527 tests passing before this work; the Creality publish path
   than clicking an unknown row), and nothing publishes until the Model Origin block is
   re-read and found to name the source; success is a design id in
   the URL, not a toast.
+
+- [x] G8: MakerWorld has its own dashboard at its own address, and Creality's has none of it
+  CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py -k "(page or route) and not step1"
+  EXPECT: 5 passed
+  EVIDENCE: 2026-10-25, exit 0 — `5 passed, 25 deselected in 2.04s`. `makerworld/index.html` is its
+  own page (`MakerWorld Pipeline V1` in its `<title>`, its own `#mw-version` marker that the
+  test requires to agree with it), wired only to `/upload/makerworld*`, `/makerworld/files`,
+  `/makerworld/published`, `/makerworld/forget` — and asserted NOT to contain
+  `fetch('/upload'`, `/edit-images`, `/auto/start`, `/published/sync` or `crealitycloud`, so
+  it cannot be the Creality form wearing new labels. The Creality page is asserted the other
+  way round: no `/upload/makerworld`, no `makerworld-section`, no `print_photos`, only one
+  `href="/makerworld"` link. Live on the running server: `GET /makerworld` → HTTP 200 with
+  `<title>MakerWorld Pipeline V1</title>`, `GET /` → HTTP 200 with
+  `<title>Creality Pipeline V18</title>` and no MakerWorld card,
+  `GET /makerworld/published` → `{"count":0,…,"path":"…artifacts\\makerworld_published.json"}`
+  (its own file, still empty because nothing has been published), and
+  `GET /makerworld/files` listing the real images in `downloads/` with absolute paths.
+  The publish button ships `disabled` and only unlocks on a name + model file + cover + ≥3
+  print photos + the assertion tick; `POST /makerworld/forget` with a blank match is a 400,
+  never a wipe.
 
 <!--
 Notes for whoever works this ledger:
