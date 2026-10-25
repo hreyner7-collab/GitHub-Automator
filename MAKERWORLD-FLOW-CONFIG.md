@@ -157,9 +157,21 @@ CC-BY-NC-ND as examples, exactly the trap `UPLOAD-FLOW-CONFIG.md` documents for
 Creality's Model Source tip. If the rendered name is not the source licence, the
 driver refuses to submit.
 
-**Description rule, measured:** "Please detail how you remixed the original
-model. Otherwise, our moderators will remove your model." — enforced in
-`plan_description`.
+**Description rule, as the pipeline runs it (decided 2026-10-25):** MakerWorld's
+form *asks* "Please detail how you remixed the original model. Otherwise, our
+moderators will remove your model." — but the user's instruction is that the
+listing carries **the source listing's own description, word for word**, with no
+generated preamble, credit line or remix note, so `plan_description` returns the
+source text unchanged. The text is not scraped from rendered HTML: `_fetch_makerworld`
+reads the public `GET /api/v1/design-service/design/<id>` record and takes
+`summary`, which is HTML wrapping the author's prose in
+`<boostme><boosttitle>…</boosttitle><boostcontent>…</boostcontent></boostme>`;
+`_mw_html_to_text` keeps only the `boostcontent` (the title is site chrome),
+strips tags without inserting spaces, and unescapes entities. The same API call
+supplies the bare licence token (`BY-SA` → `CC BY-SA`), `title`, `categories`,
+`tags` and the creator name. The driver types the text line by line into the
+contenteditable editor, reads it back, and records `same_as_source` in `verify`;
+an empty editor fails the publish (Description is required).
 
 **End of the page:** `Previous` · `Save to draft` · `Publish`.
 
@@ -197,8 +209,24 @@ account-shaped artefact ever created was the probe draft, and it is deleted.
 | the licence answer → rendered-name mapping | never trusted: read back and refuse on mismatch |
 | the source-suggestion **row markup** after typing a URL (`[class*=origin]` etc. is a guess from Creality's naming) | the driver waits for *any* suggestion rows and reports them in `verify.origin.rows`; it publishes nothing if none appear. The row is chosen by `pick_source_row` on its **text**, and `SOURCE_ROW_CLICK_JS` re-reads that text before clicking, so a list that re-rendered in between refuses instead of registering a look-alike. `ORIGIN_STATE_JS` then re-reads the Model Origin block and the publish is refused if the source is not named in it |
 | whether MakerWorld flags a duplicate model | `DUPLICATE_RE` watches for the wording; our own `makerworld_ledger` is the real guard |
-| category picker semantics (it is a keyword search) | filled only when a category is given; the form's own errors are reported |
-| the `Publish` result page | success is **a design id in the URL** (`/en/models/<id>-<slug>`), not a toast |
+| the source-suggestion row **markup** | measured later (2026-10-25): typing a URL lists design cards; the pipeline clicks the card that carries the source's own title/design id with a real mouse (`ORIGIN_CARD_JS`), re-reads `ORIGIN_STATE_JS`, and refuses if the card's text or the Model Origin block does not name the source |
+| category picker semantics | measured: a MUI autocomplete; the driver types the category name, clicks the exact `li.MuiAutocomplete-option` by text (`CATEGORY_OPTIONS_JS`), and reads the chosen value back — no category, no publish |
+| the `Publish` result | measured: Publish opens the **"Publish your model"** sync dialog; choosing the CC-only option and Confirm produces the toast **"Model published & synced!"** and lands on `/en/@<user>/verifying` — i.e. **manual review**, not a public page yet. Success is the toast **or** that URL; the driver reports `pending_review: True`, and the ledger records the submission as published with the note "MakerWorld is reviewing" |
+
+## The published end state (measured 2026-10-25)
+
+A fresh submission does **not** appear at `/en/models/<id>` immediately: it enters
+the account's **Verifying** queue (`Published Models (n)` stays 0 until review
+clears). The live listing was found later at
+`https://makerworld.com/en/models/3495491-mini-bookshelf-whimsy-fairy`.
+
+Editing a published model goes through `/en/my/models/<designId>/edit`
+(title `Edit Model - MakerWorld`). `Publish` there does **not** open the sync
+dialog; it opens **"Model Data Changed?"** — a geometry notification question
+whose default answer is "Yes. Users must be notified…". A description-only edit
+answers **No** and Confirm, which still sends the listing back to Verifying. The
+driver does not edit published listings; this was a one-off manual correction and
+is recorded here so the two dialogs are not confused.
 
 ## Dry-run conventions
 
@@ -222,9 +250,10 @@ halves, so the separation cannot rot back into a merged page.
 
 | step on the page | what it calls | what it must not do |
 |---|---|---|
-| Auto · Find and publish | `POST /makerworld/auto/start` → `discover()` (licence-filtered) → `downloader.fetch` → `makerworld_uploader.upload(dry_run=False)` | never the Creality loop's modules; never an item whose source page names no licence, or fewer than 3 of the original maker's photographs |
 | 0 · Find models to remix | `POST /discover` with `site:"makerworld"` (trending / popular / hottest, headless, no login, `&licenses=CC0,BY,BY-SA` read back off the page) | never fetch, plan or publish by itself — publishing is the Auto card's decision, taken once |
 | 1 · Source design (MakerWorld url) | `POST /fetch` with `edit_images:false` | never the AI re-edit — that is a Creality-side choice |
+| 2 · Listing | name/description prefilled by `loadSource()` from `/fetch`; tags and category typed by hand | the description is the source's own text (API `summary` → `boostcontent`) verbatim — never generated, never truncated; the page says so |
+| Auto · Find and publish | `POST /makerworld/auto/start` → `discover()` (licence-filtered) → `downloader.fetch` → `makerworld_uploader.upload(dry_run=False)` | never the Creality loop's modules; never an item whose source page names no licence, or fewer than 3 of the original maker's photographs. It passes the fetched **description, first category and tags** straight into the upload, like the manual form |
 | covers grid | the scraped originals (`_raw_orig_images`) | on this manual page, never presented as print photos |
 | 3 · Photographs of your prints | `GET /makerworld/files` → images already in `downloads/` | never fills itself from the gallery (the Auto run is the one path that uses the source's own photographs, because they are the original maker's real prints) |
 | 4 · Check | `POST /upload/makerworld/plan` | opens no browser, creates no draft |

@@ -67,10 +67,29 @@ def test_unknown_licence_falls_back_to_the_strictest_safe_plan():
 def test_licence_read_back_only_accepts_the_source_name():
     assert mw.license_name_matches("CC BY-NC 4.0", "by-nc")
     assert mw.license_name_matches("CC BY-SA", "by-sa")
+    assert mw.license_name_matches("CC BY-SA 4.0", "by-sa")
     assert not mw.license_name_matches("CC BY", "by-sa")
+    assert not mw.license_name_matches("CC BY-SA-ND", "by-sa")
     assert not mw.license_name_matches("Standard Digital File License", "by")
     # no code at all is not a licence we can prove the form matched
     assert not mw.license_name_matches("CC0", "")
+
+
+def test_the_live_form_renders_the_long_cc_name_and_the_api_sends_a_bare_code():
+    """Measured 2026-10-25: the draft renders "Creative Commons
+    Attribution-Share Alike", while the design API reports the source as
+    "BY-SA". Both must be recognised for the same source licence."""
+    assert mw.cc_code("BY-SA") == "by-sa"
+    assert mw.cc_code("BY-NC-ND") == "by-nc-nd"
+    assert mw.cc_code("CC0") == "cc0"
+    assert mw.license_name_matches("Creative Commons Attribution-Share Alike", "by-sa")
+    assert mw.license_name_matches("Creative Commons Attribution", "by")
+    assert not mw.license_name_matches("Creative Commons Attribution", "by-sa")
+
+
+def test_makerworlds_own_standard_licence_is_refused():
+    p = mw.license_plan("Standard Digital File License")
+    assert p["refused"] and "Standard Digital File" in p["why"]
 
 
 # ── text planning ───────────────────────────────────────────────────────────
@@ -88,13 +107,28 @@ def test_tags_follow_the_measured_limits_and_dedupe():
     assert all(len(t) <= mw.MAX_TAG_INPUT for t in tags)
 
 
-def test_description_always_carries_the_source_and_a_remix_statement():
+def test_description_is_the_source_text_unchanged():
+    """The user's requirement: the uploaded listing carries the original
+    model's own description, not a generated remix preamble or credit line."""
     d = mw.plan_description("Sanded and re-scaled.", "https://makerworld.com/en/models/1-x",
                             "X")
-    assert "https://makerworld.com/en/models/1-x" in d
-    assert "remix" in d.lower()
-    d2 = mw.plan_description("", "", "")
-    assert d2 and "source model above" in d2.lower()
+    assert d == "Sanded and re-scaled."
+    assert "Source model" not in d and "remix" not in d.lower()
+    assert mw.plan_description("", "", "") == ""
+
+
+def test_the_sources_authored_description_is_taken_from_the_api_as_text():
+    """The API stores the description as HTML (usually a <boostme> block).
+    The block's title is site chrome; the <boostcontent> is the designer's own
+    text — the live source listing shows exactly that sentence."""
+    import downloader
+    src = ("<boostme><boosttitle>Boost Me</boosttitle>"
+           "<boostcontent>As i've made this model available for commercial use, "
+           "please leave a 5 star review.</boostcontent></boostme>")
+    assert downloader._mw_html_to_text(src) == (
+        "As i've made this model available for commercial use, "
+        "please leave a 5 star review.")
+    assert downloader._mw_html_to_text("<p>A &amp; B</p><p>Second</p>") == "A & B\nSecond"
 
 
 def test_the_source_row_is_picked_by_name_and_never_by_position():
@@ -291,8 +325,7 @@ def test_every_control_the_driver_reaches_for_is_defined_in_it():
     src = pathlib.Path(mw.__file__).with_name("makerworld_uploader.py").read_text(
         encoding="utf-8")
     assert _undefined_upper_names(src) == set()
-    assert {"SOURCE_ROW_SELECTOR", "SOURCE_ROWS_JS", "SOURCE_ROW_CLICK_JS",
-            "ORIGIN_STATE_JS"} <= _defined_upper_names(src)
+    assert {"ORIGIN_CARD_JS", "ORIGIN_STATE_JS"} <= _defined_upper_names(src)
     # negative control: the same check must catch a driver that reads a constant
     # nobody defined.
     assert _undefined_upper_names("A = 1\nprint(A, B)\n") == {"B"}
@@ -373,7 +406,10 @@ def test_the_run_checks_the_source_page_not_only_the_listing():
     dl = (ROOT / "downloader.py").read_text(encoding="utf-8")
     scrape = re.search(r"def _fetch_makerworld.*", dl, re.S).group(0)[:9000]
     assert "creativecommons" in scrape
-    assert '"license_raw": license_raw' in scrape and '"license_raw": data.get("license_raw"' in dl
+    assert '"license_raw": license_raw' in scrape
+    # the API's own licence is tried first, the page's CC link is the fallback
+    assert 'meta.get("license_raw") or data.get("license_raw"' in dl
+    assert "/api/v1/design-service/design/" in dl
 
 
 def test_the_run_loop_publishes_each_find_and_stops_at_the_facts(monkeypatch, tmp_path):
@@ -413,6 +449,7 @@ def test_the_run_loop_publishes_each_find_and_stops_at_the_facts(monkeypatch, tm
         code = dict((n.lower().replace(" ", "-"), c) for n, c in finds)[slug.split("-", 1)[1]]
         return {"name": slug, "description": "d", "image_paths": photos,
                 "stl_path": None if slug.startswith("1003") else str(stl),
+                "categories": ["Miniatures"], "tags": ["mini", "fairy"],
                 "license_raw": ("https://creativecommons.org/licenses/%s/4.0/" % code) if code else ""}
     monkeypatch.setattr(m, "dl_fetch", fake_fetch)
 
@@ -437,6 +474,11 @@ def test_the_run_loop_publishes_each_find_and_stops_at_the_facts(monkeypatch, tm
     # the photographs are the source listing's own, and the source is declared
     assert calls[0]["print_photos"] == calls[0]["image_paths"]
     assert calls[0]["remix_source_url"] == m.MW_AUTO["items"][0]["url"]
+    # the description is the source's own; the category and tags come from
+    # the source's public design metadata, not from a guess
+    assert calls[0]["description"] == "d"
+    assert calls[0]["category"] == "Miniatures"
+    assert calls[0]["tags"] == ["mini", "fairy"]
     # only real publish attempts reach the ledger; a licence stop is run history,
     # not a model this account has a claim on
     assert [r["outcome"] for r in recorded] == ["published", "published"]
@@ -488,6 +530,19 @@ def test_the_print_photo_assertion_is_what_unlocks_publish():
     assert '<button class="go" id="pub-btn" onclick="publish()" disabled>' in html
     # the scraped gallery is offered as covers only — never as print photos
     assert "_raw_orig_images" in html and "print_photos: []" not in html
+
+
+def test_the_description_field_posts_the_source_text_unchanged():
+    """The measured choice: the remix listing carries the source listing's own
+    description, not a generated blurb. The field is prefilled with it in full
+    and sent as typed; no credit line, no remix note, no truncation."""
+    html = _page()
+    assert "(_src.description || '').slice(0, 2000)" not in html
+    assert "document.getElementById('desc').value = _src.description || ''" in html
+    assert "description: document.getElementById('desc').value.trim()" in html
+    # the page says what it does, and no longer promises added text
+    assert "copied from the source listing" in html
+    assert "added automatically" not in html
 
 
 def test_the_creality_page_no_longer_publishes_to_makerworld():

@@ -1,6 +1,7 @@
 import re
 import os
 import json
+import html as _html
 import requests
 from urllib.parse import urlparse
 
@@ -979,6 +980,147 @@ def _fetch_printables(model_id: str, slug_hint: str) -> dict:
             "stl_path": None, "image_paths": image_paths, "slug": slug}
 
 
+CDP_URL = "http://127.0.0.1:9222"
+
+# The visible Download control on a MakerWorld model page, measured 2026-10-25:
+# a `Download 3MF` label in the Print Files card. The page also carries hidden
+# copies of the same label, so the click targets the smallest VISIBLE box rather
+# than the first match.
+MW_FIND_DOWNLOAD_JS = r"""
+(text) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const hits = [...document.querySelectorAll('button,[role=button],a,div,span')]
+    .filter((e) => norm(e.innerText).toLowerCase() === text.toLowerCase())
+    .map((e) => { const r = e.getBoundingClientRect();
+                  return {e, r, area: r.width * r.height}; })
+    .filter((x) => x.r.width > 0 && x.r.height > 0);
+  if (!hits.length) return null;
+  hits.sort((a, b) => a.area - b.area);
+  const el = hits[0].e;
+  el.scrollIntoView({block: 'center'});
+  const r = el.getBoundingClientRect();
+  return {x: r.x + r.width / 2, y: r.y + r.height / 2};
+}
+"""
+
+
+def _mw_download_via_chrome(model_id: str, slug: str) -> str:
+    """Download the print file through the user's own logged-in Chrome.
+
+    MakerWorld only hands a design's file to a signed-in visitor, so the
+    anonymous headless scrape can read the page but never gets the file — every
+    such find used to end as "would not hand out the model file". This clicks the
+    page's own Download control instead and keeps whatever the browser saved.
+    Returns '' when the page offers no such control.
+    """
+    import asyncio as _asyncio
+    import threading
+
+    from playwright.async_api import async_playwright
+
+    dest = os.path.join(DOWNLOADS_DIR, f"{slug}.3mf")
+    holder: dict = {}
+
+    async def _once():
+        async with async_playwright() as pw:
+            browser = await pw.chromium.connect_over_cdp(CDP_URL)
+            page = await (browser.contexts[0]).new_page()
+            try:
+                await page.goto(f"https://makerworld.com/en/models/{model_id}",
+                                wait_until="domcontentloaded", timeout=90000)
+                await page.wait_for_timeout(6000)
+                await page.evaluate("window.scrollTo(0, 1200)")
+                await page.wait_for_timeout(1200)
+                box = None
+                for text in ("Download 3MF", "Download STL", "Download"):
+                    box = await page.evaluate(MW_FIND_DOWNLOAD_JS, text)
+                    if box:
+                        break
+                if not box:
+                    return ""
+                async with page.expect_download(timeout=90000) as dl:
+                    await page.mouse.click(box["x"], box["y"])
+                await (await dl.value).save_as(dest)
+                return dest
+            finally:
+                await page.close()
+
+    def _run():
+        loop = _asyncio.new_event_loop()
+        _asyncio.set_event_loop(loop)
+        try:
+            holder["path"] = loop.run_until_complete(_once())
+        except Exception as exc:  # noqa: BLE001
+            holder["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+        finally:
+            loop.close()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout=180)
+    if "error" in holder:
+        print(f"[makerworld] logged-in download failed: {holder['error']}")
+    return holder.get("path", "")
+
+
+def _mw_html_to_text(value: str) -> str:
+    """The source description as text, with no rewriting.
+
+    MakerWorld stores descriptions as HTML (the common one is a <boostme>
+    block). A boost block renders as a titled card, so its title is site
+    chrome and its <boostcontent> is the designer's own text (measured
+    2026-10-25 against the source listing).
+    """
+    m = re.search(r"(?is)<boostcontent>(.*?)</boostcontent>", value or "")
+    if m:
+        value = m.group(1)
+    t = re.sub(r"(?i)<br\s*/?>|</(?:p|div|li|h[1-6]|blockquote)>", "\n", value or "")
+    t = re.sub(r"<[^>]+>", "", t)
+    t = _html.unescape(t)
+    t = t.replace("\r\n", "\n").replace("\r", "\n")
+    t = re.sub(r"[ \t]+\n", "\n", t)
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    return t.strip()
+
+
+def _mw_api_design(model_id: str) -> dict:
+    """The public design API (no login) gives the source's own metadata:
+    title, authored description, categories, tags and licence. The page's
+    og:description is a search-engine blurb, so it is only the fallback."""
+    try:
+        r = requests.get(
+            f"https://makerworld.com/api/v1/design-service/design/{model_id}",
+            headers=HEADERS, timeout=15)
+        if r.status_code != 200:
+            return {}
+        d = r.json()
+    except Exception:
+        return {}
+    if not isinstance(d, dict):
+        return {}
+    lic = str(d.get("license") or "").strip()
+    if re.fullmatch(r"(?i)by(?:-(?:nc|sa|nd)){0,2}", lic):
+        lic = "CC " + lic
+    elif re.fullmatch(r"(?i)cc0|0", lic):
+        lic = "CC0"
+    creator = d.get("designCreator") or {}
+    creator_name = (creator.get("name") if isinstance(creator, dict) else "") or ""
+    description = _mw_html_to_text(d.get("summary") or "")
+    if not description and creator_name:
+        # MakerWorld's own line at the top of a listing with no authored
+        # description — not an invented blurb.
+        description = f"Download this free 3D print file designed by {creator_name}."
+    return {
+        "title": str(d.get("title") or "").strip(),
+        "description": description,
+        "license_raw": lic,
+        "categories": [c.get("name") for c in (d.get("categories") or [])
+                       if isinstance(c, dict) and c.get("name")],
+        "tags": [t for t in (d.get("tags") or []) if isinstance(t, str) and t.strip()],
+        "creator": creator_name,
+    }
+
+
 def _fetch_makerworld(model_id: str) -> dict:
     """Use Playwright in a background thread to fully render the MakerWorld page and scan every image."""
     import threading
@@ -1100,7 +1242,7 @@ def _fetch_makerworld(model_id: str) -> dict:
                     product_imgs = [src.split("?")[0] for _area, src in best.values()]
             finally:
                 await browser.close()
-            return {"name": name, "description": description[:500], "images": product_imgs,
+            return {"name": name, "description": description, "images": product_imgs,
                     "license_raw": license_raw}
 
     def _run():
@@ -1121,9 +1263,14 @@ def _fetch_makerworld(model_id: str) -> dict:
         raise RuntimeError(f"MakerWorld scrape failed: {result_holder['error']}")
 
     data = result_holder.get("data", {})
-    name = data.get("name", f"Model {model_id}")
+    # The API's metadata wins over the page scrape: the scrape's description is
+    # the og:description blurb, while the API carries the description the
+    # designer actually wrote. The page is still what supplies the gallery.
+    meta = _mw_api_design(model_id)
+    name = meta.get("title") or data.get("name", f"Model {model_id}")
     slug = _slug(name)
-    description = data.get("description", "")
+    description = meta.get("description") or data.get("description", "")
+    license_raw = meta.get("license_raw") or data.get("license_raw", "")
     images = data.get("images", [])
 
     print(f"[makerworld] found {len(images)} images on page")
@@ -1155,9 +1302,16 @@ def _fetch_makerworld(model_id: str) -> dict:
     except Exception:
         pass
 
+    if not stl_path:
+        stl_path = _mw_download_via_chrome(model_id, slug) or None
+        if stl_path:
+            print(f"[makerworld] file came from the logged-in Chrome: {stl_path}")
+
     return {"name": name, "description": description, "stl_path": stl_path,
-            "image_paths": image_paths, "slug": slug,
-            "license_raw": data.get("license_raw", "")}
+            "image_paths": image_paths, "slug": slug, "license_raw": license_raw,
+            "categories": meta.get("categories") or [],
+            "tags": meta.get("tags") or [],
+            "creator": meta.get("creator", "")}
 
 
 def _fetch_generic(url: str) -> dict:

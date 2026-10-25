@@ -84,43 +84,39 @@ def ensure_browser() -> bool:
 # then take the first matching element after it in document order. That is how
 # two identical "Add Photo" inputs are told apart, and how a licence option is
 # picked from its own question rather than the first "Yes" on the page.
-# Index of the <input type=file> that belongs to a measured slot, in the same
-# document order the form renders (measured slot headings: '4:3 Cover',
-# '3:4 Cover is prioritized in App', 'Real life photos', 'Model Pictures').
+# Photo slots are addressed by the CONTAINER the live form gives each one, not
+# by the nearest heading. Measured 2026-10-25: the heading heuristic mapped
+# "Model Pictures" onto the 4:3 cover input (because "Model Pictures & Videos"
+# starts with "Model Pictures"), so the gallery was attached to the cover slot
+# and input 6 never received a file. These roots were read off the live draft.
 SLOT_INDEX_JS = r"""
 (marker) => {
-  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
-  const nodes = [...document.querySelectorAll('body *')];
-  let start = -1;
-  for (let i = 0; i < nodes.length; i++) {
-    const e = nodes[i];
-    if (!e.childElementCount && norm(e.textContent).startsWith(marker)) { start = i; break; }
-  }
+  const roots = [
+    ["4:3 Cover", [".dropzone:not(.appUpload)"]],
+    ["3:4 Cover is prioritized in App", [".dropzone.appUpload"]],
+    ["Real life photos", [".modelRealPicture"]],
+    ["Model Pictures", [".js-scroll-designPictures"]],
+  ];
   const inputs = [...document.querySelectorAll('input[type=file]')];
-  if (start >= 0) {
-    for (let i = 0; i < inputs.length; i++) {
-      if (nodes.indexOf(inputs[i]) > start) return { index: i, how: 'after-heading', marker };
+  for (const [name, sels] of roots) {
+    if (!marker.startsWith(name)) continue;
+    for (const sel of sels) {
+      const root = document.querySelector(sel);
+      const inp = root ? root.querySelector('input[type=file]') : null;
+      const index = inputs.indexOf(inp);
+      if (index >= 0) return { index, how: 'container:' + sel, marker };
     }
+    return { index: -1, how: 'container-without-input', marker };
   }
-  // fallback: the smallest ancestor block that contains both the marker text
-  // and this input
-  let best = -1, bestLen = 1e9;
-  for (let i = 0; i < inputs.length; i++) {
-    let p = inputs[i];
-    for (let d = 0; d < 10 && p; d++, p = p.parentElement) {
-      const t = norm(p.innerText);
-      if (t && t.includes(marker) && t.length < bestLen) { best = i; bestLen = t.length; break; }
-    }
-  }
-  return { index: best >= 0 ? best : -1, how: best >= 0 ? 'ancestor-text' : 'not-found', marker };
+  return { index: -1, how: 'unknown-slot', marker };
 }
 """
 
 # React needs the native value setter before the input event, or its state
 # never sees the text (same finding as the Creality remix box).
 SET_VALUE_JS = r"""
-(args) => {
-  const el = args.el, text = args.text || '';
+(el, args) => {
+  const text = (args && args.text) || '';
   const proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype
               : el.tagName === 'INPUT' ? window.HTMLInputElement.prototype : null;
   if (!proto) return false;
@@ -132,28 +128,117 @@ SET_VALUE_JS = r"""
 }
 """
 
-# The licence NAME the form renders for the answers given, read ONLY from
-# inside the License block. The measured Model Origin warning names other
-# licences as examples ("CC-BY-ND, CC-BY-NC-ND … are not allowed"), so a search
-# over the whole page would read that warning as this listing's licence — the
-# same trap the Creality form has (UPLOAD-FLOW-CONFIG.md).
+# The licence MakerWorld renders for the answers given, read from the form's own
+# CC link first. Measured 2026-10-25: the live draft renders
+# "Creative Commons Attribution-Share Alike" (the long name), while the question
+# this used to anchor on ("Bambu Handy") no longer exists — so the block is
+# anchored at the first licence question and the link's own /licenses/by-sa/
+# path is the strongest reading. The Model Origin warning names other licences
+# as examples ("CC-BY-ND, CC-BY-NC-ND … are not allowed"), so this never scans
+# the whole page.
 LICENSE_READ_JS = r"""
 () => {
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
   const nodes = [...document.querySelectorAll('body *')];
   const idx = (txt) => nodes.findIndex(e =>
     !e.childElementCount && norm(e.textContent).startsWith(txt));
-  let a = idx('Is this model supported only for printing through Bambu Handy?');
-  if (a < 0) a = idx('Allow adaptations');
+  let a = idx('Allow adaptations');
+  if (a < 0) a = idx('License');
   if (a < 0) return '';
   const b = idx('Visibility');
   const stop = b > a ? b : nodes.length;
+  for (let i = a; i < stop; i++) {
+    const e = nodes[i];
+    if (!e.matches || !e.matches('a[href*="creativecommons.org"]')) continue;
+    const href = e.getAttribute('href') || '';
+    const m = href.match(/creativecommons\.org\/(?:licenses|publicdomain)\/([a-z0-9\-]+)/i);
+    if (m) {
+      const code = m[1].split('/')[0];
+      if (/^(zero|publicdomain|mark)$/i.test(code)) return 'CC0';
+      return 'CC ' + code.toUpperCase();
+    }
+    const t = norm(e.innerText);
+    if (t) return t.slice(0, 60);
+  }
   for (let i = a; i < stop; i++) {
     const t = norm(nodes[i].textContent || nodes[i].innerText);
     if (/^(CC[\s-]?0|CC[\s-]?BY(-[\s-]?(NC|SA|ND)){0,2}|Standard Digital File License)/i.test(t))
       return t.slice(0, 60);
   }
   return '';
+}
+"""
+
+# Covers open a stack of MUI crop dialogs, each with its own Submit. The button
+# is clicked by its coordinates because MUI's own overlay makes the first
+# locator fail with "subtree intercepts pointer events" (measured 2026-10-25).
+CROP_DIALOG_JS = r"""
+() => {
+  const vis = (e) => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
+    return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+  const dialogs = [...document.querySelectorAll('.MuiDialog-root')].filter(vis);
+  if (!dialogs.length) return null;
+  const d = dialogs[dialogs.length - 1];
+  const b = [...d.querySelectorAll('button')].filter(vis)
+    .find(e => (e.innerText || '').replace(/\s+/g, ' ').trim() === 'Submit');
+  if (!b) return null;
+  b.scrollIntoView({block: 'center'});
+  const r = b.getBoundingClientRect();
+  return {x: r.x + r.width / 2, y: r.y + r.height / 2,
+          text: (d.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 100)};
+}
+"""
+
+# Category is a MUI autocomplete; only a real click on one of its rendered
+# options selects a category (measured 2026-10-25).
+CATEGORY_OPTIONS_JS = r"""
+() => [...document.querySelectorAll('li.MuiAutocomplete-option')]
+  .map(e => { const r = e.getBoundingClientRect();
+              return {text: (e.innerText || '').replace(/\s+/g, ' ').trim(),
+                      x: r.x + r.width / 2, y: r.y + r.height / 2,
+                      w: r.width, h: r.height}; })
+  .filter(o => o.h > 0 && o.text)
+"""
+
+CATEGORY_STATE_JS = r"""
+() => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const nodes = [...document.querySelectorAll('body *')];
+  const idx = (txt) => nodes.findIndex(e => !e.childElementCount &&
+    norm(e.textContent).startsWith(txt));
+  const a = idx('Category');
+  if (a < 0) return '';
+  const b = idx('Tags');
+  return nodes.slice(a, b > a ? b : a + 12)
+    .map(e => norm(e.textContent)).filter(t => t && t.length < 120)
+    .join(' | ').slice(0, 400);
+}
+"""
+
+# The measured modal between Publish and the result: "Publish your model" with
+# three sync choices and a Confirm button (2026-10-25).
+PUBLISH_DIALOG_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const vis = (e) => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
+    return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+  const dialogs = [...document.querySelectorAll('.MuiDialog-root')].filter(vis);
+  const d = dialogs.find(e => norm(e.innerText).includes(args.title));
+  if (!d) return null;
+  const rect = (e) => { const r = e.getBoundingClientRect();
+    return {x: r.x + r.width / 2, y: r.y + r.height / 2}; };
+  const labels = [...d.querySelectorAll('label')].filter(vis);
+  const pick = labels.find(l => norm(l.innerText).startsWith(args.option));
+  const radio = pick ? pick.querySelector('input[type=radio]') : null;
+  const confirm = [...d.querySelectorAll('button')].filter(vis)
+    .find(e => norm(e.innerText) === args.confirm);
+  return {
+    title: norm(d.innerText).slice(0, 200),
+    options: labels.map(l => norm(l.innerText).slice(0, 100)),
+    pick: pick ? rect(pick) : null,
+    pick_checked: radio ? !!radio.checked : null,
+    confirm: confirm ? rect(confirm) : null,
+  };
 }
 """
 
@@ -201,44 +286,36 @@ PHOTO_COUNT_JS = r"""
 }
 """
 
-# The Model Origin suggestion list is the one part of the wizard the study never
-# rendered (the walk stopped before typing a source URL), so no row markup is
-# measured. These helpers read whatever MakerWorld shows under the search box,
-# and the driver chooses a row by its TEXT and confirms it by re-reading the
-# block — never by position and never by a selector assumed to be right.
-SOURCE_ROW_SELECTOR = ("[class*=origin],[class*=Origin],[class*=search-result] li,"
-                       "[class*=suggest] li,[role=option]")
-
-SOURCE_ROWS_JS = r"""
-(sel) => {
-  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
-  const vis = (e) => { const r = e.getBoundingClientRect();
-                       return r.width > 0 && r.height > 0; };
-  const nodes = [...document.querySelectorAll(sel)];
-  const out = [];
-  nodes.forEach((e, i) => {
-    if (!vis(e)) return;
-    const t = norm(e.innerText);
-    if (t) out.push({ text: t.slice(0, 140), index: i });
-  });
-  return out.slice(0, 12);
-}
-"""
-
-# Click row `index` of the same query, but only while it still reads the name
-# that was picked: if the list re-rendered between the two calls the position is
-# worthless, so this refuses instead of registering a look-alike as the source.
-SOURCE_ROW_CLICK_JS = r"""
+# Measured 2026-10-25 (screen recording + live draft): the origin search must be
+# typed through the keyboard; setting the input's value leaves the search
+# silent. What appears is MakerWorld's own card — thumbnail, title, author —
+# rendered as a plain div under the box, NOT a MUI li[role=option]. So the card
+# is found by its picture and position, matched by the source's own words, and
+# clicked with a real mouse press at its centre; the block is re-read after.
+ORIGIN_CARD_JS = r"""
 (args) => {
-  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
-  const e = [...document.querySelectorAll(args.sel)][args.index];
-  if (!e) return { clicked: false, why: 'that row is no longer on the page' };
-  const t = norm(e.innerText);
-  if (args.want && !t.toLowerCase().includes(args.want))
-    return { clicked: false, text: t.slice(0, 140),
-             why: `row ${args.index} now reads '${t.slice(0, 80)}'` };
-  (e.querySelector('button, a, [class*=card], [class*=item]') || e).click();
-  return { clicked: true, text: t.slice(0, 140) };
+  // lowercase first: the strip below only keeps [a-z0-9], so running it first
+  // deleted every capital and turned 'Mini Bookshelf' into 'ini ookshelf'.
+  const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const input = [...document.querySelectorAll('input')]
+    .find(e => (e.placeholder || '').includes(args.ph));
+  if (!input) return null;
+  const r = input.getBoundingClientRect();
+  const words = args.words || [];
+  let best = null;
+  for (const e of document.querySelectorAll('div,li,a')) {
+    const b = e.getBoundingClientRect();
+    if (b.width < 200 || b.height < 30 || b.height > 220) continue;
+    if (b.top < r.bottom - 4 || b.top > r.bottom + 220) continue;
+    if (b.left < r.left - 60 || b.right > r.right + 120) continue;
+    if (!e.querySelector('img')) continue;
+    const t = norm(e.innerText);
+    const hits = words.filter(w => t.includes(w)).length;
+    if (hits < Math.min(2, words.length)) continue;
+    if (!best || b.width * b.height < best.w * best.h)
+      best = {x: b.x, y: b.y, w: b.width, h: b.height, hits};
+  }
+  return best;
 }
 """
 
@@ -392,6 +469,133 @@ async def _attach_to_slot(page, marker: str, paths: list[str]) -> dict:
     return {"ok": True, "index": idx, "how": where.get("how"), "count": len(paths)}
 
 
+async def _confirm_crop_dialogs(page, max_submits: int = 4,
+                                budget_ms: int = 30_000) -> dict:
+    """Submit every crop dialog the cover slots opened, topmost first.
+
+    The two cover inputs each open their own MUI crop dialog and the dialogs
+    stack; a locator click on the lower one fails because the upper dialog
+    intercepts pointer events. So the top visible dialog's Submit is pressed at
+    its coordinates, then the next one becomes topmost.
+    """
+    clicks: list[dict] = []
+    spent = 0
+    while spent < budget_ms and len(clicks) < max_submits:
+        found = None
+        deadline = min(budget_ms, spent + (6_000 if not clicks else 5_000))
+        while spent < deadline:
+            found = await page.evaluate(CROP_DIALOG_JS)
+            if found:
+                break
+            await page.wait_for_timeout(400)
+            spent += 400
+        if not found:
+            break
+        await page.mouse.move(found["x"], found["y"])
+        await page.wait_for_timeout(150)
+        await page.mouse.click(found["x"], found["y"])
+        clicks.append(found)
+        for _ in range(25):
+            await page.wait_for_timeout(400)
+            spent += 400
+            still = await page.evaluate(CROP_DIALOG_JS)
+            if not still or still.get("text") != found.get("text"):
+                break
+    remaining = await page.evaluate(CROP_DIALOG_JS)
+    return {"ok": remaining is None, "submits": len(clicks),
+            "texts": [c.get("text", "") for c in clicks],
+            "remaining": bool(remaining)}
+
+
+async def _pick_category(page, name: str) -> dict:
+    """Choose the source's category through MakerWorld's autocomplete.
+
+    Measured 2026-10-25: the field is a MUI autocomplete with the floating
+    label "Quick search by entering category keywords"; typing filters options
+    and only a click on one of them sets the value, so a native value set
+    (which works on Model Name) leaves Category empty.
+    """
+    want = re.sub(r"\s+", " ", (name or "").strip())
+    if not want:
+        return {"ok": True, "skipped": "the source names no category"}
+    box = page.locator("input[placeholder*='category keywords']").first
+    if await box.count() == 0:
+        box = page.locator("input[placeholder*='Quick search']").first
+    if await box.count() == 0:
+        return {"ok": False, "error": "no Category search box on the draft page"}
+    await box.scroll_into_view_if_needed()
+    await box.click()
+    await page.keyboard.press("Control+A")
+    await page.keyboard.press("Backspace")
+    await page.keyboard.type(want, delay=25)
+    options: list[dict] = []
+    for _ in range(30):
+        options = await page.evaluate(CATEGORY_OPTIONS_JS)
+        if options:
+            break
+        await page.wait_for_timeout(300)
+    exact = next((o for o in options if o["text"].lower() == want.lower()), None)
+    if exact is None:
+        return {"ok": False,
+                "error": f"MakerWorld offered no category named {want!r}",
+                "options": [o["text"] for o in options][:12]}
+    await page.mouse.move(exact["x"], exact["y"])
+    await page.wait_for_timeout(150)
+    await page.mouse.click(exact["x"], exact["y"])
+    block = ""
+    for _ in range(15):
+        block = await page.evaluate(CATEGORY_STATE_JS)
+        shown = await page.evaluate(
+            "(w) => [...document.querySelectorAll('input')].some(i => "
+            "(i.value || '').trim().toLowerCase() === w.toLowerCase())", want)
+        if shown or want.lower() in (block or "").lower():
+            return {"ok": True, "chosen": exact["text"], "read_back": (block or "")[:160]}
+        await page.wait_for_timeout(300)
+    return {"ok": False,
+            "error": f"{want!r} was clicked but the Category field does not show it",
+            "read_back": (block or "")[:200]}
+
+
+async def _answer_publish_dialog(page) -> dict:
+    """Answer the "Publish your model" sync modal that sits after Publish.
+
+    Measured 2026-10-25: three choices — Sync all models, Sync only CC license
+    models, Do not sync any models — and a Confirm button. The CC-only choice
+    is the one that matches a CC-licensed remix. A real mouse press is used
+    throughout; the radio is read back before Confirm.
+    """
+    args = {"title": "Publish your model", "option": "Sync only CC license models",
+            "confirm": "Confirm"}
+    found = None
+    for _ in range(30):
+        found = await page.evaluate(PUBLISH_DIALOG_JS, args)
+        if found:
+            break
+        await page.wait_for_timeout(400)
+    if not found:
+        return {"seen": False}
+    out: dict = {"seen": True, "options": found.get("options"),
+                 "title": found.get("title", "")}
+    if found.get("pick"):
+        await page.mouse.move(found["pick"]["x"], found["pick"]["y"])
+        await page.wait_for_timeout(150)
+        await page.mouse.click(found["pick"]["x"], found["pick"]["y"])
+        await page.wait_for_timeout(350)
+        after = await page.evaluate(PUBLISH_DIALOG_JS, args)
+        out["picked"] = bool(after and after.get("pick_checked"))
+        found = after or found
+    target = (found or {}).get("confirm")
+    if target:
+        await page.mouse.move(target["x"], target["y"])
+        await page.wait_for_timeout(150)
+        await page.mouse.click(target["x"], target["y"])
+        out["confirmed"] = True
+    else:
+        out["confirmed"] = False
+        out["why"] = "the sync modal has no visible Confirm button"
+    return out
+
+
 # Address a field by the measured heading that owns it. When the heading is not
 # on the page the answer is 'no field' — never 'the first field on the page',
 # which is the site search box.
@@ -428,7 +632,7 @@ async def _fill_text(page, marker: str = "", want_ph: str = "", text: str = "") 
     el = handle.as_element()
     if el is None:
         return {"ok": False, "error": f"no text field for marker={marker!r} ph={want_ph!r}"}
-    ok = await el.evaluate(SET_VALUE_JS, {"el": el, "text": text})
+    ok = await el.evaluate(SET_VALUE_JS, {"text": text})
     await page.wait_for_timeout(200)
     back = await el.evaluate("e => e.value")
     return {"ok": bool(ok) and (back or "") == text, "read_back": (back or "")[:120]}
@@ -465,6 +669,48 @@ async def _click_button(page, text: str, force: bool = False) -> dict:
         return {"clicked": True}
     except Exception as exc:  # noqa: BLE001
         return {"clicked": False, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+
+
+async def _type_origin_url(page, url: str) -> dict:
+    """Type the source link into Model Origin. The site searches on keystrokes,
+    so a native value set (which works for plain fields) leaves it silent."""
+    box = page.locator("input[placeholder*='Paste the URL']").first
+    if await box.count() == 0:
+        return {"ok": False, "error": "no Model Origin URL box on the draft page"}
+    await box.scroll_into_view_if_needed()
+    await box.click()
+    await page.keyboard.press("Control+A")
+    await page.keyboard.press("Backspace")
+    await page.keyboard.type(url, delay=25)
+    await page.wait_for_timeout(300)
+    back = await box.input_value()
+    return {"ok": back == url, "read_back": back[:160], "how": "keyboard"}
+
+
+async def _click_origin_card(page, want_name: str) -> dict:
+    """Wait for the source's card (thumbnail + title) under the box, hover it,
+    and press it with the mouse — the move the screen recording shows."""
+    raw = [re.sub(r"[^a-z0-9]+", " ", w).strip()
+           for w in mw._norm_words(want_name).split()]
+    words = [w for w in raw if len(w) >= 4] or [w for w in raw if w]
+    if not words:
+        return {"ok": False, "error": "the source has no name to match a card by"}
+    args = {"ph": "Paste the URL", "words": words}
+    card = None
+    for _ in range(40):
+        card = await page.evaluate(ORIGIN_CARD_JS, args)
+        if card:
+            break
+        await page.wait_for_timeout(600)
+    if not card:
+        return {"ok": False, "error": "no card with the source's picture appeared under "
+                                      "the Model Origin box", "words": words}
+    cx, cy = card["x"] + card["w"] / 2, card["y"] + card["h"] / 2
+    await page.mouse.move(cx, cy)
+    await page.wait_for_timeout(250)
+    await page.mouse.click(cx, cy)
+    return {"ok": True, "card": {k: round(card[k]) for k in ("x", "y", "w", "h")},
+            "words": words}
 
 
 async def upload(name: str, description: str, stl_path: str, image_paths: list[str],
@@ -538,8 +784,9 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
 
         try:
             # 1) step 1 — the file. Measured: the wizard opens on the MakerLab
-            #    branch, the 3D branch is a text control, and attaching a model
-            #    file creates the draft and moves the URL to /drafts/<id>/edit.
+            #    branch and the 3D branch is a text control. Attaching queues the
+            #    file; Next Step is what creates the draft and moves the URL to
+            #    /drafts/<id>/edit.
             await page.goto(mw.entry_url(kind), wait_until="domcontentloaded", timeout=90_000)
             # the wizard is a client-rendered page: wait until its file inputs
             # exist rather than sleeping a fixed amount (they stay hidden even
@@ -572,7 +819,33 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                                  f"{str(exc)[:180]}", "verify": verify}
             _mark("attach")
 
-            # the draft is created by the site itself; wait for its id to show up
+            # Measured 2026-10-25: attaching only queues the file — the site
+            # shows its own Cancel while it uploads, then lists the file under
+            # Raw Model Files. The draft is created when *Next Step* is pressed,
+            # and only then does the URL become /my/models/drafts/<id>/edit.
+            listed = await _settle(page, 120_000, 500, lambda: page.evaluate(
+                """() => { const t = document.body.innerText || '';
+                           const buttons = [...document.querySelectorAll('button')]
+                             .map(b => (b.innerText || '').trim());
+                           return t.includes('Open Source')
+                                  && /\\.(3mf|stl|step|stp)\\b/i.test(t)
+                                  && !buttons.includes('Cancel'); }"""))
+            verify["file_listed"] = listed
+            if not listed:
+                body = await page.evaluate("() => (document.body.innerText || '').slice(-600)")
+                return {"success": False,
+                        "error": "MakerWorld never finished taking the attached file, so no draft "
+                                 f"could be created. Page says: {body[:300]}",
+                        "verify": verify}
+            step1 = await _click_button(page, mw.NEXT_STEP_BUTTON)
+            verify["step1_next"] = step1
+            if not step1.get("clicked"):
+                return {"success": False,
+                        "error": "MakerWorld listed the file but its step-1 "
+                                 f"'{mw.NEXT_STEP_BUTTON}' control would not press "
+                                 f"({step1.get('error') or 'unknown reason'}). Nothing was published.",
+                        "verify": verify}
+
             got_draft = await _settle(page, 90_000, 700,
                                       lambda: bool(mw.draft_id_from_url(page.url)))
             draft_id = mw.draft_id_from_url(page.url)
@@ -596,17 +869,18 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                         "message": "Dry run: MakerWorld accepted the file and made draft "
                                    f"{draft_id}. Nothing was filled or published."}
 
-            nxt = await _click_button(page, mw.NEXT_STEP_BUTTON)
-            verify["next_step"] = nxt
-            if not nxt.get("clicked"):
-                return {"success": False, "url": page.url, "draft_id": draft_id,
-                        "error": "MakerWorld's step 1 would not advance: its "
-                                 f"'{mw.NEXT_STEP_BUTTON}' control was not pressed "
-                                 f"({nxt.get('error') or 'unknown reason'}). Nothing was published.",
-                        "verify": verify}
+            # The draft page carries the whole Model Information form; the
+            # wizard Next Step that used to sit here is gone (measured
+            # 2026-10-25), so only press one when the form really is absent.
             opened = await _settle(page, 25_000, 500,
                                    lambda: page.evaluate(
                                        "() => !!document.querySelector('[contenteditable=true]')"))
+            if not opened and await page.locator("button", has_text=mw.NEXT_STEP_BUTTON).count():
+                nxt = await _click_button(page, mw.NEXT_STEP_BUTTON)
+                verify["next_step"] = nxt
+                opened = await _settle(page, 25_000, 500,
+                                       lambda: page.evaluate(
+                                           "() => !!document.querySelector('[contenteditable=true]')"))
             state = await page.evaluate(FORM_STATE_JS)
             verify["step2_opened"] = {"url": state.get("url"),
                                       "radios": len(state.get("radios") or []),
@@ -621,11 +895,13 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
             _mark("step2")
 
             # 2) Model Origin — the remix source. Measured: an 'Add' control and
-            #    a search box whose placeholder is the string below. UNMEASURED:
-            #    the row markup MakerWorld renders for suggestions, so the rows
-            #    are read off the page, reported in verify, and chosen by their
-            #    TEXT — never by position (the lesson from Creality's four failed
-            #    uploads: a prefix look-alike registers the wrong source).
+            #    a search box whose placeholder is the string below; typing the
+            #    link makes MakerWorld render its own design card (thumbnail,
+            #    title, author) under the box. The card is matched by the
+            #    source's own words, clicked with a real mouse, and then the
+            #    Model Origin block is re-read — never chosen by position (the
+            #    lesson from Creality's four failed uploads: a look-alike
+            #    registers the wrong source).
             origin = {}
             if kind == "remix" and plan["remix_source_url"]:
                 add = await _click_label(page, "Model Origin", mw.SLOT_ORIGIN_ADD)
@@ -642,8 +918,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                                    b.click(); return true; } }
                                return false; }
                     """, "Model Origin")
-                typed = await _fill_text(page, want_ph=mw.SOURCE_INPUT_PLACEHOLDER,
-                                         text=plan["remix_source_url"])
+                typed = await _type_origin_url(page, plan["remix_source_url"])
                 origin["typed"] = typed
                 if not typed.get("ok"):
                     verify["origin"] = origin
@@ -654,35 +929,15 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                                      "registered source is not published.",
                             "verify": verify}
 
-                def _rows():
-                    return page.evaluate(SOURCE_ROWS_JS, SOURCE_ROW_SELECTOR)
-                have = await _settle(page, 15_000, 700, _rows)
-                rows = await _rows() if have else []
-                origin["rows"] = [r["text"] for r in rows]
                 want_name = remix_source_name or name
-                picked = mw.pick_source_row([r["text"] for r in rows], want_name,
-                                            mw.design_id_from_url(plan["remix_source_url"]))
-                origin["picked"] = picked
                 origin["want"] = want_name
-                if picked < 0 or not rows:
+                origin["card"] = await _click_origin_card(page, want_name)
+                if not origin["card"].get("ok"):
                     verify["origin"] = origin
                     return {"success": False, "url": page.url, "draft_id": draft_id,
-                            "error": "MakerWorld offered no source-model row that is "
-                                     f"'{want_name}' (it offered: "
-                                     + "; ".join(origin["rows"][:4]) + "). Refusing to register a "
-                                     "look-alike as this listing's source.",
-                            "verify": verify}
-                origin["clicked"] = await page.evaluate(
-                    SOURCE_ROW_CLICK_JS,
-                    {"sel": SOURCE_ROW_SELECTOR, "index": rows[picked]["index"],
-                     "want": mw._norm_words(want_name)})
-                if not origin["clicked"].get("clicked"):
-                    verify["origin"] = origin
-                    return {"success": False, "url": page.url, "draft_id": draft_id,
-                            "error": "MakerWorld's suggestion list changed between reading "
-                                     "and clicking it (" + str(origin["clicked"].get("why")) +
-                                     "). Refusing to click an unknown row: that is how the "
-                                     "wrong model ends up declared as this listing's source.",
+                            "error": "MakerWorld never showed the source model's card under the "
+                                     f"Model Origin box ({origin['card'].get('error')}), so no "
+                                     "source was registered. Nothing was published.",
                             "verify": verify}
 
                 def _registered():
@@ -708,7 +963,14 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
             if tag_list:
                 verify["tags"] = await _type_tags(page, "Tags", tag_list)
             if category:
-                verify["category"] = await _fill_text(page, marker="Category", text=category)
+                cat_res = await _pick_category(page, category)
+                verify["category"] = cat_res
+                if not cat_res.get("ok"):
+                    return {"success": False, "url": page.url, "draft_id": draft_id,
+                            "error": "MakerWorld's Category picker could not take "
+                                     f"{category!r}: {cat_res.get('error')}. Category is "
+                                     "required, so nothing was published.",
+                            "verify": verify}
 
             # 4) Licence — answer the questions, then read back the licence NAME
             #    MakerWorld itself renders. The mapping is MakerWorld's, not
@@ -743,6 +1005,14 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                 paths = cover_plan[:1]
                 if paths:
                     covers_res[slot] = await _attach_to_slot(page, slot, paths)
+                    await page.wait_for_timeout(400)
+            crop = await _confirm_crop_dialogs(page)
+            verify["crop_dialogs"] = crop
+            if not crop.get("ok"):
+                return {"success": False, "url": page.url, "draft_id": draft_id,
+                        "error": "The cover crop dialog would not submit, so MakerWorld never "
+                                 "accepted the 4:3/3:4 covers. Nothing was published.",
+                        "verify": verify}
             real_res = await _attach_to_slot(page, mw.SLOT_REAL_PHOTOS, plan["print_photos"])
             gallery = [p for p in cover_plan[1:][:mw.MAX_PHOTOS]]
             gallery_res = await _attach_to_slot(page, mw.SLOT_MODEL_PHOTOS, gallery) \
@@ -761,16 +1031,28 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
             # 6) Description — MakerWorld's editor is a contenteditable, so the
             #    text is typed into it, then read back from it.
             desc = plan["description"]
+            wrote, desc_err = "", ""
             try:
                 ed = page.locator("[contenteditable=true]").first
                 await ed.click(timeout=8000)
-                await page.keyboard.type(desc[:2000], delay=6)
+                for i, part in enumerate(desc.split("\n")):
+                    if i:
+                        await page.keyboard.press("Enter")
+                    if part:
+                        await page.keyboard.type(part, delay=4)
+                state = await page.evaluate(FORM_STATE_JS)
+                wrote = (state.get("editor") or "").strip()
             except Exception as exc:  # noqa: BLE001
-                verify["description"] = {"ok": False, "error": str(exc)[:160]}
-            state = await page.evaluate(FORM_STATE_JS)
-            wrote = (state.get("editor") or "").strip()
+                desc_err = str(exc)[:160]
+            same = (re.sub(r"\s+", " ", wrote) == re.sub(r"\s+", " ", desc))
             verify["description"] = {"ok": bool(wrote), "chars": len(wrote),
-                                     "head": wrote[:120]}
+                                     "same_as_source": same, "head": wrote[:120],
+                                     "error": desc_err}
+            if not wrote:
+                return {"success": False, "url": page.url, "draft_id": draft_id,
+                        "error": "MakerWorld's Description editor did not take the source's "
+                                 "own text, and Description is required. Nothing was published.",
+                        "verify": verify}
 
             # 7) Visibility — measured default is Public; only click if it is not.
             if visibility and visibility != "Public":
@@ -803,18 +1085,28 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                                  "(see downloads/_shots/mw_no_publish.png)."}
             _mark("publish-pressed")
 
-            # 8) Wait for MakerWorld's own answer: the draft URL leaving
-            #    /drafts/, a design id appearing, or the form's error text.
+            # 8) MakerWorld answers Publish with one more modal — "Publish your
+            #    model", three sync choices and Confirm (measured 2026-10-25).
+            verify["publish_dialog"] = await _answer_publish_dialog(page)
+            _mark("publish-dialog")
+
+            # 9) Wait for MakerWorld's own answer: a design id, the published
+            #    toast, the Verifying redirect, or the form's error text.
             outcome, reason, final = "", "", {}
-            for _ in range(120):
+            for _ in range(150):
                 await page.wait_for_timeout(500)
                 st = await page.evaluate(FORM_STATE_JS)
                 final = st
                 u = st.get("url") or page.url
+                text = " ".join([st.get("body") or ""]
+                                + [e or "" for e in st.get("errors") or []])
                 if st.get("designId") or "/en/models/" in u:
                     outcome = "success"
                     break
-                text = " ".join([st.get("body") or ""] + [e or "" for e in st.get("errors") or []])
+                if re.search(r"(?i)model published|published\s*&\s*synced", text) \
+                        or re.search(r"/@[^/]+/verifying", u):
+                    outcome = "success"
+                    break
                 if DUPLICATE_RE.search(text):
                     outcome, reason = "duplicate", DUPLICATE_RE.search(text).group(0)
                     break
@@ -823,12 +1115,31 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                     outcome, reason = "error", "; ".join(errs[:3])
                     break
             if outcome == "success":
-                did = (final.get("designId") or mw.design_id_from_url(final.get("url") or ""))
+                final_url = final.get("url") or page.url
+                pending = bool(re.search(r"/@[^/]+/verifying", final_url))
+                did = (final.get("designId") or mw.design_id_from_url(final_url))
+                if not did and pending:
+                    did = await page.evaluate(r"""
+                      () => { const m = [...document.querySelectorAll('a[href*="/models/"]')]
+                        .map(a => a.getAttribute('href') || '')
+                        .map(h => h.match(/\/models\/(\d+)/))
+                        .find(Boolean);
+                        return m ? m[1] : ''; }
+                    """)
+                verify["final_url"] = final_url
+                verify["pending_review"] = pending
                 try:
                     await page.close()
                 except Exception:
                     pass
-                return {"success": True, "url": final.get("url") or page.url,
+                if pending:
+                    return {"success": True, "url": final_url, "design_id": did,
+                            "draft_id": draft_id, "pending_review": True, "verify": verify,
+                            "message": "MakerWorld accepted the submission"
+                                       + (f" as design {did}" if did else "")
+                                       + " — it is in the Verifying queue for review, "
+                                         "not public yet."}
+                return {"success": True, "url": final_url,
                         "design_id": did, "draft_id": draft_id, "verify": verify,
                         "message": "Published to MakerWorld as design "
                                    f"{did or '(unknown id)'}. Check your models list."}

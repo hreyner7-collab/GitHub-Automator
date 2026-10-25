@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MakerWorld Pipeline V3</title>
+<title>MakerWorld Pipeline V4</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root { --bg:#101315; --card:#181d20; --line:#2a3135; --ink:#e8eaed; --dim:#9aa4aa;
@@ -68,7 +68,7 @@
 <body>
 <div class="topbar">
   <h1>MakerWorld <span>Pipeline</span></h1>
-  <span class="build" id="mw-version" title="MakerWorld dashboard version: bumped on every update">V3</span>
+  <span class="build" id="mw-version" title="MakerWorld dashboard version: bumped on every update">V4</span>
   <span class="build" id="build-stamp" title="Which code this server process is running"></span>
   <a href="/">Creality dashboard &rarr;</a>
 </div>
@@ -142,8 +142,9 @@
   <h2>2 · Listing</h2>
   <label>Model Name <span class="kv" style="display:inline" id="name-count"></span></label>
   <input type="text" id="name" oninput="nameCount()" maxlength="50">
-  <label>Description</label>
-  <textarea id="desc" placeholder="What you changed and why. The source link and the remix statement are added automatically."></textarea>
+  <label>Description <span class="kv" style="display:inline">copied from the source listing</span></label>
+  <textarea id="desc" placeholder="Filled word for word from the source listing when you load it — edit only if you want to post something different."></textarea>
+  <div class="kv">The source's own description is posted unchanged: no added source link, no remix note, no rewritten text. The Find &amp; publish run does the same, automatically.</div>
   <div class="row" style="margin-top:10px">
     <div style="flex:1;min-width:220px">
       <label>Tags (comma separated)</label>
@@ -408,7 +409,7 @@ async function loadSource() {
     setStatus('src-status', 'ok', '✓ Loaded. Tick the pictures to use as covers.');
     const lic = (_src.license || {}).raw || '';
     document.getElementById('name').value = (_src.name || '').slice(0, 50);
-    document.getElementById('desc').value = (_src.description || '').slice(0, 2000);
+    document.getElementById('desc').value = _src.description || '';
     document.getElementById('lic-line').innerHTML = 'Source licence: <b>' + (esc(lic) || 'none stated')
       + '</b> · author <b>' + (esc(_src.author) || '?') + '</b>'
       + (/(no derivatives|\bnd\b)/i.test(lic) ? '<br><span class="bad">✗ A NoDerivatives source cannot be remixed — MakerWorld refuses it and says so on the form.</span>' : '')

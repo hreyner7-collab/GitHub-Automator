@@ -6,7 +6,7 @@ scripts/check_mw_licence_tokens.py, scripts/check_mw_licence_readback.py,
 scripts/check_mw_licence_api.py, MAKERWORLD-STUDY/,
 MAKERWORLD-FLOW-CONFIG.md, GATES-MAKERWORLD.md, main.py (its routes and the MakerWorld
 auto run), discover.py (its MakerWorld listings and the licence read-back),
-downloader.py (_fetch_makerworld's licence capture only),
+downloader.py (_fetch_makerworld's licence, description, category, tag and creator capture only),
 creality/index.html (MakerWorld markup removed, marker bumped),
 tests/test_makerworld.py, tests/test_originals_dashboard.py (de-pinned version marker)
 
@@ -34,8 +34,9 @@ Baseline: 527 tests passing before this work; the Creality publish path
 
 - [x] G2: MakerWorld's own requirements are refused before a browser opens
   CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py
-  EXPECT: 31 passed
-  EVIDENCE: 2026-10-25, exit 0 — `31 passed, 3 warnings in 1.33s`. Eight
+  EXPECT: 40 passed
+  EVIDENCE: 2026-10-25, exit 0 — `40 passed, 3 warnings in 1.43s` (re-run after the
+  description gates landed; the first run of this gate was `31 passed`). Eight
   refusal cases each assert the plan blocks (no model file, wrong extension, no cover,
   fewer than 3 print photos, remix with no source, a Thingiverse source under
   `?type=remix`, no name, ND licence). Two more prove the refusal does not touch Chrome:
@@ -70,21 +71,23 @@ Baseline: 527 tests passing before this work; the Creality publish path
   record leaves `ledger.entries()` with no trace of the design id.
 
 - [x] G4: the Creality target is untouched
-  CHECK: git status --porcelain -- uploader.py ledger.py editor.py downloader.py creality_api.py discover.py timing.py page_model.py
+  CHECK: git status --porcelain -- uploader.py ledger.py editor.py creality_api.py discover.py timing.py page_model.py
   EXPECT: (no output)
-  EVIDENCE: 2026-10-25 — empty. The only shared files edited are `main.py` (two new
-  routes, additive, plus the `UPLOAD_LOCK` comment corrected now that the lock covers
-  both targets) and `creality/index.html` (one new card). `tests/test_originals_dashboard.py`
-  pinned the version marker to the literal `V16`, which contradicts AGENTS.md's bump rule
-  and failed on V17; it now asserts the `<title>` and `#ui-version` agree, whatever the
-  number is, so the next bump cannot break it.
+  EVIDENCE: 2026-10-25 — empty. The shared files edited are `main.py` (additive
+  MakerWorld routes and the auto run), `creality/index.html` (MakerWorld markup removed)
+  and `downloader.py`, whose diff is confined to `_fetch_makerworld`, its new MakerWorld
+  helpers (`_mw_download_via_chrome`, `_mw_html_to_text`, `_mw_api_design`) and its return
+  shape; no Creality fetch function is touched, which the full suite (G5) exercises.
+  `tests/test_originals_dashboard.py` used to pin the version marker to the literal `V16`,
+  which contradicts AGENTS.md's bump rule; it now asserts the `<title>` and `#ui-version`
+  agree, whatever the number is, so the next bump cannot break it.
 
 - [x] G5: the repair did not break the run (full suite, browser-free)
   CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q
-  EXPECT: 558 passed
-  EVIDENCE: 2026-10-25, exit 0 — `558 passed, 3 warnings in 93.78s` (527 before this work;
-  +31 in tests/test_makerworld.py; the 3 warnings are FastAPI `on_event` deprecations that
-  predate this work).
+  EXPECT: 567 passed
+  EVIDENCE: 2026-10-25, exit 0 — `567 passed, 3 warnings in 87.32s` (527 before this work;
+  +40 in tests/test_makerworld.py, the rest from the description/API gates; the 3 warnings
+  are FastAPI `on_event` deprecations that predate this work).
 
 - [x] G6: the dashboard serves the build that contains this work and says so
   EVIDENCE: 2026-10-25, re-measured after the Model Origin rewrite — `/health` answers
@@ -97,11 +100,13 @@ Baseline: 527 tests passing before this work; the Creality publish path
   accepts…","no cover image to upload…","only 0 real print photo(s); MakerWorld requires
   at least 3 photographs of the printed model…"` — a real refusal from the running build,
   with no browser opened.
-  OPEN: after committing (6100c0f) `/health` answers `build_is_current=false` with
-  `build=2490943+edits head_rev=6100c0f` — that flag compares git revs, and the process
-  started before the commit, while its code fingerprint already matches disk. It clears on
-  the next restart; AGENTS.md forbids restarting the dashboard unasked, so it was left
-  running and this is recorded instead of quietly fixed.
+  CLOSED: after the description work landed the supervisor restarted on its own and
+  `/health` answers `build=5d50f19+edits pid=12948 code_fingerprint=df93d46284c0
+  disk_fingerprint=df93d46284c0 build_is_current=true` with
+  `checks.browser_debug_port_up=true`; `GET /makerworld` serves
+  `<title>MakerWorld Pipeline V4</title>`, the `#mw-version` badge reads `V4`, the
+  Description copy says "copied from the source listing", and neither
+  `slice(0, 2000)` nor "added automatically" is in the served page.
 
 - [x] G7: the gaps in the study are declared, not papered over
   EVIDENCE: MAKERWORLD-FLOW-CONFIG.md carries a "What is NOT measured" table, and each
@@ -117,8 +122,8 @@ Baseline: 527 tests passing before this work; the Creality publish path
 
 - [x] G8: MakerWorld has its own dashboard at its own address, and Creality's has none of it
   CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py -k "(page or route) and not step1"
-  EXPECT: 6 passed
-  EVIDENCE: 2026-10-25, exit 0 — `6 passed, 25 deselected in 1.31s`. `makerworld/index.html` is its
+  EXPECT: 7 passed
+  EVIDENCE: 2026-10-25, exit 0 — `7 passed, 33 deselected in 1.19s`. `makerworld/index.html` is its
   own page (`MakerWorld Pipeline V1` in its `<title>`, its own `#mw-version` marker that the
   test requires to agree with it), wired only to `/upload/makerworld*`, `/makerworld/files`,
   `/makerworld/published`, `/makerworld/forget` — and asserted NOT to contain
@@ -142,7 +147,7 @@ Baseline: 527 tests passing before this work; the Creality publish path
   control in G10. Re-measured 2026-10-25 after G9/G10 landed: `7 passed, 29 deselected in
   1.28s`. The ban list is now anchored on the call site (`('/auto/`) because
   `/makerworld/auto/start` ends in the Creality route's own name, and the page's marker is
-  `MakerWorld Pipeline V3`.
+  `MakerWorld Pipeline V4`.
   CLOSED: the discovery scrape has now been exercised live — see G9, which is the measurement.
 
 - [x] G9: discovery only ever lists designs whose licence permits the remix
@@ -185,9 +190,32 @@ Baseline: 527 tests passing before this work; the Creality publish path
   `print_photos`, and it refuses to start while the Creality run is publishing (one browser,
   one form). `POST /makerworld/auto/start {"count":0}` → 400 before any browser is touched,
   measured live: `Type how many models you want, 1 or more (you sent 0).`
-  OPEN: no MakerWorld item has ever actually been published. The loop is proven against fakes
-  and the wizard against the measured flow map; the first real run is the remaining unknown,
-  and it drives the user's own logged-in Chrome.
+  LIVE: a real listing has now gone through the wizard end to end at the user's explicit
+  request (2026-10-25). Design **3495491** was published from the source's own photographs
+  and file, passed MakerWorld's review, and appeared at
+  `https://makerworld.com/en/models/3495491-mini-bookshelf-whimsy-fairy` in Published Models
+  (1). The measured end state: `Publish` opens the **"Publish your model"** sync dialog,
+  the CC-only option + Confirm produce **"Model published & synced!"**, and the account
+  lands on `/en/@<user>/verifying` — success is that toast **or** the verifying URL, and the
+  ledger records it as published with `pending_review: True`. The edit path is different and
+  now mapped too: `/en/my/models/<id>/edit` → Publish opens **"Model Data Changed?"**
+  (default "Yes. Users must be notified…"), and a description-only change answers **No** →
+  Confirm. Both dialogues are in MAKERWORLD-FLOW-CONFIG.md.
+
+- [x] G11: the listing carries the source's own description, unchanged, on the dashboard and in a batch
+  CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py -k "description"
+  EXPECT: 3 passed
+  EVIDENCE: 2026-10-25, exit 0 — `3 passed, 37 deselected in 0.14s`. `plan_description`
+  returns the source text only; the text comes
+  from the public design API's `summary` (`<boostcontent>` inside `<boostme>`), not from
+  rendered HTML, and the driver types it line by line and records `same_as_source`.
+  `makerworld/index.html` prefills the field with that text **untruncated**, its copy says
+  "copied from the source listing" instead of promising an added credit line, and the Auto
+  worker passes the fetched description/category/tags straight through. The live proof is
+  design 3495491: its listing now reads exactly the source's sentence
+  ("As i've made this model available for commercial use, if you enjoy it, please leave a 5
+  star review or give a boost!") — edited on the owner edit page, saved, and the model went
+  back to Verifying (1) for re-review.
 
 <!--
 Notes for whoever works this ledger:
@@ -216,9 +244,11 @@ Notes for whoever works this ledger:
   certify: a source whose licence forbids derivatives or commercial use, a source
   whose licence it cannot read, a design with no file, and a design with fewer than
   three of the original maker's own photographs.
-- Nothing here was exercised against the live account. The study walk attached one
-  throwaway STL, which created draft 10186871; it was deleted through the site's own
+- The live account HAS now been exercised at the user's explicit request (2026-10-25):
+  one listing published (design 3495491), passed review, then corrected to carry the
+  source's own description through the owner edit page, which returned it to Verifying.
+  The study walk's throwaway draft 10186871 was deleted through the site's own
   `DELETE /api/v1/design-service/my/draft/10186871` and the re-list answered
-  `{"hits":[],"total":0}`. First real publishes should run with
-  MAKERWORLD_NO_SUBMIT=1.
+  `{"hits":[],"total":0}`. Later publishes should still start with
+  MAKERWORLD_NO_SUBMIT=1 when the wizard itself is being changed.
 -->

@@ -104,17 +104,19 @@ MIN_REAL_PHOTOS = 3
 MAX_PHOTOS = 16
 IMAGE_ACCEPT = (".jpg", ".jpeg", ".png", ".webp", ".gif")
 
+# Measured 2026-10-25 on the live draft: the form asks TWO licence questions —
+# adaptations and commercial use. The redistribute question in the study dump
+# is no longer rendered, so it must not be answered from a stale map.
 # UNMEASURED: which answer combination renders which licence name is MakerWorld's
 # own mapping. The table below is the ordinary CC reading; the driver never
 # trusts it — it reads the licence name MakerWorld itself renders and refuses if
 # that name is not the source licence (see license_name_matches).
 LICENSE_PLAN = {
-    "cc0": {LICENSE_Q_ADAPT: "Yes", LICENSE_Q_COMMERCIAL: "Yes", LICENSE_Q_REDISTRIBUTE: "Yes"},
-    "zero": {LICENSE_Q_ADAPT: "Yes", LICENSE_Q_COMMERCIAL: "Yes", LICENSE_Q_REDISTRIBUTE: "Yes"},
-    "publicdomain": {LICENSE_Q_ADAPT: "Yes", LICENSE_Q_COMMERCIAL: "Yes", LICENSE_Q_REDISTRIBUTE: "Yes"},
-    "by": {LICENSE_Q_ADAPT: "Yes", LICENSE_Q_COMMERCIAL: "Yes", LICENSE_Q_REDISTRIBUTE: "Yes"},
-    "by-sa": {LICENSE_Q_ADAPT: ADAPT_OPTIONS[1], LICENSE_Q_COMMERCIAL: "Yes",
-              LICENSE_Q_REDISTRIBUTE: "Yes"},
+    "cc0": {LICENSE_Q_ADAPT: "Yes", LICENSE_Q_COMMERCIAL: "Yes"},
+    "zero": {LICENSE_Q_ADAPT: "Yes", LICENSE_Q_COMMERCIAL: "Yes"},
+    "publicdomain": {LICENSE_Q_ADAPT: "Yes", LICENSE_Q_COMMERCIAL: "Yes"},
+    "by": {LICENSE_Q_ADAPT: "Yes", LICENSE_Q_COMMERCIAL: "Yes"},
+    "by-sa": {LICENSE_Q_ADAPT: ADAPT_OPTIONS[1], LICENSE_Q_COMMERCIAL: "Yes"},
 }
 # Refused outright, so they have no plan:
 #  · ND — MakerWorld's remix form says a NoDerivatives source is not allowed;
@@ -131,6 +133,13 @@ _CC_TOKEN = re.compile(r"(?i)\bCC[\s-]?0\b|public[\s-]?domain|"
 
 def cc_code(license_raw: str) -> str:
     """The CC code of the SOURCE licence ('' when the text names none)."""
+    raw = (license_raw or "").strip()
+    # The public design API reports the licence as a bare token ("BY-SA"), not
+    # as a URL or a "CC BY-SA" sentence.
+    if re.fullmatch(r"(?i)by(?:-(?:nc|sa|nd)){0,2}", raw):
+        return raw.lower()
+    if re.fullmatch(r"(?i)(?:cc[\s-]?0|0|zero|public[\s-]?domain)", raw):
+        return "cc0"
     t = re.sub(r"\s+", "-", (license_raw or "").lower().replace("_", "-"))
     m = re.search(r"creativecommons\.org/(?:licenses|publicdomain)/([a-z0-9\-]+)", t)
     if m:
@@ -139,7 +148,7 @@ def cc_code(license_raw: str) -> str:
         m2 = re.search(r"\bcc-?(by(?:-(?:nc|sa|nd)){0,2}|0|zero)\b", t)
         code = m2.group(1) if m2 else ""
     code = code.strip("-")
-    if code in ("zero", "public-domain", "publicdomain"):
+    if code in ("0", "zero", "public-domain", "publicdomain"):
         code = "cc0"
     if not code and "publicdomain" in t:
         code = "cc0"
@@ -153,6 +162,10 @@ def license_plan(license_raw: str) -> dict:
     sentence that says why, and no answers — the driver stops there rather than
     picking an option that would mis-state the source's licence.
     """
+    if re.search(r"(?i)standard\s+digital\s+file\s+license|\bsdlf?\b", license_raw or ""):
+        return {"code": "standard", "refused": True, "answers": {},
+                "why": "the source is published under MakerWorld's Standard Digital File "
+                       "License, which does not license a re-upload"}
     code = cc_code(license_raw)
     if code in REFUSED_CODES or code.endswith("-nd"):
         return {"code": code, "refused": True, "answers": {},
@@ -171,25 +184,52 @@ def license_plan(license_raw: str) -> dict:
     return {"code": code, "refused": False, "answers": dict(answers), "why": ""}
 
 
+_FULL_MOD = {"SA": "SHARE ALIKE", "NC": "NONCOMMERCIAL", "ND": "NODERIVATIVES"}
+
+
 def expected_license_names(code: str) -> list[str]:
     """The licence NAMES MakerWorld may legitimately render for this source CC
-    code — read back off the form, not assumed. Empty list = cannot be checked."""
+    code — the short badge ("CC BY-SA") and the long link text the live form
+    shows ("Creative Commons Attribution-Share Alike"). Empty list = cannot be
+    checked."""
     c = (code or "").lower()
-    if c in ("cc0", "zero", "publicdomain", ""):
-        return ["CC0", "Public Domain"] if c else []
+    if c in ("cc0", "zero", "publicdomain"):
+        return ["CC0", "Public Domain"]
+    if not c:
+        return []
     mods = [p for p in c.split("-")[1:] if p in ("nc", "sa", "nd")]
-    return ["CC BY" + "".join("-" + m.upper() for m in mods)]
+    short = "CC BY" + "".join("-" + m.upper() for m in mods)
+    long = "Creative Commons Attribution" + "".join(
+        "-" + _FULL_MOD[m.upper()] for m in mods if m.upper() in _FULL_MOD)
+    return [short, long]
 
 
 def license_name_matches(read: str, code: str) -> bool:
-    """Whether the licence name MakerWorld rendered is one this source licence
-    allows. Anything else (a stricter or looser badge) is a mismatch."""
+    """Whether the licence MakerWorld rendered (short badge or long CC name)
+    is the one the source grants. Anything stricter, looser or unreadable is
+    a mismatch."""
     want = expected_license_names(code)
     if not want:
         return False
-    text = re.sub(r"\s+", " ", (read or "").upper())
-    return any(name.upper().replace("CC BY", "CC-BY") in text.replace("CC-BY", "CC BY")
-               or name.upper() in text for name in want)
+    text = re.sub(r"[^A-Z0-9]+", "", (read or "").upper())
+    if not text:
+        return False
+    c = (code or "").lower()
+    if c in ("cc0", "zero", "publicdomain"):
+        return "CC0" in text or "PUBLICDOMAIN" in text
+    long_forms = [re.sub(r"[^A-Z0-9]+", "", n.upper())
+                  for n in want if n.upper().startswith("CREATIVE")]
+    if any(n and n in text for n in long_forms):
+        return True
+    # short form: CCBY + the modifier letters, with any version digits ignored
+    m = re.match(r"^CCBY([A-Z]*)(?:[0-9].*)?$", text)
+    if not m:
+        return False
+    mods = [p for p in c.split("-")[1:] if p in ("nc", "sa", "nd")]
+    suffix = m.group(1)
+    got = re.findall(r"NC|SA|ND", suffix)
+    return (sorted(got) == sorted(p.upper() for p in mods)
+            and len(suffix) == sum(len(x) for x in got))
 
 
 def clamp_name(name: str) -> str:
@@ -213,21 +253,14 @@ def plan_tags(tags, source_name: str = "") -> list[str]:
     return out
 
 
-def plan_description(description: str, source_url: str, source_name: str = "") -> str:
-    """The Description text, guaranteed to carry what MakerWorld's own hint
-    demands of a remix: what changed, and whose model it came from."""
-    body = re.sub(r"\s*\n{3,}", "\n\n", (description or "").strip())
-    lines = []
-    if body:
-        lines.append(body)
-    if source_url and source_url not in body:
-        lines.append("Source model: " + source_url)
-    if not re.search(r"(?i)remix|modif|changed|adapt", body):
-        # UNMEASURED wording, but the form's own sentence is explicit that a
-        # remix that does not detail itself gets removed.
-        lines.append("This listing is a remix of the source model above: the geometry was "
-                     "taken from it and changed before re-publishing here.")
-    return "\n\n".join(lines).strip()
+def plan_description(description: str, source_url: str = "", source_name: str = "") -> str:
+    """The source listing's own description, copied as-is.
+
+    It is not decorated with a generated remix preamble or a credit line: the
+    source is already declared in Model Origin, where MakerWorld reads it. The
+    user asked for the uploaded listing to carry the original model's own text.
+    """
+    return re.sub(r"\s*\n{3,}", "\n\n", (description or "").strip())
 
 
 def _norm_words(s: str) -> str:
@@ -351,10 +384,13 @@ def validate_plan(name: str = "", description: str = "", source_url: str = "",
                         "Printables original must be published with the original-model path or "
                         "imported through MakerWorld's own third-party import")
 
-    desc = plan_description(description, source_url)
-    if len(desc) < 40:
-        warnings.append("the description is short; MakerWorld removes remixes that do not "
-                        "detail what changed")
+    desc = plan_description(description)
+    if not desc:
+        blockers.append("the source listing has no description and MakerWorld's Description "
+                        "field is required — there is nothing original to copy")
+    elif len(desc) < 40:
+        warnings.append("the source description is short; MakerWorld's remix form asks the "
+                        "listing to explain how it was remixed, so review may be stricter")
 
     return {"ok": not blockers, "blockers": blockers, "warnings": warnings,
             "plan": {"name": title, "description": desc, "license": lp,

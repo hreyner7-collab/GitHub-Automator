@@ -1685,6 +1685,11 @@ async def _makerworld_auto_worker(count: int, job_id: str) -> None:
                               f"{makerworld_flow.MIN_REAL_PHOTOS}")
                 _log()
                 continue
+            # The public design API named the source's own category and tags;
+            # the form's pickers only accept its own vocabulary, so they are
+            # passed through exactly as the source declares them.
+            cat = (res.get("categories") or [""])[0]
+            tag_list = res.get("tags") or []
             row["state"] = "uploading"
             _log()
             try:
@@ -1694,17 +1699,20 @@ async def _makerworld_auto_worker(count: int, job_id: str) -> None:
                         stl_path=res["stl_path"], image_paths=photos, source_url=url,
                         dry_run=False, print_photos=photos, remix_source_url=url,
                         remix_source_name=name, license_raw=res.get("license_raw", ""),
-                        should_stop=_stopped)
+                        tags=tag_list, category=cat, should_stop=_stopped)
             except Exception as exc:  # noqa: BLE001
                 up = {"success": False, "error": f"{type(exc).__name__}: {exc}"}
             if up.get("success"):
                 row["state"] = "published"
                 row["published_url"] = up.get("url", "")
+                row["pending_review"] = bool(up.get("pending_review"))
                 MW_AUTO["published"] += 1
                 makerworld_ledger.record(name=name, source_url=url,
                                          published_url=up.get("url", ""),
                                          design_id=str(up.get("design_id") or ""),
-                                         file_path=res["stl_path"], outcome="published")
+                                         file_path=res["stl_path"], outcome="published",
+                                         note=("MakerWorld is reviewing the submission"
+                                               if up.get("pending_review") else ""))
             else:
                 row["state"] = "stopped" if up.get("stopped") else "failed"
                 row["why"] = str(up.get("error") or up.get("message") or "")[:300]
