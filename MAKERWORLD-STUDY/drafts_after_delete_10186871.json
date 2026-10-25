@@ -1,0 +1,16 @@
+{
+  "delete": {
+    "status": 200,
+    "ok": true,
+    "raw": ""
+  },
+  "rel": {
+    "status": 200,
+    "ok": true,
+    "keys": [
+      "hits",
+      "total"
+    ],
+    "raw": "{\"hits\":[],\"total\":0}"
+  }
+}

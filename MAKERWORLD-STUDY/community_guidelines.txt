@@ -1,0 +1,307 @@
+SOURCE: https://makerworld.com/en/community-guidelines
+TITLE: Community Guidelines - MakerWorld
+
+Community Guidelines
+
+Updated: April 27th, 2026
+
+Effective: April 27th, 2026
+
+MakerWorld aims to foster a safe, inclusive, and creative community where users can share 3D printing models, knowledge, and ideas.
+
+These community guidelines clearly define the content and behavior that are not allowed on MakerWorld; they apply to all areas of the platform, including models, print profiles, comments, posts, MakerLab, and related services (collectively, “MakerWorld”).
+
+All users are expected to comply with applicable laws, widely accepted community standards, and these guidelines.
+
+General Guidelines
+Illegal Activities and Regulated Goods
+Illegal Activities
+
+Content that depicts, promotes, or provides instructions for illegal activities is prohibited, including but not limited to:
+
+Crimes involving personal freedom and safety
+Illegal medical or financial activities
+Gambling-related activities
+Fraud and scams
+Cybercrime
+Unauthorized data trading
+Prohibited or Regulated Goods
+
+Content that promotes, trades, or markets regulated or prohibited goods may be restricted or removed depending on context.
+
+Weapons
+Hazardous materials
+Drugs and drug-related items
+Surveillance or espionage equipment
+Any models clearly intended for illegal use
+Facilitation of Illegal Activities
+
+Content that provides models, guidance, or services to enable or facilitate illegal activities, or to bypass laws or regulations, is prohibited and will be removed.
+
+ 
+
+Violence and Graphic Content
+
+Content depicting violence or graphic imagery is prohibited, including:
+
+Graphic Violence
+Graphic depictions of violence, including exposed organs, severe injury, or self-harm and suicide
+Depictions or glorification of violent acts or physical harm
+Animal Abuse
+Graphic depictions, promotion, or encouragement of animal cruelty, torture, or intentional harm
+Promotion of tools or models intended for animal abuse
+
+ 
+
+Hate Speech and Harassment
+Hate Speech and Hateful Behavior
+
+Content that promotes or expresses hatred, discrimination, or exclusion toward individuals or groups based on protected attributes is prohibited, including but not limited to:
+
+Hate speech or discrimination targeting individuals or communities that share protected attributes such as race, ethnicity, nationality, religion, gender, sexual orientation, or disability
+Promotion, support, or praise of hateful, extremist, or terrorist ideologies or organizations
+Content that justifies, incites, or promotes hatred, violence, or exclusion against protected groups
+Harassment and Bullying
+
+Content that targets individuals or groups in a harmful, abusive, or intimidating manner is prohibited and will be removed, including but not limited to:
+
+Insults, harassment, threats, or degrading and demeaning language
+Targeted attacks against individuals, including repeated or severe abusive behavior
+Bullying, intimidation, or attempts to silence others
+Doxxing or sharing personal or sensitive information without consent
+Content that encourages or incites harm, harassment, or violence against others
+
+ 
+
+Risk and Safety
+Physical Safety
+
+Content that may pose a risk to personal or public safety is restricted or removed, including but not limited to:
+
+Promotion, encouragement, or instructions related to self-harm or suicide
+Depictions, glorification, or encouragement of dangerous acts that may lead to serious injury or death
+Content that provides instructions for the unsafe use, modification, or creation of tools, equipment, or devices that may cause harm
+Content featuring devices designed or intended to cause harm or facilitate unsafe activities
+Content that encourages reckless behavior or disregards basic safety standards
+
+*Risk Disclosure: Models that may pose risks must clearly disclose these risks for user and reviewer clarity. Disclosure does not guarantee approval or exemption from review, restriction, or removal.
+
+Harmful or Misleading Information
+
+Content that spreads false or misleading information that may cause harm, confusion, controversy, or disruption to individuals or society
+
+ 
+
+Nudity and Sexual Content
+Explicit Sexual Content
+
+Content involving explicit sexual material is prohibited and will be removed, including:
+
+Pornographic content, explicit sexual acts, or full nudity
+Sexual services, solicitation, or promotion of prostitution
+Distribution of pornographic materials or links to such content
+Any sexual content involving minors
+Suggestive and Adult Content
+
+Content that is sexually suggestive or intended for adult audiences may be restricted, including:
+
+Sexualized or suggestive content
+Fetish-related content
+Adult products intended for sexual use
+Partial nudity or content intended to arouse sexual interest
+
+ 
+
+Minor Safety
+
+We have zero tolerance for content that harms minors. Such content is prohibited and will be removed, including:
+
+Sexual exploitation or sexualization of minors
+Physical, emotional, or psychological abuse of minors
+Content that encourages or praises minors engaging in dangerous or inappropriate behavior
+Content that distorts or misuses well-known children’s characters or cartoons in inappropriate contexts
+Violations of minors’ privacy or personal rights
+
+ 
+
+Privacy and Intellectual Property
+
+Content that violates others’ rights may be removed, including:
+
+Privacy Violations
+Unauthorized collection, use, or disclosure of personal information
+Misuse of personal identity, including images or likeness without consent
+Intellectual Property
+Copyright, trademark, or patent infringement
+Unauthorized distribution or sale of others’ work
+Misrepresentation and Impersonation
+Impersonating individuals, brands, or official entities in a misleading way
+
+ 
+
+Sensitive and Shocking Content
+
+Content that may cause strong discomfort or distress may be restricted, including:
+
+Trypophobia-inducing visuals
+Consumption of non-food or harmful substances
+Visually disturbing effects
+Other shocking content intended to provoke discomfort
+
+ 
+
+ 
+
+Supplemental Guidelines
+
+MakerWorld is governed by a layered regulatory framework:
+
+General Guidelines constitute the foundational rules applicable to all users across all content types. All community members are required to read and adhere to these guidelines.
+Supplemental Guidelines set forth additional rules specific to particular content formats, including but not limited to Models, Profiles, and Ratings.
+
+These two tiers of rules operate on a cumulative basis — Supplemental Guidelines complement rather than supersede the Community Guidelines. When creating, publishing, or engaging with a specific content type, users are obligated to comply with both the Community Guidelines and the corresponding Supplemental Guidelines.The current Supplemental Guidelines are as follows:
+
+ 
+
+Model Upload Guidelines
+
+Please follow the following guidelines for models.
+
+https://wiki.bambulab.com/en/makerworld/tutorials/model-upload-guidelines
+
+ 
+
+Print Profile Guidelines
+
+Please follow the following guidelines for print profiles.
+
+https://wiki.bambulab.com/en/makerworld/tutorials/print-profile-upload
+
+ 
+
+Rating Guidelines
+
+Please follow the following guidelines for ratings.
+
+https://wiki.bambulab.com/en/makerworld/tutorials/rating-guidelines
+
+ 
+
+Exclusive Model Guidelines
+
+Please follow the following guidelines for 3D Exclusive Models.
+
+https://wiki.bambulab.com/en/makerworld/tutorials/exclusive-model-guideline
+
+Please follow the following guidelines for Laser & Cut Exclusive Models.
+
+https://wiki.bambulab.com/en/makerworld/tutorials/laser-cut-exclusive-model-guideline
+
+To learn more about the license options for Exclusive Models, please visit the link below.
+
+https://makerworld.com/en/exclusive-model-policy
+
+ 
+
+Post Guidelines
+
+Please follow the following guidelines for community posts.
+
+https://wiki.bambulab.com/en/makerworld/tutorials/post-guidelines
+
+ 
+
+ 
+
+Account Policies
+
+These Account Guidelines outline behaviors that are not allowed on MakerWorld. Users must comply with the following rules when creating and using their accounts. Violations of these rules may result in content restriction, removal, account suspension, or other enforcement actions.
+
+ 
+
+Account Security
+
+Do not share, sell, trade, or transfer your account, or allow others to access it.
+
+ 
+
+Impersonation
+
+Do not impersonate any individual or entity, or misrepresent your identity or affiliation. This includes:
+
+Using another person’s identity or profile information in a misleading way;
+Impersonating MakerWorld or other official entities, including using names, branding, or visual elements that may mislead others into believing you are affiliated with them;
+Acting on behalf of others without explicit authorization.
+
+ 
+
+Cheating & Manipulation
+
+Do not manipulate platform activity or engagement. This includes:
+
+Using bots, automation, fake accounts, or other unauthorized methods to inflate downloads, prints, boosts, likes, comments, followers, or similar interactions;
+Offering or exchanging incentives (e.g., rewards, access to files) in return for engagement, such as downloads, prints, or boosts.
+
+ 
+
+Spam & Unauthorized Promotion
+
+Do not use your account to spam (e.g., excessive posting or low-quality content), promote excessively, or redirect users off-platform.
+
+ 
+
+Abuse of Platform Features
+
+Do not misuse platform features, including the reporting system, to harass, target, or harm others or the community.
+
+ 
+
+ 
+
+Violations and Appeal
+Violations
+
+MakerWorld reserves the right to independently assess the violations of these Guidelines and take the following measures at its discretion:
+
+Remove account from any or all programs
+Content takedown
+Reduce the visibility of content
+Revoke Incomes
+Point Penalties
+Restriction of Certain Account Functions
+
+Your account may be banned from uploading any models or other submissions.
+
+Your account may be banned from any or all programs applications for 30 calendar days.
+
+Repeat offenders may be suspended from any or all programs applications permanently.
+
+Permanently suspend the account:
+
+All models and profiles under your account will be removed from MakerWorld;
+
+All points associated with the account will be revoked;
+
+The account will no longer be able to post, upload models, or engage in other activities.
+
+ 
+
+Appeal
+
+If users believe that restrictions, suspensions, or termination applied to their account have been made in error, they may submit an appeal through MakerWorld’s appeal system or by sending an email to support@makerworld.com. Our teams will conduct a thorough reevaluation of the decision.
+
+Appeal materials must be truthful and complete and should include at least the following information:
+
+The reason provided for the action taken against the account;
+A clear explanation of the appeal, briefly describing why you believe the action was taken in error;
+Supporting materials such as images, videos, or other evidence that may help clarify the situation and assist in the review process.
+
+Before submitting an appeal, please carefully read and understand the relevant rules. MakerWorld will conduct an independent evaluation based on the submitted materials and existing records and reserves the right of final interpretation regarding the appeal outcome.
+
+ 
+
+History
+2025-11-25
+2025-05-13
+2024-12-23
+2024-11-13

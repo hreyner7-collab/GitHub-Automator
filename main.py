@@ -23,11 +23,14 @@ from discover import discover as discover_models, find_creality, \
     DISCOVER_DEADLINE_S as AUTO_DISCOVER_DEADLINE_S
 import analytics
 import creality_rules
+import makerworld_flow
+import makerworld_ledger
 import ledger
 import proof
 import selector
 import timing
 import uploader        # the module, for the evidence dict a raised publish leaves
+from makerworld_uploader import upload as makerworld_upload
 from origin import library as originals_lib
 from origin import publish as originals_publish
 
@@ -202,6 +205,24 @@ class UploadRequest(BaseModel):
     image_paths: list[str]
     source_url: str = ""
     license_raw: str = ""
+    dry_run: bool = False
+
+
+class MakerWorldUploadRequest(BaseModel):
+    """The same listing, aimed at MakerWorld instead of Creality. print_photos
+    is its own field because MakerWorld asks for something the edited set is
+    not: photographs of the object you actually printed."""
+    name: str
+    description: str = ""
+    stl_path: str
+    image_paths: list[str] = []
+    print_photos: list[str] = []
+    source_url: str = ""
+    license_raw: str = ""
+    remix_source_url: str = ""
+    tags: list[str] = []
+    category: str = ""
+    kind: str = "remix"
     dry_run: bool = False
 
 
@@ -656,6 +677,63 @@ async def upload_to_creality(req: UploadRequest):
     return result
 
 
+# ── MakerWorld: the same listing, the other platform ────────────────────────
+# Deliberately its own route, its own driver (makerworld_uploader) and its own
+# memory (makerworld_ledger). No Creality rule is applied here and none of this
+# touches /upload.
+
+@app.post("/upload/makerworld/plan")
+async def makerworld_plan(req: MakerWorldUploadRequest):
+    """What MakerWorld's own form would say about this listing, before anything
+    opens: measured limits, required slots, the licence plan. Browser-free."""
+    src = req.remix_source_url or req.source_url
+    return makerworld_flow.validate_plan(
+        name=req.name, description=req.description, source_url=req.source_url,
+        model_file=req.stl_path, cover_images=req.image_paths,
+        print_photos=req.print_photos, remix_source_url=src,
+        license_raw=req.license_raw, kind=req.kind, dry_run=req.dry_run)
+
+
+@app.post("/upload/makerworld")
+async def upload_to_makerworld(req: MakerWorldUploadRequest):
+    src = req.remix_source_url or req.source_url
+    # One browser, one form at a time — the same lock the Creality publish uses.
+    if AUTO.get("state") in ("discovering", "running"):
+        raise HTTPException(status_code=409, detail=
+            "An auto run is publishing right now (%s) — stop it first, or wait for "
+            "it, then publish to MakerWorld by hand." % AUTO["state"])
+    if not req.dry_run:
+        hit = makerworld_ledger.find(source_url=req.source_url, name=req.name,
+                                     published_url=src, file_path=req.stl_path)
+        if hit["found"]:
+            raise HTTPException(status_code=409, detail=
+                "Refusing to publish twice on MakerWorld. " + makerworld_ledger.describe(hit))
+    try:
+        async with UPLOAD_LOCK:
+            result = await makerworld_upload(
+                name=req.name, description=req.description, stl_path=req.stl_path,
+                image_paths=req.image_paths, source_url=req.source_url,
+                dry_run=req.dry_run, license_raw=req.license_raw,
+                print_photos=req.print_photos, remix_source_url=src,
+                tags=req.tags, category=req.category, kind=req.kind)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    # Only what really landed. A dry run and a MAKERWORLD_NO_SUBMIT fill publish
+    # nothing, so they must not lock the model.
+    published_now = (result.get("success") and not result.get("dry_run")
+                     and not result.get("no_submit"))
+    if published_now or result.get("duplicate"):
+        makerworld_ledger.record(
+            name=req.name, source_url=req.source_url, published_url=result.get("url") or "",
+            design_id=str(result.get("design_id") or ""), file_path=req.stl_path,
+            outcome="published",
+            note="published by hand from the dashboard" if published_now
+            else "MakerWorld said this model already exists")
+    if isinstance(result, dict):
+        result.setdefault("platform", "makerworld")
+    return result
+
+
 # ── Auto: find models, then publish each one ────────────────────────────────
 # One run at a time, strictly sequential (fetch and publish both drive the same
 # logged-in Chrome, so parallel uploads would fight over one form). ND-licensed
@@ -668,7 +746,8 @@ AUTO: dict = {"state": "idle", "job_id": None, "requested": 0, "discovered": 0,
               "signin_required": False, "shortfall": None, "shortfall_reason": "",
               "published": 0}
 AUTO_TASK: asyncio.Task | None = None
-UPLOAD_LOCK = asyncio.Lock()          # the Creality form: one writer at a time
+UPLOAD_LOCK = asyncio.Lock()          # one publish in the browser at a time
+                                      # (Creality form or MakerWorld wizard)
 
 # The default searches are the user's own object families, defined once in
 # selector.py — NOT the phrase "household items", which is what surfaced a

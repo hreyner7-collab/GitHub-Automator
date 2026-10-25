@@ -1,0 +1,117 @@
+[
+  {
+    "method": "GET",
+    "url": "https://public-cdn.bblmw.com/default/avatar.png?x-oss-process=image/resize,w_60/format,webp",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "url": "https://perf.bblmw.com/api/4/envelope/?sentry_version=7&sentry_key=REDACTED&sentry_client=sentry.javascript.nextjs%2F8.47.0",
+    "status": 200,
+    "post": "{\"sent_at\":\"2026-10-25T19:18:41.709Z\",\"sdk\":{\"name\":\"sentry.javascript.nextjs\",\"version\":\"8.47.0\"}}\n{\"type\":\"session\"}\n{\"sid\":\"9d85aa0061ea4ec78a85333a3de91654\",\"init\":true,\"started\":\"2026-10-25T19:18:41.709Z\",\"timestamp\":\"2026-10-25T19:18:41.709Z\",\"status\":\"ok\",\"errors\":0,\"attrs\":{\"release\":\"16fbd96b89d0cf5539fd865d5ebdca9ae75b25fb\",\"environment\":\"prod-us\",\"user_agent\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36\"}}"
+  },
+  {
+    "method": "GET",
+    "url": "https://makerworld.com/api/v1/design-store-service/shops",
+    "status": 200,
+    "resp_head": "{\"shopList\":[{\"languageCode\":\"en-US\",\"languageName\":\"English\",\"regionCode\":\"US\",\"shopApiUrl\":\"https://na-store-api.bambulab.com\",\"shopFrontendUrl\":\"https://us.store.bambulab.com\",\"shopId\":7,\"shopName\":\"USA\"},{\"languageCode\":\"en-US\",\"languageName\":\"English\",\"regionCode\":\"EU\",\"shopApiUrl\":\"https://eu-"
+  },
+  {
+    "method": "GET",
+    "url": "https://makerworld.com/api/v1/design-store-service/regions",
+    "status": 200,
+    "resp_head": "{\"total\":8,\"hits\":[{\"name\":\"USA\",\"icon\":\"https://makerworld.bblmw.com/makerworld/product/public/us.png\",\"currency\":\"USD\",\"currencySymbol\":\"$\",\"link\":\"https://us.store.bambulab.com/?skr=yes\",\"countries\":[\"United States\"]},{\"name\":\"EU\",\"icon\":\"https://makerworld.bblmw.com/makerworld/product/public/eu."
+  },
+  {
+    "method": "GET",
+    "url": "https://makerworld.com/api/v1/design-store-service/my/region",
+    "status": 200,
+    "resp_head": "{\"configured\":false,\"region\":{\"name\":\"UK\",\"icon\":\"https://makerworld.bblmw.com/makerworld/product/public/uk.png\",\"currency\":\"\",\"currencySymbol\":\"\",\"link\":\"https://uk.store.bambulab.com/?skr=yes\",\"countries\":[\"United Kingdom\"]}}"
+  },
+  {
+    "method": "GET",
+    "url": "https://makerworld.com/api/v1/put-service/placement/info?placementId=PLM20260929trfgvb",
+    "status": 200,
+    "resp_head": "{\"PlacementId\":\"PLM20260929trfgvb\",\"planRelateInfoList\":[]}"
+  },
+  {
+    "method": "GET",
+    "url": "https://makerworld.com/api/v1/search-service/homepage/nav",
+    "status": 200,
+    "resp_head": "{\"navs\":[{\"name\":\"Following\",\"key\":\"Following\",\"type\":3,\"nameTracking\":\"Following\"},{\"name\":\"For You\",\"key\":\"Foryou\",\"type\":1,\"nameTracking\":\"Foryou\"},{\"name\":\"Trending\",\"key\":\"Trending\",\"type\":2,\"nameTracking\":\"Trending\"},{\"name\":\"🎃Halloween\",\"key\":\"CRT2026093000419:PLM2026093000724\",\"type\":2,\"name"
+  },
+  {
+    "method": "GET",
+    "url": "https://makerworld.com/api/v1/search-service/recommand/youlike",
+    "status": 200,
+    "resp_head": "{\"sugList\":[\"fortnite\",\"sword\",\"dragon\",\"name\",\"pumpkin\",\"box\"]}"
+  },
+  {
+    "method": "GET",
+    "url": "https://makerworld.com/api/v1/search-service/searchlist",
+    "status": 200,
+    "resp_head": "{\"hotList\":{\"name\":\"\",\"topWords\":[],\"listWords\":[\"christmas\",\"halloween\",\"clicker\",\"natal\",\"toy\",\"dragon\",\"phone stand\",\"cat\"],\"topWordsDesc\":[],\"listWordsDesc\":[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"bkg\":\"#FFEFEF\"},\"customList\":[{\"name\":\"Halloween 2026\",\"topWords\":[],\"listWords\":[\"Halloween 2026\",\"Halloween si"
+  },
+  {
+    "method": "GET",
+    "url": "https://makerworld.com/api/v1/user-service/my/message/count",
+    "status": 200,
+    "resp_head": "{\"noticeCount\":0,\"messageCount\":0,\"total\":0,\"commentCount\":0,\"designCount\":0,\"systemCount\":0,\"deviceCount\":0,\"communityCount\":0,\"paidContentCount\":0,\"shoppingCount\":0,\"crowdfundingMessageCount\":0,\"unreadTotal\":0,\"IMUnreadCount\":0,\"bubbleMsg\":[],\"isBoostNeedEject\":false,\"isBoostExpireNeedEject\":false"
+  },
+  {
+    "method": "GET",
+    "url": "https://makerworld.com/api/v1/design-user-service/my/preference",
+    "status": 200,
+    "resp_head": "{\"uid\":REDACTED_UID,\"name\":\"user_REDACTED_UID\",\"handle\":\"user_REDACTED_UID\",\"avatar\":\"https://public-cdn.bblmw.com/default/avatar.png\",\"bio\":\"\",\"links\":[],\"backgroundUrl\":\"https://public-cdn.bblmw.com/default/background.png\",\"designIds\":[],\"designInfos\":[],\"pinnedDesignIds\":[],\"pinnedCollectionIds\":null,\""
+  },
+  {
+    "method": "POST",
+    "url": "https://makerworld.com/api/mall-sign-in/sso?from=mw_client_ensure",
+    "status": 200,
+    "resp_head": "{\"ok\":true,\"cartSynced\":false}"
+  },
+  {
+    "method": "GET",
+    "url": "https://makerworld.com/api/v1/aftersale-service/makerworld/totalunreadcount",
+    "status": 200,
+    "resp_head": "{\"count\":0}"
+  },
+  {
+    "method": "GET",
+    "url": "https://makerworld.com/api/v1/search-service/search/history?scene=1",
+    "status": 502,
+    "resp_head": ""
+  },
+  {
+    "method": "GET",
+    "url": "https://makerworld.com/api/v1/mall/mall-order/mw/v2/cart/query",
+    "status": 200,
+    "resp_head": "{\"code\":1,\"message\":\"success\",\"data\":{\"groups\":[],\"currency\":null,\"totalPrice\":null,\"totalWithoutDiscount\":null,\"discountAmount\":null,\"shippingFee\":null,\"freeShippingInfo\":null,\"cartSize\":0,\"selectedCartSize\":0,\"invalidCartSize\":null}}"
+  },
+  {
+    "method": "POST",
+    "url": "https://makerworld.com/api/v1/design-user-service/my/upload",
+    "status": 200,
+    "post": "{\"useType\":\"makerworld/model\",\"fileNames\":[\"2026-10-25_80e31a824a5698.stl\"]}",
+    "resp_head": "{\"cdnPrefix\":\"https://makerworld.bblmw.com\",\"urls\":[\"https://or-cloud-makerworld-prod.s3.us-west-2.amazonaws.com/makerworld/model/20261026/REDACTED_UID/ded15c2d2df0cbdb.stl?presigned_query_scrubbed=1&presigned_query_scrubbed=1&presigned_query_scrubbed=1"
+  },
+  {
+    "method": "PUT",
+    "url": "https://or-cloud-makerworld-prod.s3.us-west-2.amazonaws.com/makerworld/model/20261026/REDACTED_UID/ded15c2d2df0cbdb.stl?presigned_query_scrubbed=1&presigned_query_scrubbed=1&presigned_query_scrubbed=1&presigned_query_scrubbed=1&presigned_query_scrubbed=1",
+    "status": 200,
+    "resp_head": ""
+  },
+  {
+    "method": "POST",
+    "url": "https://makerworld.com/api/v1/design-user-service/my/upload",
+    "status": 200,
+    "post": "{\"useType\":\"makerworld/model\",\"fileNames\":[\"2026-10-25_14ed91063750d.jpeg\"]}",
+    "resp_head": "{\"cdnPrefix\":\"https://makerworld.bblmw.com\",\"urls\":[\"https://or-cloud-makerworld-prod.s3.us-west-2.amazonaws.com/makerworld/model/20261026/REDACTED_UID/e02dab567c2b115b.jpeg?presigned_query_scrubbed=1&presigned_query_scrubbed=1&presigned_query_scrubbed=1"
+  },
+  {
+    "method": "PUT",
+    "url": "https://or-cloud-makerworld-prod.s3.us-west-2.amazonaws.com/makerworld/model/20261026/REDACTED_UID/e02dab567c2b115b.jpeg?presigned_query_scrubbed=1&presigned_query_scrubbed=1&presigned_query_scrubbed=1&presigned_query_scrubbed=1&presigned_query_scrubbed=1",
+    "status": 200,
+    "resp_head": ""
+  }
+]

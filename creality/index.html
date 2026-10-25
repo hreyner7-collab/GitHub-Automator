@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Creality Pipeline V16</title>
+<title>Creality Pipeline V17</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -257,7 +257,7 @@
 
 <div class="topbar">
   <h1>Creality <span>Pipeline</span></h1>
-  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V16</span>
+  <span class="build" id="ui-version" title="Dashboard version: bumped on every update">V17</span>
   <span class="build" id="build-stamp" title="Which code this dashboard process is serving"></span>
   <button id="analytics-btn" onclick="toggleAnalytics()">&#128202; Analytics</button>
 </div>
@@ -398,6 +398,25 @@
   </div>
   <button id="upload-btn" onclick="uploadModel()">Upload to Creality Cloud</button>
   <div id="upload-status" class="status"></div>
+</div>
+
+<!-- Step 3b: Publish to MakerWorld (its own target, its own memory) -->
+<div class="card" id="makerworld-section">
+  <h2>3b · Publish to MakerWorld</h2>
+  <p style="font-size:.8rem;color:#888;margin:0 0 10px">
+    MakerWorld's own wizard, kept separate from the Creality target above. It
+    asks for two things Creality does not: at least 3 <b>photographs of a model you
+    printed</b>, and a remix whose source is a design <b>already on MakerWorld</b>.
+    The plan check below reads MakerWorld's measured requirements and tells you
+    what is missing without opening a browser.
+  </p>
+  <label style="display:block;font-size:.8rem;color:#ccc;margin-bottom:8px">
+    <input type="checkbox" id="mw-real-photos">
+    The selected images above are photographs of prints I actually made
+  </label>
+  <button id="mw-plan-btn" class="btn-outline" onclick="checkMakerWorldPlan()">Check MakerWorld plan</button>
+  <button id="mw-upload-btn" class="btn-outline" onclick="uploadModelToMakerWorld()">Publish to MakerWorld (remix)</button>
+  <div id="mw-upload-status" class="status"></div>
 </div>
 
 <script>
@@ -669,6 +688,84 @@
       }
     } catch (err) {
       setStatus('upload-status', 'error', '&#10005; ' + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ── MakerWorld: the other target, kept separate from the Creality path ──
+  function _mwPayload() {
+    const sel = _editedRaw.filter((_, i) => _selected.has(i));
+    const arePrints = document.getElementById('mw-real-photos').checked;
+    return {
+      name: document.getElementById('model-name').value,
+      description: document.getElementById('model-desc').value,
+      stl_path: _stlPath || '',
+      image_paths: sel,
+      print_photos: arePrints ? sel : [],
+      source_url: _sourceUrl || '',
+      license_raw: _licenseRaw || '',
+      remix_source_url: _sourceUrl || '',
+      kind: 'remix',
+      dry_run: false
+    };
+  }
+
+  function _mwPlanHtml(p) {
+    let h = '';
+    (p.blockers || []).forEach(b => { h += '<br><span class="updetail">✗ ' + esc(b) + '</span>'; });
+    (p.warnings || []).forEach(w => { h += '<br><span class="updetail">⚠ ' + esc(w) + '</span>'; });
+    const pl = p.plan || {};
+    if (pl.name) h += '<br><span class="updetail">Name "' + esc(pl.name) + '" · ' +
+      (pl.covers || []).length + ' cover(s) · ' + (pl.print_photos || []).length +
+      ' print photo(s) · licence ' + esc(((pl.license || {}).code || 'cc by').toUpperCase()) + '</span>';
+    return h;
+  }
+
+  async function checkMakerWorldPlan() {
+    setStatus('mw-upload-status', 'info', 'Checking MakerWorld’s own requirements (no browser opens)…');
+    try {
+      const res = await fetch('/upload/makerworld/plan', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(_mwPayload())
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'plan check failed');
+      setStatus('mw-upload-status', data.ok ? 'ok' : 'error',
+        (data.ok ? '&#10003; MakerWorld will take this listing.'
+                 : '&#10005; MakerWorld would refuse this listing right now.') + _mwPlanHtml(data));
+    } catch (err) {
+      setStatus('mw-upload-status', 'error', '&#10005; ' + err.message);
+    }
+  }
+
+  async function uploadModelToMakerWorld() {
+    const btn = document.getElementById('mw-upload-btn');
+    btn.disabled = true;
+    setStatus('mw-upload-status', 'info', '<span class="spinner"></span>Opening the MakerWorld wizard…');
+    try {
+      const res = await fetch('/upload/makerworld', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(_mwPayload())
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'MakerWorld publish failed');
+      const v = (data.verify || {});
+      let detail = '';
+      if (v.draft_id) detail += '<br><span class="updetail">Draft ' + esc(String(v.draft_id)) + '</span>';
+      if (v.license) detail += '<br><span class="updetail">Licence MakerWorld renders: <b>' +
+        esc(v.license.read_back || 'nothing') + '</b> (source: ' +
+        esc((v.license.code || '?').toUpperCase()) + ')</span>';
+      if (v.real_photos) detail += '<br><span class="updetail">Real-life photos: ' +
+        esc(JSON.stringify((v.real_photos || {}).counter || '—')) + '</span>';
+      if (data.success && data.url) {
+        setStatus('mw-upload-status', 'ok', '&#10003; ' + esc(data.message || 'Published to MakerWorld.') +
+          ' <a href="' + data.url + '" target="_blank" style="color:#a5d6a7">' + esc(data.url) + '</a>' + detail);
+      } else {
+        setStatus('mw-upload-status', 'error', '&#10005; ' + esc(data.error || data.message || 'failed') + detail);
+      }
+    } catch (err) {
+      setStatus('mw-upload-status', 'error', '&#10005; ' + err.message);
     } finally {
       btn.disabled = false;
     }

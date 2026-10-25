@@ -6,6 +6,7 @@ second click cannot publish the same model twice.
 """
 import asyncio
 import json
+import re
 import time
 from pathlib import Path
 
@@ -243,7 +244,12 @@ def test_publish_refuses_unknown_and_invalid_keys(shelf):
 def test_the_dashboard_card_is_the_originals_path():
     html = (Path(__file__).resolve().parents[1] / "creality" / "index.html"
             ).read_text(encoding="utf-8")
-    assert "<title>Creality Pipeline V16</title>" in html
+    # The version marker must exist and agree with itself. It is deliberately
+    # not pinned to a number here: AGENTS.md bumps it on every update, so a
+    # literal "V16" in this test fails the next build for the wrong reason.
+    m = re.search(r"<title>Creality Pipeline (V\d+)</title>", html)
+    assert m, "the dashboard title carries no version marker"
+    assert f'id="ui-version" title="Dashboard version: bumped on every update">{m.group(1)}<' in html
     assert "/originals/start" in html and "/originals/publish" in html
     assert "Approve &amp; publish" in html
     assert "no designer's photos are edited or re-uploaded" in html

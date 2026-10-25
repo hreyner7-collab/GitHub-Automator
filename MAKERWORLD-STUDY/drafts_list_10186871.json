@@ -1,0 +1,9 @@
+{
+  "status": 200,
+  "ok": true,
+  "keys": [
+    "hits",
+    "total"
+  ],
+  "raw": "{\"hits\":[{\"auxiliaryBom\":[],\"auxiliaryGuide\":[],\"auxiliaryOther\":[],\"auxiliaryPictures\":[],\"boms\":[],\"bomsLinks\":[],\"bomsNeeded\":false,\"bomsOfFilaments\":[],\"bomsOfMaterials\":[],\"bomsOfOtherPartList\":[],\"categoryId\":0,\"compatibility\":{\"devModelName\":\"\",\"devProductName\":\"\",\"nozzleDiameter\":0},\"cover\":\"\",\"coverLandscape\":\"\",\"coverPortrait\":\"\",\"createTime\":\"2026-10-25T19:19:13Z\",\"cyberBrick\":{\"cyberBrickNeeded\":false,\"isOfficialController\":false},\"designBom\":[],\"designGuide\":[],\"designId\":0,\"designOther\":[],\"designPictures\":[],\"designSetting\":{\"submitAsPrivate\":false},\"details\":[],\"draftSetting\":{\"createStep\":\"\",\"createWith3mf\":false},\"exclusive\":0,\"id\":10186871,\"importedFromOtherEnv\":false,\"instanceId\":0,\"instanceSetting\":{\"submitAsPrivate\":false},\"isAIGC\":false,\"isAIGCAdmin\":false,\"lastExclusiveInfo\":{},\"license\":\"\",\"makerLabJson\":{\"isCompression\":0,\"isRealLifePhoto\":0},\"makerLabSvg\":[],\"model3Mf\":{},\"modelFiles\":[],\"modelId\":\"\",\"modelSource\":\"remix\",\"nsfw\":false,\"original\":[],\"otherCompatibility\":[],\"paidSetting\":{\"isPaid\":false},\"parentId\":0,\"postContent\":\"\",\"postNeeded\":false,\"preset\":{},\"printer\":{\"model\":\"\",\"settingsId\":\"\",\"variant\":0},\"profileCover\":\"\",\"profileId\":0,\"profileSummary\":\"\",\"profileTitle\":\"\",\"region\":\"\",\"resultDesc\":\"\",\"resultPlate\":0,\"resultType\":0,\"status\":1,\"summary\":\"\",\"syncToMWGlobal\":false,\"tags\":[],\"title\":\"\",\"unsupportedDevModels\":[],\"updateTime\":\"2026-10-25T19:19:13Z\"}],\"total\":1}"
+}

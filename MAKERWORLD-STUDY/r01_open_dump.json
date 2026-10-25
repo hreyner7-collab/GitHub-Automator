@@ -1,0 +1,57 @@
+{
+  "url": "https://makerworld.com/en/my/models/publish?type=remix",
+  "title": "Publish Model - MakerWorld",
+  "stepper": [],
+  "fileInputs": [
+    {
+      "accept": ".jpg, .jpeg, .png, .webp",
+      "multiple": true,
+      "visible": false,
+      "context": ""
+    }
+  ],
+  "radios": [
+    {
+      "text": "Yes (earn extra points reward)",
+      "checked": false,
+      "visible": true
+    },
+    {
+      "text": "I have STL/CAD files or other types of 3MF files",
+      "checked": false,
+      "visible": true
+    }
+  ],
+  "checkboxes": [],
+  "textFields": [
+    {
+      "tag": "input",
+      "type": "text",
+      "ph": "",
+      "maxlen": 100,
+      "required": false,
+      "label": "fortnite sword dragon name pumpkin box"
+    }
+  ],
+  "selects": [],
+  "buttons": [
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": "Next Step",
+      "disabled": false
+    }
+  ],
+  "errors": [],
+  "bodyText": "Home All Models Following MakerLab Contests Crowdfunding You History Collections Explore Maker's Supply CyberBrick Community Forum Privacy Terms Guidelines FAQ Cookie Settings Hot Searches © 2026 MakerWorld fortnite sword dragon name pumpkin box Do you have a Bambu Studio file(.3mf) for this model? Yes (earn extra points reward) I have STL/CAD files or other types of 3MF files ​ Please note Uploading real pictures of the test printed model will gain it higher popularity and more traffic exposure for new models. Users flagged for spam uploads will have their content removed and accounts suspended. Repeated community guideline violations may lead to model removal and account bans. Next Step"
+}

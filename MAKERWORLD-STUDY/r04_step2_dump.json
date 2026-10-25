@@ -1,0 +1,413 @@
+{
+  "url": "https://makerworld.com/en/my/models/drafts/10186871/edit",
+  "title": "Publish Model - MakerWorld",
+  "stepper": [],
+  "fileInputs": [
+    {
+      "accept": ".3ds, .amf, .dwg, .dxf, .f3d, .factory, .fcstd, .iges, .ipt, .obj, .ply, .rsdoc, .scad, .shape, .shapr, .skp, .sldasm, .sldprt, .slvs, .step, .stl, .stp, .studio3, .zip, .3mf, .stpz",
+      "multiple": true,
+      "visible": false,
+      "context": ""
+    },
+    {
+      "accept": ".3ds, .amf, .dwg, .dxf, .f3d, .factory, .fcstd, .iges, .ipt, .obj, .ply, .rsdoc, .scad, .shape, .shapr, .skp, .sldasm, .sldprt, .slvs, .step, .stl, .stp, .studio3, .zip, .3mf, .stpz",
+      "multiple": true,
+      "visible": false,
+      "context": "Browse"
+    },
+    {
+      "accept": "image/jpeg, image/png, image/webp, image/gif",
+      "multiple": false,
+      "visible": false,
+      "context": "4:3 Cover"
+    },
+    {
+      "accept": "image/jpeg, image/png, image/webp, image/gif",
+      "multiple": false,
+      "visible": false,
+      "context": "3:4 Cover is prioritized in App"
+    },
+    {
+      "accept": "video/mp4,video/quicktime",
+      "multiple": false,
+      "visible": false,
+      "context": "Add video"
+    },
+    {
+      "accept": "image/jpeg, image/png, image/webp, image/gif",
+      "multiple": true,
+      "visible": false,
+      "context": "Add Photo"
+    },
+    {
+      "accept": "image/jpeg, image/png, image/webp, image/gif",
+      "multiple": true,
+      "visible": false,
+      "context": "Add Photo"
+    },
+    {
+      "accept": "image/jpeg,image/png,image/gif,image/bmp,image/webp,image/tiff",
+      "multiple": true,
+      "visible": false,
+      "context": "Paragraph Boost Me"
+    },
+    {
+      "accept": ".jpg, .jpeg, .png, .webp",
+      "multiple": true,
+      "visible": false,
+      "context": ""
+    }
+  ],
+  "radios": [
+    {
+      "text": "Original",
+      "checked": false,
+      "visible": true
+    },
+    {
+      "text": "Remix",
+      "checked": true,
+      "visible": true
+    },
+    {
+      "text": "Share",
+      "checked": false,
+      "visible": true
+    },
+    {
+      "text": "Yes (I want to link a Laser & Cut model)",
+      "checked": false,
+      "visible": true
+    },
+    {
+      "text": "No",
+      "checked": true,
+      "visible": true
+    },
+    {
+      "text": "Yes",
+      "checked": false,
+      "visible": true
+    },
+    {
+      "text": "Yes, as long as others share in the same way",
+      "checked": false,
+      "visible": true
+    },
+    {
+      "text": "Yes, but any derivative works must be published exclusively on MakerWorld",
+      "checked": false,
+      "visible": true
+    },
+    {
+      "text": "Yes, any derivative works must be published exclusively on MakerWorld and comply with Standard Digital File License – Community Use (SDFL‑C)",
+      "checked": false,
+      "visible": true
+    },
+    {
+      "text": "No",
+      "checked": true,
+      "visible": true
+    },
+    {
+      "text": "Yes",
+      "checked": false,
+      "visible": true
+    },
+    {
+      "text": "No",
+      "checked": true,
+      "visible": true
+    },
+    {
+      "text": "Yes",
+      "checked": false,
+      "visible": true
+    },
+    {
+      "text": "No",
+      "checked": true,
+      "visible": true
+    },
+    {
+      "text": "Yes",
+      "checked": false,
+      "visible": true
+    },
+    {
+      "text": "No",
+      "checked": true,
+      "visible": true
+    },
+    {
+      "text": "Public",
+      "checked": true,
+      "visible": true
+    },
+    {
+      "text": "Private",
+      "checked": false,
+      "visible": true
+    }
+  ],
+  "checkboxes": [
+    {
+      "text": "Open Source",
+      "checked": true,
+      "visible": true
+    },
+    {
+      "text": "",
+      "checked": true,
+      "visible": true
+    },
+    {
+      "text": "",
+      "checked": false,
+      "visible": true
+    },
+    {
+      "text": "",
+      "checked": false,
+      "visible": true
+    }
+  ],
+  "textFields": [
+    {
+      "tag": "input",
+      "type": "text",
+      "ph": "",
+      "maxlen": 100,
+      "required": false,
+      "label": "fortnite sword dragon name pumpkin box"
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "ph": "",
+      "maxlen": -1,
+      "required": false,
+      "label": ".stl ​"
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "ph": "note",
+      "maxlen": -1,
+      "required": false,
+      "label": "​"
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "ph": "Paste the URL or utilize the search function for models on MakerWorld",
+      "maxlen": -1,
+      "required": false,
+      "label": "​"
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "ph": "",
+      "maxlen": -1,
+      "required": false,
+      "label": "0/50 ​"
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "ph": "",
+      "maxlen": -1,
+      "required": false,
+      "label": "Quick search by entering category keywords"
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "ph": "",
+      "maxlen": -1,
+      "required": false,
+      "label": "0/100 Press \"Enter\" to separate tags. Choose similar tags from the dropdown to boost discoverability"
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "ph": "",
+      "maxlen": -1,
+      "required": false,
+      "label": "Standard Digital File License"
+    },
+    {
+      "tag": "div",
+      "type": "",
+      "ph": "",
+      "maxlen": null,
+      "required": false,
+      "label": "Paragraph Boost Me"
+    }
+  ],
+  "selects": [
+    {
+      "text": "",
+      "label": "​"
+    },
+    {
+      "text": "",
+      "label": "Quick search by entering category keywords"
+    },
+    {
+      "text": "",
+      "label": "0/100 Press \"Enter\" to separate tags. Choose similar tags from the dropdown to boost discoverability"
+    },
+    {
+      "text": "Standard Digital File License",
+      "label": "Standard Digital File License"
+    }
+  ],
+  "buttons": [
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": "Browse",
+      "disabled": false
+    },
+    {
+      "text": "New folder",
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": "Drag me",
+      "disabled": false
+    },
+    {
+      "text": "Add",
+      "disabled": false
+    },
+    {
+      "text": "Open",
+      "disabled": false
+    },
+    {
+      "text": "Paragraph",
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": "Boost Me",
+      "disabled": false
+    },
+    {
+      "text": "Add Documentation",
+      "disabled": false
+    },
+    {
+      "text": "Previous",
+      "disabled": false
+    },
+    {
+      "text": "Save to draft",
+      "disabled": false
+    },
+    {
+      "text": "Publish",
+      "disabled": false
+    }
+  ],
+  "errors": [
+    "Publish Model - MakerWorld"
+  ],
+  "bodyText": "Home All Models Following MakerLab Contests Crowdfunding You History Collections Explore Maker's Supply CyberBrick Community Forum Privacy Terms Guidelines FAQ Cookie Settings Hot Searches © 2026 MakerWorld fortnite sword dragon name pumpkin box 1 Upload 2 Model Information Edit Model Draft Original Remix Share ​ Raw Model Files Drag your files here Supported 3D formats: 3ds, amf, dwg, dxf, f3d, factory, fcstd, iges, ipt, obj, ply, rsdoc, scad, shape, shapr, skp, sldasm, sldprt, slvs, step, stl, stp, studio3, zip, 3mf, stpz Check off the open source, users will not be able to download raw models. Uploading the original file (Such as Step) separately improves cloud slicing algorithms, resulting in smoother edges and superior print quality while protecting your original design from unauthorized access or modification. Browse New folder Drag uploaded files here to add them into the root .stl ​ ​ 2 KB Open Source ​ Does this model include a Laser & Cut model? Yes (I want to link a Laser & Cut model) No Model Pictures & Videos Prompt Tips Model Covers jpg/gif/png, ≤ 30MB. Please use real print photos Web/App cover 4:3 4:3 Cover App cover 3:4 3:4 Cover is prioritized in App 3:4 cover appears larger in app 3 : 4 4 : 3 ​ Model Videos NEW Max 30s, mp4/mov recommended. Displays first on the model detail page. Add video ​ Real life photos ( 0 / 16 ) Upload ≥3 photos of the printed model, covering 3 views Add Photo ​ Model Pictures ( 0 / 16 ) Photos of the printed model, png/jpg/webp/gif, ≤ 30MB/piece, 4:3 ratio recommended. Add Photo ​ Model Information Model Origin Please make sure the source model's license does NOT contain \"NoDerivatives\" attribute. For example CC-BY-ND, CC-BY-NC-ND, Standard Digital File License are not allowed. Add ​ ​ Model Name 0/50 ​ ​ Category Quick search by entering category keywords Quick search by entering category keywords ​ Tags (0 / 50) Press \"Enter\" to separate tags. Choose similar tags from the dropdown to boost discoverability 0/100 Press \"Enter\" to separate tags. Choose similar tags from the dropdown to boost discoverability License Allow adaptations of your work to be shared? Yes Yes, as long as others share in the same way Yes, but any derivative works must be published exclusively on MakerWorld Yes, any derivative works must be published exclusively on MakerWorld and comply with Standard Digital File License – Community Use (SDFL‑C) No Allow commercial uses of your work? Yes No Allow sharing or redistributing of your work or its derivatives? Yes No Is this model supported only for printing through Bambu Handy? Yes No Standard Digital File License ​ Visibility Public Private Description If you want to add a generic header or footer to all of your model's descriptions, you can configure it in Creator center > Customization Please detail how you remixed the original model. Otherwise, our moderators will remove your model. Paragraph Boost Me ​ Community Post Documentation Add Documentation Assembly Guide and Other files Join the Exclusive Model Program Not Eligible Benefits of Exclusive Model Program: 10%~25% extra incentive for points and boosts reward Points and boosts earned can be redeemed for Cash Reward Increased Exposure Copyright Support when infringed outside MakerWorld ​ This model should comply with the Exclusive Model Guidelines. By joining this program, you agree to Exclusive Model Program Agreement. Add Bill of Materials Why add a BOM? Use official items: Makes it easier for users worldwide to replicate your design and improves printing and assembly success rates. Earn commission rewards: Use Maker's Supply parts and kits in your designs to earn 3%–15% commission from order value (withdrawable as cash) after commission access is enabled—some creators earn over $1,000 per month. Learn from great examples: Learn how to use the BOM feature effectively. View examples View the rules: MakerWorld Creator Commission Incentives Rules Previous Save to draft Publish Publish Model - MakerWorld"
+}

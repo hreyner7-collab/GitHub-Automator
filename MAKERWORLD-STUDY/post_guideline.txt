@@ -1,0 +1,119 @@
+SOURCE: https://makerworld.com/en/community/tag?name=Post+Guideline
+TITLE: Post Guideline
+
+Search models, users, collections, and posts
+#Post Guideline
+8 posts
+1 Popularity value
+Follow
+Join the topic
+Trending
+Newest
+prints for fun
+@user_132800118
+2026/06/09 20:10
+#Post Guideline
+which one you want first
+0%
+omnimark
+55%
+vilrimite mark
+27%
+sinister mark
+18%
+yellow suit
+11 votes
+Final results
+Share
+1
+7
+0
+MakerWorld
+@MakerWorld
+2026/03/25 02:33
+#Post Guideline
+Hashtag Guide: Boost Your Posts & Models
+We see so much amazing content in our community every day—from troubleshooting requests and helpful tips to stunning model showcases (like the MakerWorld contest entries!).However, we’ve noticed that some posts lack hashtags, use irrelevant ones, or have hashtags that didn’t activate properly (not turning blue/clickable). This makes it harder for the community to find your content. We want to make sure your questions get solved fast and your brilliant designs get the spotlight they deserve! That’s why we’ve put together this quick guide to help you use hashtags effectively and get your posts in front of the right audience.👇 1.Why Should You Use Hashtags?Better Categorization & Search: Your post will automatically be grouped into the relevant hashtag page, making it super easy for others to find your content by topic.Faster Answers: Troubleshooting posts with the right tags get significantly higher visibility, meaning faster help from the community.Boost Your Reach: High-quality posts with accurate tags are more likely to be recommended by the platform, earning you more likes, comments, and followers.2.How to Add Hashtags (The Right Way!)🚨 Important: Typing out a hashtag manually (e.g., just typing #text) doesn’t work! If the text stays black, the system won't recognize it, and others won't be able to search for it.❌ Incorrect vs. ✅ Correct✅ Correct Steps:On Mobile:On the post editing page, tap the Hashtag icon (#) on the left side, or directly type a # in the text box to open the [Add Hashtag] menu.Type your keywords and select the relevant tag from the list (e.g., #Bonsai).The hashtag text in your post will turn BLUE. This means it’s successfully linked!On Web:On the post editing page, click the Hashtag icon (#) at the bottom.In the pop-up window, type keywords to choose an existing tag, or create a brand new one. Click [Add].The hashtag text in your post will turn BLUE.Tips:No Copy-Pasting: Simply copying and pasting a hashtag into the text box will NOT work.Tap to Confirm: You must manually type #, tap the suggested tag in the pop-up, and make sure it turns BLUE.Quality over Quantity: Pick 1 to 3 of the most relevant tags. You don’t need to spam them!Stay Relevant: Using the right tags boosts your visibility. Spamming unrelated tags will negatively impact your post's reach (reduced visibility). 3.Popular Hashtag Reference GuideNot sure which tags to use? Check out these common ones! (Tip: Use capital letters for each word to make them easier to read!)🛠️ Q&A & Troubleshooting#Questions#Troubleshooting#Help Center#BeginnerHelp📢 Creator Promos & TeasersReleased Models: #Sharing Makes, #NewmodelUpcoming Models: #ComingSoon, #Wip🏆 Official Contests & Events#Contestse.g., #Bonsai, #Easter2026 (Always refer to the official tags for current events!)📸 Showcases & Make Sharing#Featured Video Collection#3Dprints#Printoftheday#Multicolor#Printer Accessories#Beginner Prints💡 Tips, Tricks & Tutorials#Sharing Tips#Suggestions for Beginners#Tutorials☕ Community & Requests#Design Request#Ratemysetup💬 Feedback & Suggestions#Feedback#FeatureRequestWe hope this guide helps your awesome content reach a wider audience! 🚀If you have any questions about using hashtags, drop a comment below.
+(Edited)
+Share
+30
+17
+1
+Luke Design
+@Luke_Design
+2025/05/09 23:14
+what printers do you have?
+@anthea1206 @H_Modeling @CadenH @N3xusN1nja @Sir_Fredrick @user_4179147063 @closed_duck @3DPrintConcepts @PotaterSoup7 @RealDishwash @Luke_Designs @LayerlineAU @K3DPrint @Brunson_TheGoat @WorkParts @D.Sign @Rando101 @MakerLab @makers_supply @BambuFilament @Luke_design2 @3DZINER @3D_RIO_2.0 @Romans1x16 @notabanana @BeatrixPrints @Octet3D @Nintendo @3DRIO @buddy_456 @WarbirdWorkshop @OfficialSupport @QuitePuzzled @GreyWolf14 @LittleMacDesign @Camman18 @P3_CustomPrints @GWDesigns @Nshark10 @3DFunModels @FlmanCreates @The3dStudioCo. @LittleGuyModels @3dprintedartuk @The account has been deleted @Moderator @user_818818140 @DaBoss_1 @theHacksmith @how_ridiculous @razoys15 @prime_tower @Myndex @bambino_3D @BambuLab @MakerWorld @RJDesign #Upcoming Contest #Cyberbrick #Post Guideline #Sharing Makes #Questions #Comingsoon #Newmodel #Sharing Tips #Help Center #Bambu H2D
+View All
+Share
+12
+143
+0
+Together 3D
+@Together3D
+2025/04/29 06:16
+#Sharing Tips
+#Post Guideline
+#MakerWorld Manual
+Uploading a design (and not get it taken down)
+Reading the Community posts, a lot of starting designers have negative experiences when their design is getting taken down because of various reasons.Been there, done that!So I thought I would share some tips and tricks that could be helpful when uploading a design.Note that this article is only on regular designs, Exclusive program is a whole other article. What is a design?A design is something you create, or you have altered an existing design substantual (= remix).I’m not going to go deep in how you create a design. Youtube has plenty of tutorials about that.STL? 3MF?When finishing your design, you will have (at least) a file in “.stl” format.When you open Bambu, import the “.stl”-file and save that project, you will also have a “.3mf”-file. Which Bambu likes, because those are the files that can be printed directly from peoples phone.Make sure that, when you upload your STL-file into Bambu, you:Check if your print is compatible with an A1 mini, because that is the printer that has the smallest printing surface, this is important later on.Only the necessary colors are active, if you only need 1 color in your design, scratch all the rest using the “-” at the top right. And select the right color while you are at it.Slice your print, making sure that there is no warning from Bambu about supports being needed, the object is floating, supports clash, …Uploading a modelWhen uploading a model, it is (very) important that you select the right option.Original: Did you design the model from scratch? Your own idea that you have created in software and made into your very own STL?Remix: you started with a design of someone else, but altered it, made it different in a substantial way.Import: added a file from another website, for example adding digital painting on your print profile (the 3MF-bambu-project-file). This option was added in 2025, if you have uploads older then this qualifying for this option, you might want to check.After choosing the right option, you drag your STL and 3MF file to the upload box. and chose “next step”. Model picturesWhen uploading a design, clear pictures are the way to get people to print your design.Don’t just upload the render, meaning the digital image.Because seeing the file digital and in real life, is like shopping online: who knows what you are going to get.Chose your first picture carefully: it will be the first thing people see when seeing your design, and will be a big decider to let people open the design, or scroll past it.Check out these helpful tips => https://forum.bambulab.com/t/the-ultimate-makerworld-photography-guide/109141If you spend X hours on your design, at least spend time taking good pictures and do your design justice.Gifs/videosDoes your design have moving parts? Has it multiple sides you want to showcase? Or does it need some assembly?Try making a gif or a video. Rotating it on a plate or showing off the function of the design.I personally use https://ezgif.com/maker to convert 6 second video’s into gifs. DescriptionWhen describing your design, don’t be afraid to use sentences.Try asking yourself what you would want to read.Why did you design it?Is it supportless?Where did you get the idea?Did you use a certain type of filament?What do you use it for?What do you think is fun about it?Is it something you have to assemble? How do you assemble it?Does it use other parts then simply filament?Did you upload multiple variants in one design? What is the difference?If you made a gif, add it in the description as well. This way more people can see it.WARNING: Remix?When you have selected remix, you will need to add the link of the design you have remixed. It will automatically be placed on the right side of your design.Make sure that remixing is allowed. When remixing from Makerworld, the site will tell you.You will also have to put into your description how you have remixed the design.What did you change? What did you add?Adding a print profileA print profile is the file people need to print directly from their phones, or to download your specific settings. It makes it a lot easier for people to print your model.BUT a print profile has rules.Name: Makerworld will automatically add the basic settings for your print profile. You can change it, especially if you have different print profiles for 1 model. For example: 1 digitally colored, and 1 without digital color.Print profile pictures: it is REQUIRED to post a picture of the printed model. You can add a rendering of your design, but without an extra picture of your printed model. It will be taken down (and you lose points).Description: anything special you want to add?Select the printers the print profile is compatible with. Remember that you checked if an A1 mini can print it? Deselect the A1 mini if the model is to big.Print test passed: you have to check this box. Therefor you will have to have printed your design (and proven it with a picture). If you designed it, but haven’t printed it, why would anyone else print it?A good print profile will get a high rating, when getting 4 or more stars on your print profile, you receive points from Makerworld (thats a whole other post). Sidenote: adding printing profiles to designs that are not your ownThere is (sadly) a whole market in “farming points” by adding print profiles to designs that are not your own.Adding a printing profile to a design of another designer can be useful. For example:You added your own specific supports, so it only supports what is needed.You digitally painted it, when the original was not (be aware: print it yourself and post the picture!)Scaling a model up or down, or adding multiple of the same model, is not a print profile that is valuable. The designer can do this him/herself.When in doubt: contact the designer. Did you know? The print profile of my very first design, was removed because I did not include a picture of the printed design on the print profile. I did add it at the model, but didn't understand the platform enough to know the difference between a print profile and a design. I hope this article was usefull and I wish you many joys in your growth as a designer ❤️Do you have any tips for designers who are starting their designing journey? Please share them!
+(Edited)
+Share
+185
+104
+3
+MakerWorld
+@MakerWorld
+2025/04/22 11:59
+#Post Guideline
+MakerWorld Community Post Guidelines
+This article offers suggestions for creators on posts that are more likely to attract traffic in the community while also outlining what to avoid to stay within the community's guidance. These recommendations will help you understand the expected standards to uphold the quality of community. Quality Expectations：We aim for the content to empower our community members, helping to build a valuable and meaningful ecosystem that benefits both creators and users. 👍For Creators, How to make your posts more popular?Here are the suggested submission themes we have collected for your reference. Stage 1：Before the Design of Models：1: Contents such as "Choose the Next Model" Before designing, creators can harness the power of their fans for inspiration.These options will be presented in an article format, allowing fans to make their selections in the comment section.  It is also strongly recommended to include detailed descriptions or scripts for the available options to avoid any confusion.  Stage 2: During the Process of Designing Models：1：Pre-release Creators are highly recommended to offer clear descriptions of upcoming models, along with preview images from the modeling process, visually showcasing the expected renderings to fans. This allows you to gather early feedback, refine your design, and generate buzz before your model goes live! Updates not only build excitement but also invite valuable feedback to refine the design before its final release. 2： Behind the scene Creators are highly encouraged to share the creative journey of their model, including sketches, the modeling process, and updates on the latest progress. This helps engage the audience by giving them a behind-the-scenes look at the project’s development.  Stage 3: After the Model is Released1、Latest Update: For this section, instead of just reposting the model link, creators are strongly encouraged to promote their models in article form. Specifically, consider including your background story, your design concept, and detailed assembly guidelines (if needed). This will give your audience a clear overview and help them appreciate the effort you’ve put into the project.   2、TroubleshootingAfter users print your model, they might encounter technical issues related to the prints. As the best person to solve these problems, you're highly encouraged to collect feedback from your fans and frequently answer their questions. This will not only help you address their concerns but also allow you to refine and improve your models. 3、Sharing insightful tipsAs an experienced designer, you’ve undoubtedly gained valuable knowledge and skills in 3D printing. Sharing your tips is a fantastic opportunity to help your audience grow alongside you.  Stage 4: Future PlansFuture Roadmap: To give both you and your audience a clearer understanding of the upcoming plans for your models, it's highly recommended to create an organized roadmap in article form. This will keep your audience informed about what to expect next and build anticipation for future releases. Creator Story：Share your journey, your inspiration, your lessons. Let the MakerWorld community connect with the creator behind the model. New Section RulesRecommendation: Curated high-quality and dynamic content recommended by the community.Creator's Club: Creators exchange model design experience and skills, share behind-the-scenes stories, and discuss experiences in MakerWorld.Creators & Fans: Creators update fans on your design progress, gather their suggestions, and share model previews and communicate to fans.Show Your Make: Users share and displaying their 3D printed works and finished projects.Off Topic: Discuss other 3D printing related content and topics.Please note: Posts that do not meet section requirements will be removed.❌Actions We don't Encourage1、Self-promotion of models by simply reposting the link with less description.   2、Synchronizing meaningless rating posts in community(A high-quality rated post should include: a rating, a detailed description after printing, and real photos of the printed model.)  3、Deliberately generating invalid or malicious traffic through topics, polls, pictures unrelated to 3D printing, meaningless content, or AI-generated images    4、1)Begging for boost, follower, gift card, downloads, or any promotion activity    2）Interchange/trade of boost and follow   For the full details of our community guidelines, please visit https://makerworld.com/en/community-guidelines.
+(Edited)
+Share
+102
+111
+5
+3Dino
+@3Dinoo
+2025/05/10 11:16
+#Upcoming Contest #Post Guideline #Sharing Makes #Newmodel #Comingsoon #Newmodel 
+💥 New Model Drop – Modular Water Pistol by 3Dino! 💦Hey makers!I’m excited to share my latest creation – a fully 3D-printable water pistol with interchangeable nozzles for different spray styles (jet, wide, multi-hole).No glue needed, fully mechanical fit, and tested for real backyard fun!Check it out now on MakerWorld! 🔧Let me know what you think or suggest improvements – feedback is always welcome 🙌#BambuLab #3DPrinting #MakerWorld #WaterGun #SummerFun #3DinoDesign
+View All
+How do you find it ?
+33%
+Megacooooollll
+67%
+cool
+3 votes
+Final results
+Water Pistol fun and garden
+Model
+3Dino
+Share
+2
+0
+0
+PrintCraft
+@Pr1ntCraft
+2025/04/24 01:40
+I highly recommend that everyone reads and understands this. This article is full of some great points, ideas, do's, and don'ts. #Post Guideline #Post Etiquette
+MakerWorld
+@MakerWorld
+2025/04/22 11:59
+#Post Guideline
+MakerWorld Community Post Guidelines
+This article offers suggestions for creators on posts that are more likely to attract traffic in the community while also outlining what to avoid to stay within the community's guidance. These recommendations will help you understand the expected standards to uphold the quality of community. Quality Expectations：We aim for the content to empower our community members, helping to build a valuable and meaningful ecosystem that benefits both creators and users. 👍For Creators, How to make your posts more popular?Here are the suggested submission themes we have collected for your reference. Stage 1：Before the Design of Models：1: Contents such as "Choose the Next Model" Before designing, creators can harness the power of their fans for inspiration.These options will be presented in an article format, allowing fans to make their selections in the comment section.  It is also strongly recommended to include detailed descriptions or scripts for the available options to avoid any confusion.  Stage 2: During the Process of Designing Models：1：Pre-release Creators are highly recommended to offer clear descriptions of upcoming models, along with preview images from the modeling process, visually showcasing the expected renderings to fans. This allows you to gather early feedback, refine your design, and generate buzz before your model goes live! Updates not only build excitement but also invite valuable feedback to refine the design before its final release. 2： Behind the scene Creators are highly encouraged to share the creative journey of their model, including sketches, the modeling process, and updates on the latest progress. This helps engage the audience by giving them a behind-the-scenes look at the project’s development.  Stage 3: After the Model is Released1、Latest Update: For this section, instead of just reposting the model link, creators are strongly encouraged to promote their models in article form. Specifically, consider including your background story, your design concept, and detailed assembly guidelines (if needed). This will give your audience a clear overview and help them appreciate the effort you’ve put into the project.   2、TroubleshootingAfter users print your model, they might encounter technical issues related to the prints. As the best person to solve these problems, you're highly encouraged to collect feedback from your fans and frequently answer their questions. This will not only help you address their concerns but also allow you to refine and improve your models. 3、Sharing insightful tipsAs an experienced designer, you’ve undoubtedly gained valuable knowledge and skills in 3D printing. Sharing your tips is a fantastic opportunity to help your audience grow alongside you.  Stage 4: Future PlansFuture Roadmap: To give both you and your audience a clearer understanding of the upcoming plans for your models, it's highly recommended to create an organized roadmap in article form. This will keep your audience informed about what to expect next and build anticipation for future releases. Creator Story：Share your journey, your inspiration, your lessons. Let the MakerWorld community connect with the creator behind the model. New Section RulesRecommendation: Curated high-quality and dynamic content recommended by the community.Creator's Club: Creators exchange model design experience and skills, share behind-the-scenes stories, and discuss experiences in MakerWorld.Creators & Fans: Creators update fans on your design progress, gather their suggestions, and share model previews and communicate to fans.Show Your Make: Users share and displaying their 3D printed works and finished projects.Off Topic: Discuss other 3D printing related content and topics.Please note: Posts that do not meet section requirements will be removed.❌Actions We don't Encourage1、Self-promotion of models by simply reposting the link with less description.   2、Synchronizing meaningless rating posts in community(A high-quality rated post should include: a rating, a detailed description after printing, and real photos of the printed model.)  3、Deliberately generating invalid or malicious traffic through topics, polls, pictures unrelated to 3D printing, meaningless content, or AI-generated images    4、1)Begging for boost, follower, gift card, downloads, or any promotion activity    2）Interchange/trade of boost and follow   For the full details of our community guidelines, please visit https://makerworld.com/en/community-guidelines.
+(Edited)
+Share
+0
+3
+0
+UltraRocket
+@Ultrarocket760
+2025/04/22 17:20
+#Post Guideline check out this for infomative information about what and what not your posts should be about
+Share
+1
+0
+0
+No more data

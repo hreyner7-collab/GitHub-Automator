@@ -1,0 +1,117 @@
+{
+  "url": "https://makerworld.com/en/my/models/publish?type=remix",
+  "title": "Publish Model - MakerWorld",
+  "stepper": [],
+  "fileInputs": [
+    {
+      "accept": ".3ds, .amf, .dwg, .dxf, .f3d, .factory, .fcstd, .iges, .ipt, .obj, .ply, .rsdoc, .scad, .shape, .shapr, .skp, .sldasm, .sldprt, .slvs, .step, .stl, .stp, .studio3, .zip, .3mf, .stpz",
+      "multiple": true,
+      "visible": false,
+      "context": ""
+    },
+    {
+      "accept": ".3ds, .amf, .dwg, .dxf, .f3d, .factory, .fcstd, .iges, .ipt, .obj, .ply, .rsdoc, .scad, .shape, .shapr, .skp, .sldasm, .sldprt, .slvs, .step, .stl, .stp, .studio3, .zip, .3mf, .stpz",
+      "multiple": true,
+      "visible": false,
+      "context": "Browse"
+    },
+    {
+      "accept": ".jpg, .jpeg, .png, .webp",
+      "multiple": true,
+      "visible": false,
+      "context": ""
+    }
+  ],
+  "radios": [
+    {
+      "text": "Yes (earn extra points reward)",
+      "checked": false,
+      "visible": true
+    },
+    {
+      "text": "I have STL/CAD files or other types of 3MF files",
+      "checked": true,
+      "visible": true
+    },
+    {
+      "text": "Yes (I want to link a Laser & Cut model)",
+      "checked": false,
+      "visible": true
+    },
+    {
+      "text": "No",
+      "checked": true,
+      "visible": true
+    }
+  ],
+  "checkboxes": [
+    {
+      "text": "Open Source",
+      "checked": true,
+      "visible": true
+    }
+  ],
+  "textFields": [
+    {
+      "tag": "input",
+      "type": "text",
+      "ph": "",
+      "maxlen": 100,
+      "required": false,
+      "label": "fortnite sword dragon name pumpkin box"
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "ph": "",
+      "maxlen": -1,
+      "required": false,
+      "label": ".stl ​"
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "ph": "note",
+      "maxlen": -1,
+      "required": false,
+      "label": "​"
+    }
+  ],
+  "selects": [],
+  "buttons": [
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": "Browse",
+      "disabled": false
+    },
+    {
+      "text": "New folder",
+      "disabled": false
+    },
+    {
+      "text": null,
+      "disabled": false
+    },
+    {
+      "text": "Drag me",
+      "disabled": false
+    },
+    {
+      "text": "Next Step",
+      "disabled": false
+    }
+  ],
+  "errors": [],
+  "bodyText": "Home All Models Following MakerLab Contests Crowdfunding You History Collections Explore Maker's Supply CyberBrick Community Forum Privacy Terms Guidelines FAQ Cookie Settings Hot Searches © 2026 MakerWorld fortnite sword dragon name pumpkin box Do you have a Bambu Studio file(.3mf) for this model? Yes (earn extra points reward) I have STL/CAD files or other types of 3MF files ​ 1 Upload 2 Model Information Raw Model Files Drag your files here Supported 3D formats: 3ds, amf, dwg, dxf, f3d, factory, fcstd, iges, ipt, obj, ply, rsdoc, scad, shape, shapr, skp, sldasm, sldprt, slvs, step, stl, stp, studio3, zip, 3mf, stpz Check off the open source, users will not be able to download raw models. Uploading the original file (Such as Step) separately improves cloud slicing algorithms, resulting in smoother edges and superior print quality while protecting your original design from unauthorized access or modification. Browse New folder Drag uploaded files here to add them into the root .stl ​ ​ 2 KB Open Source ​ Does this model include a Laser & Cut model? Yes (I want to link a Laser & Cut model) No Next Step"
+}
