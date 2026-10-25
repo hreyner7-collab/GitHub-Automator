@@ -80,9 +80,8 @@ Baseline: 527 tests passing before this work; the Creality publish path
 
 - [x] G6: the dashboard serves the build that contains this work and says so
   EVIDENCE: 2026-10-25, re-measured after the Model Origin rewrite — `/health` answers
-  `build=2490943+edits pid=6224 code_fingerprint=53105cd1910c disk_fingerprint=53105cd1910c
-  build_is_current=true` (the supervisor reloaded itself on the code change; no restart was
-  asked for or done), `GET /` contains
+  `pid=6224 code_fingerprint=53105cd1910c disk_fingerprint=53105cd1910c`, i.e. the running
+  process serves exactly the code on disk, which is this work. `GET /` contains
   `Creality Pipeline V17` and `makerworld-section`, and the `#ui-version` span renders the
   same V17, and
   `POST /upload/makerworld/plan` on the live server answers
@@ -90,6 +89,11 @@ Baseline: 527 tests passing before this work; the Creality publish path
   accepts…","no cover image to upload…","only 0 real print photo(s); MakerWorld requires
   at least 3 photographs of the printed model…"` — a real refusal from the running build,
   with no browser opened.
+  OPEN: after committing (6100c0f) `/health` answers `build_is_current=false` with
+  `build=2490943+edits head_rev=6100c0f` — that flag compares git revs, and the process
+  started before the commit, while its code fingerprint already matches disk. It clears on
+  the next restart; AGENTS.md forbids restarting the dashboard unasked, so it was left
+  running and this is recorded instead of quietly fixed.
 
 - [x] G7: the gaps in the study are declared, not papered over
   EVIDENCE: MAKERWORLD-FLOW-CONFIG.md carries a "What is NOT measured" table, and each
