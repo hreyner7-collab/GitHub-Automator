@@ -1033,6 +1033,22 @@ def _fetch_makerworld(model_id: str) -> dict:
                     }
                 """) or ""
 
+                # The licence this design is actually published under. MakerWorld
+                # renders it as a Creative Commons link rather than as text, so the
+                # anchor is the primary reading and a CC name in the page text is
+                # only the fallback.
+                license_raw = await page.evaluate("""
+                    () => {
+                        const links = [...document.querySelectorAll('a[href]')]
+                            .map(a => a.href)
+                            .filter(h => /creativecommons\\.org|\\/license/i.test(h));
+                        if (links.length) return links.slice(0, 3).join(' ');
+                        const m = (document.body.innerText || '')
+                            .match(/(CC\\s?0|CC[\\s-]?BY(?:[\\s-]?(?:NC|SA|ND)){0,2}|Standard Digital File License)/i);
+                        return m ? m[0] : '';
+                    }
+                """) or ""
+
                 # Collect EVERY <img> src on the page along with its natural size
                 raw_imgs = await page.evaluate("""
                     () => Array.from(document.querySelectorAll('img')).map(img => ({
@@ -1084,7 +1100,8 @@ def _fetch_makerworld(model_id: str) -> dict:
                     product_imgs = [src.split("?")[0] for _area, src in best.values()]
             finally:
                 await browser.close()
-            return {"name": name, "description": description[:500], "images": product_imgs}
+            return {"name": name, "description": description[:500], "images": product_imgs,
+                    "license_raw": license_raw}
 
     def _run():
         loop = _asyncio.new_event_loop()
@@ -1138,7 +1155,9 @@ def _fetch_makerworld(model_id: str) -> dict:
     except Exception:
         pass
 
-    return {"name": name, "description": description, "stl_path": stl_path, "image_paths": image_paths, "slug": slug}
+    return {"name": name, "description": description, "stl_path": stl_path,
+            "image_paths": image_paths, "slug": slug,
+            "license_raw": data.get("license_raw", "")}
 
 
 def _fetch_generic(url: str) -> dict:

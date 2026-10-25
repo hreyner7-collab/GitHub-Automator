@@ -118,6 +118,19 @@ In the form state the choice lands in `relateDesignInfo`:
 bundle, `MAKERWORLD-STUDY`'s `net/` route files) — i.e. **the base must be a
 MakerWorld design id**, which is why a Thingiverse source cannot be a remix.
 
+**The same rule, upstream, on the listing** (measured 2026-10-25 by clicking the
+filter chips in a logged-out headless Chromium and reading the address bar): the
+param is `licenses=`, and its tokens are the chip labels verbatim — `BY`, `BY-SA`,
+`BY-ND`, `BY-NC`, `BY-NC-SA`, `BY-NC-ND` — except Public Domain, which is `CC0`. The
+pipeline harvests only `licenses=CC0,BY,BY-SA`. Two traps, both measured: the names
+that appear in MakerWorld's own prose (`CC-BY`, `CC-BY-SA`) are **not** accepted by
+the param — the site ignores an unknown value silently and hands back the full
+unfiltered list, which is how the first attempt looked perfectly normal while
+offering NoDerivatives sources. And a design's licence is rendered as a
+`creativecommons.org/licenses/<code>/<version>/` **link**, not as text, so
+`_fetch_makerworld` reads the anchors; a page that names no licence at all stops an
+auto item rather than defaulting to CC BY the way the manual path does.
+
 **Model Name** `0/50` · **Tags** `Tags (0 / 50)` with a `0/100` input and
 `Press "Enter" to separate tags` · **Category** "Quick search by entering
 category keywords" · **Description** and **Model Videos** ("Max 30s,
@@ -209,10 +222,11 @@ halves, so the separation cannot rot back into a merged page.
 
 | step on the page | what it calls | what it must not do |
 |---|---|---|
-| 0 · Find models to remix | `POST /discover` with `site:"makerworld"` (trending / popular / hottest, headless, no login) | never fetch, plan or publish by itself — no auto run exists for MakerWorld |
+| Auto · Find and publish | `POST /makerworld/auto/start` → `discover()` (licence-filtered) → `downloader.fetch` → `makerworld_uploader.upload(dry_run=False)` | never the Creality loop's modules; never an item whose source page names no licence, or fewer than 3 of the original maker's photographs |
+| 0 · Find models to remix | `POST /discover` with `site:"makerworld"` (trending / popular / hottest, headless, no login, `&licenses=CC0,BY,BY-SA` read back off the page) | never fetch, plan or publish by itself — publishing is the Auto card's decision, taken once |
 | 1 · Source design (MakerWorld url) | `POST /fetch` with `edit_images:false` | never the AI re-edit — that is a Creality-side choice |
-| covers grid | the scraped originals (`_raw_orig_images`) | never presented as print photos |
-| 3 · Photographs of your prints | `GET /makerworld/files` → images already in `downloads/` | never fills itself from the gallery |
+| covers grid | the scraped originals (`_raw_orig_images`) | on this manual page, never presented as print photos |
+| 3 · Photographs of your prints | `GET /makerworld/files` → images already in `downloads/` | never fills itself from the gallery (the Auto run is the one path that uses the source's own photographs, because they are the original maker's real prints) |
 | 4 · Check | `POST /upload/makerworld/plan` | opens no browser, creates no draft |
 | 4 · Publish (starts disabled) | `POST /upload/makerworld` | unlocks only with a name, a model file, a cover, ≥3 print photos **and** the assertion tick |
 | 5 · Memory | `GET /makerworld/published`, `POST /makerworld/forget` | never reads or writes Creality's `published_models.json` |

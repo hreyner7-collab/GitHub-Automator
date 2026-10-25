@@ -13,6 +13,7 @@ import pytest
 
 import makerworld_flow as mw
 import makerworld_ledger as mwl
+from discover import MAKERWORLD_LICENSES
 
 
 # ── measured URL shapes ─────────────────────────────────────────────────────
@@ -322,19 +323,154 @@ def test_the_makerworld_page_is_served_at_its_own_address():
 def test_the_makerworld_page_wires_only_makerworld_endpoints():
     html = _page()
     for ep in ("/upload/makerworld/plan", "/upload/makerworld", "/makerworld/files",
-               "/makerworld/published", "/makerworld/forget", "/discover"):
+               "/makerworld/published", "/makerworld/forget", "/discover",
+               "/makerworld/auto/start", "/makerworld/auto/stop", "/makerworld/auto/status"):
         assert ep in html, ep
     # Not the Creality path wearing new labels: no Creality publish, no Creality
-    # image re-edit, no Creality auto run, no Creality memory.
-    for banned in ("fetch('/upload'", '"/upload"', "/edit-images", "/auto/start",
+    # image re-edit, no Creality auto run, no Creality memory. Anchored on the
+    # call site, because "/auto/start" is also the tail of this page's own
+    # "/makerworld/auto/start".
+    for banned in ("fetch('/upload'", '"/upload"', "/edit-images", "('/auto/",
                    "/published/sync", "crealitycloud"):
         assert banned not in html, banned
 
 
+def test_the_auto_run_is_the_makerworld_shape_not_the_creality_one():
+    """Find-and-publish on this page goes through the MakerWorld driver and the
+    MakerWorld ledger, and it carries the licence filter with it: the queue can
+    only ever be built from the listings MakerWorld itself restricts to
+    Public Domain / BY / BY-SA."""
+    src = (ROOT / "main.py").read_text(encoding="utf-8")
+    body = re.search(r"async def _makerworld_auto_worker.*?\n\n\n@app", src, re.S).group(0)
+    assert 'discover_models("makerworld"' in body
+    assert "makerworld_upload(" in body
+    assert "makerworld_ledger.find(" in body and "makerworld_ledger.record(" in body
+    assert "dry_run=False" in body
+    # the photographs are the source listing's own files, straight off the fetch
+    assert "print_photos=photos" in body and "usable_images(res.get(\"image_paths\")" in body
+    for creality_only in ("uploader_upload", "edit_all", "creality_rules"):
+        assert creality_only not in body, creality_only
+    # the Creality ledger, not makerworld_ledger (hence the lookbehind)
+    assert not re.search(r"(?<!\w)ledger\.(record|find|count)\(", body)
+    # and the run is fenced off from the Creality one — one browser, one form
+    assert 'AUTO.get("state") in ("discovering", "running")' in \
+        re.search(r"@app.post\(\"/makerworld/auto/start\"\).*?MW_AUTO_TASK = asyncio",
+                  src, re.S).group(0)
+
+
+def test_the_run_checks_the_source_page_not_only_the_listing():
+    """The licence chips on the listing are MakerWorld's summary of the design;
+    the source page is the authority. An unattended run reads the page and stops
+    on it — and refuses to guess when the page names no licence at all, which is
+    the case the manual path can afford to fall back on but a batch cannot."""
+    src = (ROOT / "main.py").read_text(encoding="utf-8")
+    body = re.search(r"async def _makerworld_auto_worker.*?\n\n\n@app", src, re.S).group(0)
+    assert 'makerworld_flow.license_plan(res.get("license_raw"' in body
+    assert 'row["state"] = "rejected"' in body
+    assert 'if not lic["code"]' in body
+    assert 'license_raw=res.get("license_raw", "")' in body
+    # and the fetch is what reads it, off the page it already opened
+    dl = (ROOT / "downloader.py").read_text(encoding="utf-8")
+    scrape = re.search(r"def _fetch_makerworld.*", dl, re.S).group(0)[:9000]
+    assert "creativecommons" in scrape
+    assert '"license_raw": license_raw' in scrape and '"license_raw": data.get("license_raw"' in dl
+
+
+def test_the_run_loop_publishes_each_find_and_stops_at_the_facts(monkeypatch, tmp_path):
+    """The whole point of the Auto card: type a number, it finds that many and
+    publishes them. Driven here with fakes — no Chrome, no network, no account —
+    and it must publish the eligible ones, refuse the ND source, skip the one
+    whose page names no licence, skip the one with no file, and stop at N."""
+    import main as m
+
+    (tmp_path / "artifacts").mkdir()
+    monkeypatch.setattr(m, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(m.makerworld_ledger, "find",
+                        lambda **k: {"found": False, "entry": None, "how": ""})
+    recorded = []
+    monkeypatch.setattr(m.makerworld_ledger, "record",
+                        lambda **k: recorded.append(k) or {})
+
+    finds = [("Good One", "by"), ("No Licence", ""), ("Derivatives Forbidden", "by-nd"),
+             ("No File", "by"), ("Second Good", "by-sa")]
+    async def fake_discover(site, count):
+        assert site == "makerworld", "the queue comes from MakerWorld's own listing"
+        return [{"name": n, "url": "https://makerworld.com/en/models/%d-%s"
+                 % (1000 + i, n.lower().replace(" ", "-"))}
+                for i, (n, _code) in enumerate(finds)]
+    monkeypatch.setattr(m, "discover_models", fake_discover)
+
+    stl = tmp_path / "m.3mf"
+    stl.write_bytes(b"PK\x03\x04fake")
+    photos = []
+    for i in range(3):
+        p = tmp_path / f"photo{i}.png"
+        p.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 400)
+        photos.append(str(p))
+
+    def fake_fetch(url):
+        slug = url.rsplit("/", 1)[-1]
+        code = dict((n.lower().replace(" ", "-"), c) for n, c in finds)[slug.split("-", 1)[1]]
+        return {"name": slug, "description": "d", "image_paths": photos,
+                "stl_path": None if slug.startswith("1003") else str(stl),
+                "license_raw": ("https://creativecommons.org/licenses/%s/4.0/" % code) if code else ""}
+    monkeypatch.setattr(m, "dl_fetch", fake_fetch)
+
+    calls = []
+    async def fake_upload(**kw):
+        calls.append(kw)
+        return {"success": True, "url": "https://makerworld.com/en/models/9999-published",
+                "design_id": "9999"}
+    monkeypatch.setattr(m, "makerworld_upload", fake_upload)
+
+    m.MW_AUTO.update({"state": "running", "items": [], "published": 0, "stop": False,
+                      "requested": 2, "error": ""})
+    asyncio.run(m._makerworld_auto_worker(2, "testjob"))
+
+    states = [i["state"] for i in m.MW_AUTO["items"]]
+    assert states == ["published", "skipped", "rejected", "skipped", "published"], states
+    assert m.MW_AUTO["published"] == 2
+    assert m.MW_AUTO["state"] == "done"
+    assert len(calls) == 2, "it stops at the number typed, not at the number found"
+    assert all(c["dry_run"] is False for c in calls)
+    assert all(len(c["print_photos"]) >= 3 for c in calls)
+    # the photographs are the source listing's own, and the source is declared
+    assert calls[0]["print_photos"] == calls[0]["image_paths"]
+    assert calls[0]["remix_source_url"] == m.MW_AUTO["items"][0]["url"]
+    # only real publish attempts reach the ledger; a licence stop is run history,
+    # not a model this account has a claim on
+    assert [r["outcome"] for r in recorded] == ["published", "published"]
+    assert (tmp_path / "artifacts" / "makerworld_auto_testjob.json").exists()
+
+
+def test_an_unreadable_licence_is_not_a_refusal_but_a_batch_must_not_guess():
+    assert mw.license_plan("")["refused"] is False      # manual path: falls back to CC BY
+    assert mw.license_plan("https://creativecommons.org/licenses/by/4.0/")["refused"] is False
+    for bad in ("https://creativecommons.org/licenses/by-nd/4.0/",
+                "https://creativecommons.org/licenses/by-nc/4.0/",
+                "https://creativecommons.org/licenses/by-nc-nd/4.0/"):
+        assert mw.license_plan(bad)["refused"] is True, bad
+
+
+def test_discovery_refuses_to_list_models_it_may_not_publish():
+    """The MakerWorld listing URLs carry the licence filter, and the filter is
+    read back off the rendered page: an unknown licences= value is ignored
+    silently by MakerWorld, which would hand back NoDerivatives sources."""
+    src = (ROOT / "discover.py").read_text(encoding="utf-8")
+    assert MAKERWORLD_LICENSES in src
+    for url in re.findall(r"https://makerworld\.com/en/3d-models[^\"]*", src):
+        assert "licenses=" in url, url
+    assert "if not lic.get(\"panel\")" in src and "if not lic.get(\"exact\")" in src
+    # ND and NC are the chips that must never be green
+    for chip in ("BY-ND", "BY-NC", "BY-NC-ND", "Standard Digital File License"):
+        assert chip in src, chip
+
+
 def test_finding_models_stays_research_on_this_page_too():
-    """Discovery reads a MakerWorld popularity listing and hands the chosen url to
-    step 1. It must not fetch, plan or publish by itself — that is the Creality
-    auto run's shape, and MakerWorld's own guidelines are why it stops here."""
+    """The 'find models' card is a browser: it lists and hands the chosen url to
+    step 1. The batch that actually publishes is a different, explicit control
+    (the Auto card), so reading a listing can never turn into a publish by
+    accident."""
     html = _page()
     assert "post('/discover'" in html and "site: 'makerworld'" in html
     body = re.search(r"async function discoverModels\(\).*?\n\s*function ", html, re.S).group(0)

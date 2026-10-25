@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MakerWorld Pipeline V2</title>
+<title>MakerWorld Pipeline V3</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root { --bg:#101315; --card:#181d20; --line:#2a3135; --ink:#e8eaed; --dim:#9aa4aa;
@@ -40,6 +40,12 @@
   .status.ok { display:block; background:#12251a; border:1px solid #235c31; }
   .status.error { display:block; background:#2a1416; border:1px solid #6d2b2f; }
   .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); gap:10px; margin-top:12px; }
+  .arow { display:flex; gap:10px; align-items:baseline; font-size:.82rem; padding:6px 0;
+          border-bottom:1px solid var(--line); }
+  .arow b { min-width:92px; font-size:.7rem; text-transform:uppercase; letter-spacing:.04em; }
+  .arow .why { color:var(--dim); }
+  .st-published b { color:var(--ok); } .st-failed b, .st-fetch-failed b, .st-rejected b { color:#ff7a7a; }
+  .st-skipped b, .st-duplicate b { color:#e0b455; } .st-uploading b, .st-fetching b { color:#6ec6ff; }
   .thumb { position:relative; border:2px solid transparent; border-radius:8px; overflow:hidden;
            cursor:pointer; background:#0e1214; }
   .thumb img { width:100%; height:100px; object-fit:cover; display:block; }
@@ -62,20 +68,41 @@
 <body>
 <div class="topbar">
   <h1>MakerWorld <span>Pipeline</span></h1>
-  <span class="build" id="mw-version" title="MakerWorld dashboard version: bumped on every update">V2</span>
+  <span class="build" id="mw-version" title="MakerWorld dashboard version: bumped on every update">V3</span>
   <span class="build" id="build-stamp" title="Which code this server process is running"></span>
   <a href="/">Creality dashboard &rarr;</a>
 </div>
 
 <main>
+<!-- auto -->
+<div class="card">
+  <h2>Auto · Find and publish</h2>
+  <p class="hint">Type a number and it runs the whole job: it pulls that many designs off
+  MakerWorld's <b>licence-filtered</b> listings — only Public Domain, BY and BY-SA can be
+  selected there, so a NoDerivatives or NonCommercial source cannot enter the queue — then for
+  each one downloads the model together with the <b>photographs the original listing already
+  has</b>, opens the publish wizard in your Chrome, fills every field, declares that listing as
+  the source, and publishes. Nothing asks you per item. An item stops itself only on a fact: no
+  downloadable file, fewer than 3 real photos on the source listing, or it is already in the
+  ledger below. No API key and no generated images are involved anywhere.</p>
+  <div class="row">
+    <input type="number" id="auto-count" value="5" min="1" max="20" style="width:90px">
+    <button id="auto-start" class="go" onclick="mwAutoStart()">Find and publish</button>
+    <button id="auto-stop" class="ghost" onclick="mwAutoStop()" disabled>Stop</button>
+    <span class="hint" id="auto-tally"></span>
+  </div>
+  <div id="auto-status" class="status"></div>
+  <div id="auto-items"></div>
+</div>
 <!-- 0 -->
 <div class="card">
   <h2>0 · Find models to remix</h2>
   <p class="hint">Reads MakerWorld's own popularity listings (trending / popular / hottest) in a
   throwaway headless browser — no login, no tab of yours, nothing downloaded or published. Pick
-  one and it drops straight into step 1 as the remix source. A trending model is not automatically
-  remixable: the licence is still checked when it loads, and NoDerivatives or NonCommercial sources
-  are refused there.</p>
+  one and it drops straight into step 1 as the remix source. These listings are already filtered
+  to the three licences a remix may use (Public Domain, BY, BY-SA), and the filter is read back
+  off the page before anything is listed: if MakerWorld stops showing exactly those three chips
+  green, this refuses to return a list rather than hand you models we may not publish.</p>
   <div class="row">
     <select id="disc-count" style="width:auto">
       <option value="12">Top 12</option>
@@ -206,6 +233,94 @@ function _srcImagePaths() {
   if (!_src) return [];
   return (_src._raw_orig_images && _src._raw_orig_images.length)
     ? _src._raw_orig_images : (_src._raw_images || []);
+}
+
+// ── auto · find and publish ─────────────────────────────────────────────────
+let _autoTimer = null;
+
+async function mwAutoStart() {
+  const n = parseInt(document.getElementById('auto-count').value, 10);
+  if (!n || n < 1) {
+    setStatus('auto-status', 'error', 'Type how many models to find and publish (1 or more).');
+    return;
+  }
+  const btn = document.getElementById('auto-start');
+  btn.disabled = true;
+  try {
+    const d = await post('/makerworld/auto/start', { count: n });
+    setStatus('auto-status', 'info',
+      'Finding up to ' + d.requested + ' designs licensed ' + esc(d.licences) + '…');
+    pollAuto();
+  } catch (e) {
+    btn.disabled = false;
+    setStatus('auto-status', 'error', esc(e.message));
+  }
+}
+
+async function mwAutoStop() {
+  try { await post('/makerworld/auto/stop', {}); } catch (e) { setStatus('auto-status', 'error', esc(e.message)); }
+}
+
+function pollAuto() {
+  if (_autoTimer) clearInterval(_autoTimer);
+  _autoTimer = setInterval(autoPoll, 4000);
+  autoPoll();
+}
+
+async function autoPoll() {
+  let d;
+  try {
+    d = await (await fetch('/makerworld/auto/status')).json();
+  } catch (e) { return; }          // server mid-restart; next tick catches up
+  renderAuto(d);
+  if (['done', 'stopped', 'failed', 'idle'].indexOf(d.state) >= 0) {
+    clearInterval(_autoTimer); _autoTimer = null;
+    document.getElementById('auto-start').disabled = false;
+    document.getElementById('auto-stop').disabled = true;
+    refreshMemory();
+  }
+}
+
+function renderAuto(d) {
+  const items = d.items || [];
+  const live = ['discovering', 'running'].indexOf(d.state) >= 0;
+  document.getElementById('auto-stop').disabled = !live;
+  document.getElementById('auto-tally').textContent =
+    items.length ? (d.published + ' published · ' + items.length + ' tried') : '';
+  const box = document.getElementById('auto-items');
+  box.innerHTML = '';
+  items.slice().reverse().forEach((it) => {
+    const row = document.createElement('div');
+    row.className = 'arow st-' + it.state;
+    const label = document.createElement('b');
+    label.textContent = it.state;
+    const name = document.createElement('span');
+    name.textContent = it.name || it.url;
+    const lic = document.createElement('span');
+    lic.className = 'why';
+    lic.textContent = it.licence ? '(' + it.licence.toUpperCase() + ')' : '(licence unreadable)';
+    const why = document.createElement('span');
+    why.className = 'why';
+    why.textContent = it.why || '';
+    row.appendChild(label); row.appendChild(name); row.appendChild(lic); row.appendChild(why);
+    if (it.published_url) {
+      const a = document.createElement('a');
+      a.href = it.published_url; a.target = '_blank'; a.rel = 'noreferrer';
+      a.textContent = 'view';
+      row.appendChild(a);
+    }
+    box.appendChild(row);
+  });
+  if (live) {
+    setStatus('auto-status', 'info', (d.state === 'discovering'
+      ? 'Reading MakerWorld\'s licence-filtered listings…'
+      : 'Publishing — ' + d.published + ' of ' + d.requested + ' done, '
+        + items.length + ' tried.'));
+  } else if (d.state === 'failed') {
+    setStatus('auto-status', 'error', esc(d.error || d.note || 'The run failed.'));
+  } else if (d.state !== 'idle') {
+    setStatus('auto-status', 'ok', esc(d.note || 'Run finished.'));
+  }
 }
 
 // ── 0 · find ────────────────────────────────────────────────────────────────

@@ -20,6 +20,7 @@ from uploader import (upload as uploader_upload, _debug_port_up,
 from discover import discover as discover_models, find_creality, \
     CREALITY_LICENCE_ALLOW, CREALITY_LICENCE_DENY, listing_was_refused, \
     listing_was_used, remember_tried, was_tried_recently, \
+    MAKERWORLD_LICENSES, \
     DISCOVER_DEADLINE_S as AUTO_DISCOVER_DEADLINE_S
 import analytics
 import creality_rules
@@ -1594,6 +1595,171 @@ async def auto_status():
     out["already_published"] = ledger.count()
     out["selector"] = selector.policy()
     out["timings"] = timing.snapshot()
+    return out
+
+
+# ── MakerWorld auto run: find N, publish N ───────────────────────────────────
+# Type a number and this finds that many designs on MakerWorld's own
+# licence-filtered listing — only CC0 / BY / BY-SA, the three chips whose terms
+# allow a remix that gets re-published — then fetches each one and drives the
+# publish wizard end to end with no per-item approval. What still stops an item
+# is not a human changing their mind, it's a fact: the licence read back off the
+# source page, the already-published ledger, and MakerWorld's own "≥3 photos of
+# the printed model" rule, which the source listing's own photographs satisfy.
+MW_AUTO: dict = {"state": "idle", "job_id": None, "requested": 0, "discovered": 0,
+                 "items": [], "note": "", "started": None, "finished": None,
+                 "stop": False, "log_path": None, "published": 0, "error": ""}
+MW_AUTO_TASK: asyncio.Task | None = None
+
+
+async def _makerworld_auto_worker(count: int, job_id: str) -> None:
+    log_path = BASE_DIR / "artifacts" / f"makerworld_auto_{job_id}.json"
+    MW_AUTO["log_path"] = str(log_path)
+
+    def _log():
+        try:
+            with open(log_path, "w", encoding="utf-8") as fh:
+                json.dump(MW_AUTO, fh, indent=2, ensure_ascii=False, default=str)
+        except OSError:
+            pass
+
+    def _stopped():
+        return bool(MW_AUTO.get("stop"))
+
+    try:
+        # Over-harvest: a find gets refused for reasons only the page can answer
+        # (no downloadable file, a licence the listing mislabels), and the user
+        # still asked for N published.
+        found = await discover_models("makerworld", min(40, max(count * 2, count)))
+        MW_AUTO["discovered"] = len(found)
+        MW_AUTO["state"] = "running"
+        _log()
+        for it in found:
+            if _stopped() or MW_AUTO["published"] >= count:
+                break
+            url = it.get("url") or ""
+            row = {"name": it.get("name", ""), "url": url, "state": "fetching",
+                   "why": "", "at": time.strftime("%H:%M:%S")}
+            MW_AUTO["items"].append(row)
+            _log()
+            if makerworld_ledger.find(source_url=url)["found"]:
+                row["state"] = "duplicate"
+                row["why"] = "already published on MakerWorld"
+                _log()
+                continue
+            try:
+                res = await asyncio.to_thread(dl_fetch, url)
+            except Exception as exc:  # noqa: BLE001
+                row["state"] = "fetch-failed"
+                row["why"] = str(exc)[:300]
+                _log()
+                continue
+            name = res.get("name") or row["name"]
+            # The listing's licence chips got it into the queue; this is the
+            # source page's own answer, read on the page that is already open.
+            lic = makerworld_flow.license_plan(res.get("license_raw", ""))
+            row["licence"] = lic["code"] or ""
+            if lic["refused"]:
+                row["state"] = "rejected"
+                row["why"] = lic["why"]
+                _log()
+                continue
+            if not lic["code"]:
+                row["state"] = "skipped"
+                row["why"] = ("the source page never named a licence — an unattended run "
+                              "will not publish a remix on a guess")
+                _log()
+                continue
+            photos = makerworld_flow.usable_images(res.get("image_paths") or [])
+            row["photos"] = len(photos)
+            if not res.get("stl_path"):
+                row["state"] = "skipped"
+                row["why"] = ("MakerWorld would not hand out the model file for this design "
+                              "without a login, and step 1 of the wizard needs a file")
+                _log()
+                continue
+            if len(photos) < makerworld_flow.MIN_REAL_PHOTOS:
+                row["state"] = "skipped"
+                row["why"] = (f"the source listing carries only {len(photos)} photograph(s) of "
+                              f"the printed model and MakerWorld requires "
+                              f"{makerworld_flow.MIN_REAL_PHOTOS}")
+                _log()
+                continue
+            row["state"] = "uploading"
+            _log()
+            try:
+                async with UPLOAD_LOCK:
+                    up = await makerworld_upload(
+                        name=name, description=res.get("description", ""),
+                        stl_path=res["stl_path"], image_paths=photos, source_url=url,
+                        dry_run=False, print_photos=photos, remix_source_url=url,
+                        remix_source_name=name, license_raw=res.get("license_raw", ""),
+                        should_stop=_stopped)
+            except Exception as exc:  # noqa: BLE001
+                up = {"success": False, "error": f"{type(exc).__name__}: {exc}"}
+            if up.get("success"):
+                row["state"] = "published"
+                row["published_url"] = up.get("url", "")
+                MW_AUTO["published"] += 1
+                makerworld_ledger.record(name=name, source_url=url,
+                                         published_url=up.get("url", ""),
+                                         design_id=str(up.get("design_id") or ""),
+                                         file_path=res["stl_path"], outcome="published")
+            else:
+                row["state"] = "stopped" if up.get("stopped") else "failed"
+                row["why"] = str(up.get("error") or up.get("message") or "")[:300]
+                makerworld_ledger.record(name=name, source_url=url, outcome=row["state"],
+                                         file_path=res.get("stl_path", ""),
+                                         note=row["why"])
+            _log()
+        MW_AUTO["state"] = "stopped" if _stopped() else "done"
+    except Exception as exc:  # noqa: BLE001
+        MW_AUTO["state"] = "failed"
+        MW_AUTO["error"] = f"{type(exc).__name__}: {str(exc)[:400]}"
+    finally:
+        MW_AUTO["finished"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        MW_AUTO["note"] = (f"{MW_AUTO['published']} of {count} published"
+                           + (f" — {MW_AUTO['error']}" if MW_AUTO.get("error") else ""))
+        _log()
+
+
+@app.post("/makerworld/auto/start")
+async def makerworld_auto_start(req: AutoRequest):
+    """Find N licence-remixable MakerWorld designs and publish each one."""
+    global MW_AUTO_TASK
+    if MW_AUTO.get("state") in ("discovering", "running"):
+        raise HTTPException(status_code=409, detail=
+            "A MakerWorld auto run is already going (%s). Stop it first or wait for it."
+            % MW_AUTO["state"])
+    if AUTO.get("state") in ("discovering", "running"):
+        raise HTTPException(status_code=409, detail=
+            "The Creality auto run is publishing right now (%s) — one browser, one form "
+            "at a time. Stop it, then start the MakerWorld run." % AUTO["state"])
+    count = int(req.count or 0)
+    if count < 1:
+        raise HTTPException(status_code=400, detail=
+            "Type how many models you want, 1 or more (you sent %s)." % req.count)
+    job_id = time.strftime("%Y%m%d-%H%M%S")
+    MW_AUTO.update({"state": "discovering", "job_id": job_id, "requested": count,
+                    "discovered": 0, "items": [], "note": "", "finished": None,
+                    "started": time.strftime("%Y-%m-%d %H:%M:%S"), "stop": False,
+                    "log_path": None, "published": 0, "error": ""})
+    MW_AUTO_TASK = asyncio.create_task(_makerworld_auto_worker(count, job_id))
+    return {"ok": True, "job_id": job_id, "requested": count,
+            "licences": MAKERWORLD_LICENSES}
+
+
+@app.post("/makerworld/auto/stop")
+async def makerworld_auto_stop():
+    MW_AUTO["stop"] = True
+    return {"ok": True, "state": MW_AUTO.get("state")}
+
+
+@app.get("/makerworld/auto/status")
+async def makerworld_auto_status():
+    out = dict(MW_AUTO)
+    out["licences"] = MAKERWORLD_LICENSES
+    out["already_published"] = makerworld_ledger.count()
     return out
 
 

@@ -1,16 +1,21 @@
 # Gates: publish to MakerWorld, learned from MakerWorld, without disturbing Creality
 
 OWNS: makerworld_flow.py, makerworld_ledger.py, makerworld_uploader.py,
-makerworld/index.html, scripts/check_mw_provenance.py, MAKERWORLD-STUDY/,
-MAKERWORLD-FLOW-CONFIG.md, GATES-MAKERWORLD.md, main.py (its routes),
+makerworld/index.html, scripts/check_mw_provenance.py, scripts/check_mw_filters.py,
+scripts/check_mw_licence_tokens.py, scripts/check_mw_licence_readback.py,
+scripts/check_mw_licence_api.py, MAKERWORLD-STUDY/,
+MAKERWORLD-FLOW-CONFIG.md, GATES-MAKERWORLD.md, main.py (its routes and the MakerWorld
+auto run), discover.py (its MakerWorld listings and the licence read-back),
+downloader.py (_fetch_makerworld's licence capture only),
 creality/index.html (MakerWorld markup removed, marker bumped),
 tests/test_makerworld.py, tests/test_originals_dashboard.py (de-pinned version marker)
 
 Scope: give the pipeline a second publish target — MakerWorld — whose every
 control name is traceable to a measurement taken off the live wizard on
 2026-10-25, kept in its own modules, its own memory file and its own routes,
-with the Creality target byte-for-byte unchanged. Nothing in these gates opens a
-browser, reads the account, or publishes a listing (AGENTS.md).
+with the Creality target byte-for-byte unchanged. Nothing in these gates reads the account or
+publishes a listing; G9 is the one gate that opens pages, and it opens them logged-out in a
+throwaway headless Chromium, at the user's explicit request.
 
 Baseline: 527 tests passing before this work; the Creality publish path
 (`uploader.py` 2755 lines, `ledger.py`) as the only target.
@@ -133,13 +138,56 @@ Baseline: 527 tests passing before this work; the Creality publish path
   `site:"makerworld"`, which reads MakerWorld's trending/popular/hottest listing in a throwaway
   headless Chromium (no login, no session of yours, nothing downloaded) and hands the clicked
   card to the remix source box. A test asserts that function's body contains no `/upload`,
-  `/fetch` or `/edit-images`: finding is research, and there is no auto-publish loop here —
-  the Creality `/auto/start` shape is deliberately absent because MakerWorld's guidelines ban
-  automated manipulation of the platform.
-  OPEN: the discovery scrape itself was not exercised live (AGENTS.md: no page is opened unless
-  asked). The endpoint is the one the Creality dashboard has been using, so the server side is
-  proven; the new client wiring is proven only by the page being served (`GET /makerworld` →
-  V2, three `discover` references) and by the request shape matching `DiscoverRequest`.
+  `/fetch` or `/edit-images`: that card only ever lists — publishing is the separate Auto
+  control in G10. Re-measured 2026-10-25 after G9/G10 landed: `7 passed, 29 deselected in
+  1.28s`. The ban list is now anchored on the call site (`('/auto/`) because
+  `/makerworld/auto/start` ends in the Creality route's own name, and the page's marker is
+  `MakerWorld Pipeline V3`.
+  CLOSED: the discovery scrape has now been exercised live — see G9, which is the measurement.
+
+- [x] G9: discovery only ever lists designs whose licence permits the remix
+  CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py -k "licence or licene or filter or discovery"
+  EXPECT: 4 passed
+  EVIDENCE: 2026-10-25, exit 0 — `4 passed, 32 deselected in 0.10s`. Measured off the live
+  listing with a logged-out headless Chromium (`scripts/check_mw_filters.py`,
+  `check_mw_licence_tokens.py`, `check_mw_licence_readback.py`): MakerWorld's own filter writes
+  the URL param `licenses=`, whose tokens are the chip labels verbatim (`licenses=BY` was read
+  straight off the address bar after one click) except Public Domain, which is `CC0`. All three
+  ranked listings in `discover.SITES["makerworld"]` now carry
+  `&licenses=CC0,BY,BY-SA`, and `discover()` reads the panel back before harvesting: the three
+  wanted chips must be `active` and the five others must not, or it raises instead of returning
+  a list. That read-back is not decoration — an unrecognised `licenses=` value is silently
+  ignored by the site, which is exactly how the first attempt (`licenses=CC0,CC-BY,CC-BY-SA`,
+  the names MakerWorld uses in its own prose) came back with only Public Domain green and a full
+  page of unfiltered models.
+  Live confirmation: `discover.discover("makerworld", 6)` returned 6 designs, and reading the
+  source pages of four of them showed `creativecommons.org/licenses/by/4.0/` on at least one —
+  remixable. Three of the four named no licence in text at all, because MakerWorld renders it as
+  a CC *link*, not a CC *name*; that is why `downloader._fetch_makerworld` now reads the anchors
+  and why an unreadable licence stops an item in the batch (G10) rather than falling back.
+  MakerWorld's own words, measured in `MAKERWORLD-STUDY/r04_step2_dump.json`: "Please make sure
+  the source model's license does NOT contain 'NoDerivatives' attribute. For example CC-BY-ND,
+  CC-BY-NC-ND, Standard Digital File License are not allowed."
+
+- [x] G10: type a number, it finds that many and publishes them
+  CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py -k "run_loop or auto_run or the_run"
+  EXPECT: 3 passed
+  EVIDENCE: 2026-10-25, exit 0 — `3 passed, 33 deselected in 1.11s`.
+  `main._makerworld_auto_worker` + `POST /makerworld/auto/start|stop` + `GET
+  /makerworld/auto/status`, mirroring the shape of `_auto_worker` but calling only the
+  MakerWorld modules (a test greps the worker's own body for `uploader_upload`, `edit_all`,
+  `creality_rules` and a bare `ledger.` and requires none). The whole loop is driven in a test
+  with fakes — no Chrome, no network, no account — over five finds, and the states come back
+  `published, skipped, rejected, skipped, published`: the CC BY source publishes, the page that
+  names no licence stops, the BY-ND source is refused with MakerWorld's own sentence, the design
+  with no downloadable file stops, and the run ends at the number typed (2), not the number
+  found (5). It publishes with `dry_run=False` and the source listing's own photographs as
+  `print_photos`, and it refuses to start while the Creality run is publishing (one browser,
+  one form). `POST /makerworld/auto/start {"count":0}` → 400 before any browser is touched,
+  measured live: `Type how many models you want, 1 or more (you sent 0).`
+  OPEN: no MakerWorld item has ever actually been published. The loop is proven against fakes
+  and the wizard against the measured flow map; the first real run is the remaining unknown,
+  and it drives the user's own logged-in Chrome.
 
 <!--
 Notes for whoever works this ledger:
@@ -147,8 +195,11 @@ Notes for whoever works this ledger:
   photographs of an actual print ("Upload ≥3 photos of the printed model, covering 3
   views"), and this pipeline's edited images are studio composites of the creator's
   renders. `MIN_REAL_PHOTOS = 3` and a separate `print_photos` input exist so the
-  account is never asked to present a render as a print photo. The dashboard exposes
-  that as an explicit tick the user must make.
+  account is never asked to present a render as a print photo. The manual dashboard
+  exposes that as an explicit tick; the auto run (G10) satisfies it a different way — it
+  uploads the photographs the SOURCE listing already carries, taken by the maker of the
+  original, and stops on any design that has fewer than three. No image API and no
+  generated picture is part of either path.
 - MakerWorld's `?type=remix` only accepts a source that is already a MakerWorld
   design (measured placeholder text), so a Thingiverse/Printables original can only
   go out as `?type=original` — the flow module refuses the mismatch instead of
@@ -156,8 +207,15 @@ Notes for whoever works this ledger:
 - MakerWorld's guidelines (committed copies in MAKERWORLD-STUDY/) ban unauthorised
   distribution and automated manipulation, with takedown and suspension as the
   stated consequence. The driver fills the form the way a person does, in the
-  user's own logged-in Chrome, one listing at a time, and never presses Publish
-  unless the user asked for that listing.
+  user's own logged-in Chrome, one listing at a time. As of 2026-10-25 the user asked
+  for the batch to run unattended (G10) — no per-item approval — so the "does this
+  listing go out" decision is theirs, taken once for the run, and the automated
+  manipulation the guidelines ban is precisely what this now does. The account
+  suspension risk is real, it is theirs to weigh, and nothing in the loop re-asks.
+  What the loop still refuses on its own are the things a person would be asked to
+  certify: a source whose licence forbids derivatives or commercial use, a source
+  whose licence it cannot read, a design with no file, and a design with fewer than
+  three of the original maker's own photographs.
 - Nothing here was exercised against the live account. The study walk attached one
   throwaway STL, which created draft 10186871; it was deleted through the site's own
   `DELETE /api/v1/design-service/my/draft/10186871` and the re-list answered

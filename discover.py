@@ -27,16 +27,60 @@ from creality_rules import (LICENCE_ALLOW as CREALITY_LICENCE_ALLOW,
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
 
+# ── MakerWorld's own licence filter ──────────────────────────────────────────
+# Measured 2026-10-25 on the live listing: the URL spells the chips out as they
+# read (BY, BY-SA, BY-ND, …) except Public Domain, which is CC0. Only these
+# three terms let a remix be re-published; MakerWorld's own publish form says the
+# rest out loud — "Please make sure the source model's license does NOT contain
+# 'NoDerivatives' attribute. For example CC-BY-ND, CC-BY-NC-ND, Standard Digital
+# File License are not allowed." NC is refused here too because a re-publish on a
+# platform is a commercial use, whatever the site's own form would tolerate.
+MAKERWORLD_LICENSES = "CC0,BY,BY-SA"
+MW_ALLOW_CHIPS = ["Public Domain", "BY", "BY-SA"]
+MW_DENY_CHIPS = ["BY-ND", "BY-NC", "BY-NC-SA", "BY-NC-ND", "Standard Digital File License"]
+
+# Read the filter back off the page rather than trusting the URL we asked for:
+# if MakerWorld ever renames a token, an unknown value is silently ignored by the
+# site and we would harvest models we may not publish. Only looks inside the
+# Licence panel, so a stray "BY" in some other widget can't fake a green chip.
+MW_LICENCE_STATE_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const is = (e, t) => !e.childElementCount && norm(e.innerText).toLowerCase() === t.toLowerCase();
+  const head = [...document.querySelectorAll('body *')].find((e) => is(e, 'License'));
+  let panel = head;
+  for (let i = 0; i < 6 && panel; i++) {
+    panel = panel.parentElement;
+    if (panel && args.deny.every((d) => norm(panel.innerText).toLowerCase().includes(d.toLowerCase()))) break;
+  }
+  if (!panel) return {panel: false, active: [], forbidden: []};
+  const all = args.allow.concat(args.deny);
+  const active = [];
+  [...panel.querySelectorAll('*')].forEach((e) => {
+    if (e.childElementCount) return;
+    const hit = all.find((n) => is(e, n));
+    if (!hit) return;
+    const chip = e.closest('div,button,label');
+    if (chip && /\bactive\b/.test('' + chip.className)) active.push(hit);
+  });
+  const picked = args.allow.filter((n) => active.indexOf(n) >= 0);
+  return {panel: true, active: active, wanted: args.allow,
+          exact: picked.length === args.allow.length && active.length === args.allow.length,
+          forbidden: active.filter((n) => args.deny.indexOf(n) >= 0)};
+}
+"""
+
 # Per-site listing pages. Each site has SEVERAL popular/ranked listings; we pick
 # one at random per request and then randomly sample from a large scrolled pool,
 # so every click surfaces a different mix instead of the same top models.
 SITES = {
     "makerworld": {
-        # popularity-ranked listings only (no "newest")
+        # popularity-ranked listings only (no "newest"), and every one of them
+        # carries the licence filter — see MAKERWORLD_LICENSES.
         "urls": [
-            "https://makerworld.com/en/3d-models?sort=trending",
-            "https://makerworld.com/en/3d-models?sort=popular",
-            "https://makerworld.com/en/3d-models?sort=hottest",
+            f"https://makerworld.com/en/3d-models?sort=trending&licenses={MAKERWORLD_LICENSES}",
+            f"https://makerworld.com/en/3d-models?sort=popular&licenses={MAKERWORLD_LICENSES}",
+            f"https://makerworld.com/en/3d-models?sort=hottest&licenses={MAKERWORLD_LICENSES}",
         ],
         "link_re": r"/models/(\d+)",
         "link_sel": "a[href*='/models/']",
@@ -1158,6 +1202,22 @@ async def discover(site: str, count: int = 20) -> list[dict]:
                 await page.wait_for_timeout(1200)
             await page.evaluate("window.scrollTo(0, 0)")
             await page.wait_for_timeout(800)
+
+            if site == "makerworld":
+                lic = await page.evaluate(MW_LICENCE_STATE_JS,
+                                          {"allow": MW_ALLOW_CHIPS, "deny": MW_DENY_CHIPS})
+                if not lic.get("panel"):
+                    raise RuntimeError(
+                        "MakerWorld's licence filter panel did not render, so this run "
+                        "cannot prove which licences it harvested. Refusing to list "
+                        "models it may not publish.")
+                if not lic.get("exact"):
+                    raise RuntimeError(
+                        "MakerWorld is not showing exactly the remixable licences "
+                        "(green: %s; wanted: %s). Its filter tokens may have changed — "
+                        "an unrecognised licences= value is ignored silently by the "
+                        "site, which would list models we may not publish."
+                        % (", ".join(lic.get("active") or []), ", ".join(MW_ALLOW_CHIPS)))
 
             items = await page.evaluate(
             """
