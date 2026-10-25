@@ -449,6 +449,9 @@ def test_the_run_loop_publishes_each_find_and_stops_at_the_facts(monkeypatch, tm
         code = dict((n.lower().replace(" ", "-"), c) for n, c in finds)[slug.split("-", 1)[1]]
         return {"name": slug, "description": "d", "image_paths": photos,
                 "stl_path": None if slug.startswith("1003") else str(stl),
+                "file_error": ("the logged-in Chrome could not save it "
+                               "(Error: connect ECONNREFUSED 127.0.0.1:9222)")
+                if slug.startswith("1003") else "",
                 "categories": ["Miniatures"], "tags": ["mini", "fairy"],
                 "license_raw": ("https://creativecommons.org/licenses/%s/4.0/" % code) if code else ""}
     monkeypatch.setattr(m, "dl_fetch", fake_fetch)
@@ -479,10 +482,34 @@ def test_the_run_loop_publishes_each_find_and_stops_at_the_facts(monkeypatch, tm
     assert calls[0]["description"] == "d"
     assert calls[0]["category"] == "Miniatures"
     assert calls[0]["tags"] == ["mini", "fairy"]
+    # a skipped download reports the browser's own error, not a guess about logins
+    no_file = m.MW_AUTO["items"][3]["why"]
+    assert "connect ECONNREFUSED" in no_file and "login" not in no_file.lower()
     # only real publish attempts reach the ledger; a licence stop is run history,
     # not a model this account has a claim on
     assert [r["outcome"] for r in recorded] == ["published", "published"]
     assert (tmp_path / "artifacts" / "makerworld_auto_testjob.json").exists()
+
+
+def test_find_and_publish_opens_the_debug_browser_before_the_run_starts():
+    """The 2026-10-25 run skipped two designs because port 9222 was closed: the
+    capture stage needed the logged-in Chrome but nothing had started it, and the
+    dashboard reported it as MakerWorld refusing the file. Starting the run now
+    opens that browser first, refuses to run when it cannot, and the download
+    reports the real reason."""
+    src = (ROOT / "main.py").read_text(encoding="utf-8")
+    body = re.search(r'@app\.post\("/makerworld/auto/start"\).*?MW_AUTO_TASK = asyncio',
+                     src, re.S).group(0)
+    assert "makerworld_ensure_browser" in body and "status_code=503" in body
+    assert body.index("makerworld_ensure_browser") < body.index("MW_AUTO.update("), \
+        "the browser must be up before the run is announced"
+    assert 'res.get("file_error")' in src
+    assert "would not hand out the model file" not in src
+    dl = (ROOT / "downloader.py").read_text(encoding="utf-8")
+    assert "def _mw_debug_browser" in dl
+    assert "ensure_browser" in dl and "port 9222" in dl
+    # the downloader names the failure it saw instead of returning a bare ''
+    assert '"file_error": file_error' in dl
 
 
 def test_an_unreadable_licence_is_not_a_refusal_but_a_batch_must_not_guess():

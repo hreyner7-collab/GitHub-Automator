@@ -31,6 +31,7 @@ import proof
 import selector
 import timing
 import uploader        # the module, for the evidence dict a raised publish leaves
+from makerworld_uploader import ensure_browser as makerworld_ensure_browser
 from makerworld_uploader import upload as makerworld_upload
 from origin import library as originals_lib
 from origin import publish as originals_publish
@@ -1674,8 +1675,9 @@ async def _makerworld_auto_worker(count: int, job_id: str) -> None:
             row["photos"] = len(photos)
             if not res.get("stl_path"):
                 row["state"] = "skipped"
-                row["why"] = ("MakerWorld would not hand out the model file for this design "
-                              "without a login, and step 1 of the wizard needs a file")
+                row["why"] = ("the model file could not be fetched — "
+                              + (res.get("file_error")
+                                 or "the listing offered no downloadable file"))
                 _log()
                 continue
             if len(photos) < makerworld_flow.MIN_REAL_PHOTOS:
@@ -1747,6 +1749,13 @@ async def makerworld_auto_start(req: AutoRequest):
     if count < 1:
         raise HTTPException(status_code=400, detail=
             "Type how many models you want, 1 or more (you sent %s)." % req.count)
+    # Open the logged-in Chrome before the run starts. The capture stage needs
+    # it for the file download, and it used to fail there with a bare
+    # "connection refused" that read like MakerWorld refusing the file.
+    if not await asyncio.to_thread(makerworld_ensure_browser):
+        raise HTTPException(status_code=503, detail=
+            "Chrome's debug port 9222 would not open, so the run was not started. "
+            "Check that Chrome is installed, then try Find and publish again.")
     job_id = time.strftime("%Y%m%d-%H%M%S")
     MW_AUTO.update({"state": "discovering", "job_id": job_id, "requested": count,
                     "discovered": 0, "items": [], "note": "", "finished": None,

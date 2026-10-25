@@ -1004,19 +1004,45 @@ MW_FIND_DOWNLOAD_JS = r"""
 """
 
 
-def _mw_download_via_chrome(model_id: str, slug: str) -> str:
+def _mw_debug_browser() -> tuple[bool, str]:
+    """Make sure the logged-in Chrome with the debug port is running.
+
+    The capture stage is the first thing an unattended run touches that needs a
+    browser, and it used to assume port 9222 was already open. When Chrome was
+    not started through the debug launcher the connect failed and the item was
+    reported as if MakerWorld refused the file — the user's run on 2026-10-25
+    skipped two designs exactly that way. The uploader already knows how to
+    start that Chrome, so the download borrows it.
+    """
+    try:
+        from makerworld_uploader import _debug_port_up, ensure_browser
+    except Exception as exc:  # noqa: BLE001
+        return False, f"the browser launcher is unavailable ({type(exc).__name__})"
+    try:
+        if _debug_port_up() or ensure_browser():
+            return True, ""
+        return False, "Chrome's debug port 9222 is closed and Chrome could not be started"
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Chrome could not be started ({type(exc).__name__}: {str(exc)[:120]})"
+
+
+def _mw_download_via_chrome(model_id: str, slug: str) -> tuple[str, str]:
     """Download the print file through the user's own logged-in Chrome.
 
     MakerWorld only hands a design's file to a signed-in visitor, so the
-    anonymous headless scrape can read the page but never gets the file — every
-    such find used to end as "would not hand out the model file". This clicks the
-    page's own Download control instead and keeps whatever the browser saved.
-    Returns '' when the page offers no such control.
+    anonymous headless scrape can read the page but never gets the file. This
+    starts the debug browser when needed, clicks the page's own Download
+    control, and keeps whatever the browser saved. Returns (path, error) so the
+    cause reaches the dashboard instead of being guessed.
     """
     import asyncio as _asyncio
     import threading
 
     from playwright.async_api import async_playwright
+
+    ok, why = _mw_debug_browser()
+    if not ok:
+        return "", why
 
     dest = os.path.join(DOWNLOADS_DIR, f"{slug}.3mf")
     holder: dict = {}
@@ -1037,7 +1063,7 @@ def _mw_download_via_chrome(model_id: str, slug: str) -> str:
                     if box:
                         break
                 if not box:
-                    return ""
+                    raise LookupError("the listing page shows no Download control")
                 async with page.expect_download(timeout=90000) as dl:
                     await page.mouse.click(box["x"], box["y"])
                 await (await dl.value).save_as(dest)
@@ -1060,7 +1086,10 @@ def _mw_download_via_chrome(model_id: str, slug: str) -> str:
     t.join(timeout=180)
     if "error" in holder:
         print(f"[makerworld] logged-in download failed: {holder['error']}")
-    return holder.get("path", "")
+        return "", f"the logged-in Chrome could not save it ({holder['error']})"
+    if not holder.get("path"):
+        return "", "the download did not arrive within 3 minutes"
+    return holder["path"], ""
 
 
 def _mw_html_to_text(value: str) -> str:
@@ -1302,13 +1331,15 @@ def _fetch_makerworld(model_id: str) -> dict:
     except Exception:
         pass
 
+    file_error = ""
     if not stl_path:
-        stl_path = _mw_download_via_chrome(model_id, slug) or None
+        stl_path, file_error = _mw_download_via_chrome(model_id, slug)
         if stl_path:
             print(f"[makerworld] file came from the logged-in Chrome: {stl_path}")
 
     return {"name": name, "description": description, "stl_path": stl_path,
             "image_paths": image_paths, "slug": slug, "license_raw": license_raw,
+            "file_error": file_error,
             "categories": meta.get("categories") or [],
             "tags": meta.get("tags") or [],
             "creator": meta.get("creator", "")}

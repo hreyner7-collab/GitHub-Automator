@@ -34,9 +34,10 @@ Baseline: 527 tests passing before this work; the Creality publish path
 
 - [x] G2: MakerWorld's own requirements are refused before a browser opens
   CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py
-  EXPECT: 40 passed
-  EVIDENCE: 2026-10-25, exit 0 — `40 passed, 3 warnings in 1.43s` (re-run after the
-  description gates landed; the first run of this gate was `31 passed`). Eight
+  EXPECT: 41 passed
+  EVIDENCE: 2026-10-25, exit 0 — `40 passed, 3 warnings in 1.43s` before the debug-browser
+  gate was added; the file now collects 41, and the new gate passed in the 13-test
+  selection (`13 passed, 28 deselected`). The first run of this gate was `31 passed`. Eight
   refusal cases each assert the plan blocks (no model file, wrong extension, no cover,
   fewer than 3 print photos, remix with no source, a Thingiverse source under
   `?type=remix`, no name, ND licence). Two more prove the refusal does not touch Chrome:
@@ -201,6 +202,15 @@ Baseline: 527 tests passing before this work; the Creality publish path
   now mapped too: `/en/my/models/<id>/edit` → Publish opens **"Model Data Changed?"**
   (default "Yes. Users must be notified…"), and a description-only change answers **No** →
   Confirm. Both dialogues are in MAKERWORLD-FLOW-CONFIG.md.
+  FIXED 2026-10-25: the first unattended run after that (count 1) skipped both designs it
+  tried — the log shows `logged-in download failed: Error: BrowserType.connect_over_cdp:
+  connect ECONNREFUSED 127.0.0.1:9222`, i.e. Chrome's debug port was closed and nothing had
+  started it, while the dashboard blamed a login. `POST /makerworld/auto/start` now calls
+  `makerworld_ensure_browser()` before announcing the run (503 with a plain reason if it
+  cannot), `downloader._mw_debug_browser()` repeats that guard on the download path, and the
+  item's `why` carries the downloader's real `file_error`. Verified live with the port
+  closed: `_mw_download_via_chrome('3464636', …)` opened Chrome, saved a 1.6 MB 3MF
+  (`PK` header) and left the port up.
 
 - [x] G11: the listing carries the source's own description, unchanged, on the dashboard and in a batch
   CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py -k "description"
