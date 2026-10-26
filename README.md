@@ -24,18 +24,26 @@ A Python / FastAPI pipeline that turns 3D-print model pages (Thingiverse, Printa
    opening a browser). MakerWorld asks for two things Creality does not: **the photo slot wants
    at least 3 pictures**, and — for the remix path — a source design that already lives on
    MakerWorld.
-   **Every picture a MakerWorld listing gets is drawn for it** (`photo_mode="generate"`, the
-   default, changed 2026-10-26): `photo_gen.py` writes the pictures from that listing's own name
-   and description through a free keyless endpoint — no API key, no account, no money. Neither
-   the source listing's photographs nor your own are attached unless you deliberately switch the
-   card to *as I shot them* / *tidy them*, and a set that comes back short is a 502 that
-   publishes nothing instead of being padded with somebody else's photo. Both buttons settle
-   their pictures before the browser opens, and the acknowledgement ticks ("these were drawn by
-   a machine", "these are photographs of my print") are required by the routes, not just by the
-   page.
-   **Auto · Find and publish** is the headline control: type a number, tick that the run posts
-   machine-drawn pictures, and it pulls that many designs off MakerWorld's licence-filtered
-   listings, downloads each model, draws its own picture set, fills the wizard in your Chrome and
+   **A remix's pictures are the source's own model with only the backdrop rebuilt**
+   (`photo_mode="same_model"`, what the page's default option and the auto run both use since
+   2026-10-26): `editor.py` keeps the model's exact pixels from the source listing's photograph,
+   pastes them onto a fresh sweep, and `photo_critic.py` then measures every cut against that
+   photograph on eight numbers — model present, shape overlap, backdrop actually moved, backdrop
+   left clean, colour kept, coverage, no words, no leftovers. A failing number names its own
+   remedy (re-mask, move to a different sweep, or drop the picture), and a retry always moves the
+   backdrop, because the finisher is deterministic so the same sweep twice is a no-op. Measured
+   over 14 real listing photographs, **6 come out right**; five of the missing eight are refused by
+   the finisher itself before the panel sees a candidate. A listing that cannot reach three
+   surviving pictures stops with `photos-failed` rather than padding itself with somebody else's
+   photo. `photo_gen.py` (the keyless machine-drawn set, no API key, no account, no money) is still
+   there as the `generate` mode, and `generate` stays that field's *fail-closed default*: a caller
+   that names no mode must land on the one mode that cannot attach a picture nobody here made. The
+   own-photo modes (`as_shot`, `restyle`) require the "photographs of my print" tick, and neither a
+   moved copy of a scraped gallery file nor an `ai_` studio drawing can pass for one.
+   **Auto · Find and publish** is the headline control: type a number, tick that the run uses the
+   source's own model, and it pulls that many designs off MakerWorld's licence-filtered listings,
+   downloads each model, cuts each source photograph onto a clean backdrop and has the panel judge
+   every cut, fills the wizard in your Chrome and
    publishes it, with no per-item approval (`POST /makerworld/auto/start`, `/stop`, `/status`).
    The listing filter is measured, not assumed: only Public Domain, BY and BY-SA are selectable,
    and `discover()` reads those three chips back off the rendered page and refuses to return a
@@ -45,6 +53,47 @@ A Python / FastAPI pipeline that turns 3D-print model pages (Thingiverse, Printa
    pictures coming back from the drawer. Step 0 is the same listings as a browser, for when you
    want to pick one yourself. The Creality page at `/` publishes to Creality only; the two are
    joined by nothing but a link in the top bar.
+
+## Picking this up (state as of 2026-10-26)
+
+Everything lives in this one folder, branch `main`. Python runs from the repo-local venv —
+`./.venv/Scripts/python.exe -X utf8 …` — because there is no system python on this machine.
+
+Read in this order:
+0. `HANDOFF-MAKERWORLD.md` — if you are picking up the **MakerWorld** pipeline only: its own file
+   list, routes, the eight critics with their thresholds, the checks, the measured yield and what
+   is still open. The Creality half is explicitly out of its scope.
+1. `MAKERWORLD-FLOW-CONFIG.md` — what MakerWorld's form actually does, the eight critics with
+   their measured thresholds and the control numbers behind each, and the pass-by-pass picture
+   yield.
+2. `GATES-MAKERWORLD.md` — the MakerWorld acceptance gates (G1…G15). Every gate is the exact
+   command, an `EXPECT:` line, and the measured evidence from the run that satisfied it.
+3. `AGENTS.md` — the standing rules: do not open a browser, publish or restart the server unless
+   the user asks right then; stage files by name (never `git add -A`); bump the dashboard version
+   marker on every page change; commit and push before calling work done.
+
+The code that decides the pictures: `editor.py` (the cut itself), `photo_critic.py` (the eight
+measured checks plus the retry that moves the backdrop), `makerworld_flow.py` (discovery, the
+photo rules, the ledger), `makerworld_uploader.py` (the wizard), `main.py` (the routes),
+`makerworld/index.html` (the page, currently `V12`).
+
+The checks:
+```bash
+./.venv/Scripts/python.exe -X utf8 -m pytest tests/test_makerworld.py -q   # 92 passed
+./.venv/Scripts/python.exe -X utf8 -m pytest -q                            # 620 passed
+```
+
+Open, and blocked on the user rather than on code:
+- `python main.py` has no auto-reload, so the running dashboard still serves the page from
+  before `V12` until it is restarted — which needs an explicit ask.
+- Nothing has been published through `same_model` yet. That is live browser work, so it waits for
+  the user to say so.
+- The honest yield is 6 of 14 source photographs surviving the panel. It will not reach 100%, and
+  no change should be written as if it had.
+- Root `GATES.md`, `bravia/`, `image_api/`, `game.html`, `nul`, `test*.png` and the
+  `scripts/check_mw_*.py` probes on disk are leftovers from other work; they are untracked and
+  not part of the MakerWorld pipeline. The tracked gate files are `GATES-MAKERWORLD.md`,
+  `GATES-GENERATE.md` and `GATES-REUPLOAD.md`.
 
 ## What you MUST provide before it will run
 1. **Python 3.10+** installed on your machine.
@@ -59,8 +108,8 @@ then works offline forever).
 ## Step-by-step setup
 ```bash
 # 1. Clone the repo
-git clone https://github.com/hreyner7-collab/creality-pipeline.git
-cd creality-pipeline
+git clone https://github.com/hreyner7-collab/GitHub-Automator.git
+cd GitHub-Automator
 
 # 2. Create a virtual environment (recommended)
 python -m venv .venv
