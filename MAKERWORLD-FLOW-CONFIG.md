@@ -90,11 +90,20 @@ line "Check off the open source, users will not be able to download raw
 models." The site also states that uploading the original STEP separately
 improves cloud slicing.
 
-**Model Covers — two required slots.** `Web/App cover 4:3` and `App cover 3:4`
-("3:4 cover appears larger in app"). Both take `image/jpeg,png,webp,gif`,
-`multiple=false`, and the hint says `jpg/gif/png, ≤ 30MB. Please use real print
-photos`. Find them by the text beside each hidden input: `4:3 Cover` and
-`3:4 Cover is prioritized in App`.
+**Model Covers — one required slot, one optional.** `Web/App cover 4:3` carries
+the form's own `require` class and is the box behind the rejection *"Please set
+the model cover"*; `App cover 3:4` ("3:4 cover appears larger in app") has no
+`require` and MakerWorld fills it itself from an uploaded picture when left empty.
+Both take `image/jpeg,png,webp,gif`, `multiple=false`, and the hint says
+`jpg/gif/png, ≤ 30MB. Please use real print photos`. Neither is found by heading
+text, and neither by a bare `.dropzone`: measured on live draft 10203098, the
+**Raw Model Files** box carries the same `.dropzone` class, so
+`.dropzone:not(.appUpload)` resolves to file input 0 — the 3D-file input — and a
+cover handed to it reports success while the cover box stays empty. The two cover
+roots are therefore scoped inside the covers section:
+`.js-scroll-cover .dropzone:not(.appUpload .dropzone)` (4:3, input 2) and
+`.appUpload .dropzone` (3:4, input 3 — `appUpload` is the dropzone's **parent**,
+so `.dropzone.appUpload` matches nothing).
 
 **Real life photos ( n / 16 )** — `Upload ≥3 photos of the printed model,
 covering 3 views`. This is the requirement that does **not** transfer from
@@ -277,7 +286,7 @@ at all.
 
 | mode | what the form receives |
 |---|---|
-| `generate` (default) | `photo_gen.generate_photos()` draws `want + 2` pictures into `downloads/` as `ai_<slug>_<time>_<seed>.jpg`; `makerworld_flow.split_photo_sets()` keeps the cover slots and the print-photo slot on **different files** (the same file in both is what came back as "Please set the model cover") |
+| `generate` (default) | `photo_gen.generate_photos()` draws `want + 2` pictures into `downloads/` as `ai_<slug>_<time>_<seed>.jpg`; `makerworld_flow.split_photo_sets()` keeps the cover slots and the print-photo slot on **different files** (the same file in both is what first surfaced as "Please set the model cover" — the other half of that message was the cover attached to the wrong input, see **Model Covers** above) |
 | `as_shot` | the ticked photographs, untouched, exactly as they sit on disk |
 | `restyle` | the ticked photographs through the local finisher (see below) |
 
@@ -311,6 +320,33 @@ drawer that *raises* costs that one row only: the run moves on to the next find.
 `photos_drawn` it validates the set that will really be split between the two
 slots, so the Check button cannot say "no cover image to upload" about a listing
 the Publish button would accept.
+
+## Reaching the logged-in browser, and what the form must confirm
+
+Two failures made every dashboard run die while the same work done by hand
+succeeded. Both are now measured, not assumed.
+
+**A wedged tab hung the attach.** `connect_over_cdp` initialises *every* page
+target before it returns, so one discarded or frozen background tab in
+`chrome_debug_profile` meant the call never came back — and the download's 180 s
+`join()` wall expired first and threw the real reason away, which is why the row
+only ever said *"the download did not arrive within 3 minutes"*.
+`makerworld_uploader.cdp_attach()` bounds the call (`25 s × 3 tries`) and pokes
+every page target with `PUT /json/activate/<id>` between attempts, which is what
+makes Chrome reload a discarded renderer. Measured on the live profile: the same
+attach that had not returned in 180 s came back in **0.3 s**. A browser that
+still will not answer raises its own sentence ("a window of that debug Chrome has
+a frozen tab"), and `downloader._mw_download_via_chrome` records the stage it
+reached, so a stall is reported as *"stalled while clicking Download and waiting
+for the file"*, never as a timeout invented by us.
+
+**A cover can be attached to the wrong input and still report success.** The
+wizard does not trust its own `set_input_files` call for the required picture:
+after the crop dialogs it evaluates `COVER_STATE_JS`, which reads the covers
+section and asks whether the box the form itself marks `require` now holds an
+`<img>`. If it does not, the run stops with that box named and publishes nothing.
+This is the check that would have caught the `.dropzone:not(.appUpload)` bug on
+the first run instead of after eight.
 
 Three measured facts about the free endpoint, all asserted offline:
 `image.pollinations.ai` answers roughly one picture per minute without an

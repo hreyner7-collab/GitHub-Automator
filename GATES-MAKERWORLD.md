@@ -255,6 +255,47 @@ Baseline: 527 tests passing before this work; the Creality publish path
   400 raised *before* a picture is drawn, `ensure_browser()` runs or the form driver is called
   (`test_nothing_is_sent_or_started_without_the_tick` watches all three).
 
+- [x] G13: the dashboard's own run reaches Chrome, fills the form and publishes
+  CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py -k "cover or frozen or wake or wall or tick"
+  EXPECT: 9 passed
+  EVIDENCE: 2026-10-26, exit 0 — `9 passed, 62 deselected in 3.16s`; the whole file is
+  `71 passed in 7.66s` and the full suite `599 passed in 93.85s`. Asked for by the user:
+  *"open the browser and click it… monitor what it does step by step… you say 'oh, it got
+  stuck here, I'll fix it'… stop when it successfully uploads, because at the moment it's
+  just not uploading."* Two causes, both measured on the live account, neither visible in
+  the row text the run produced.
+  **(a) A wedged tab hung the Chrome attach.** `connect_over_cdp` initialises every page
+  target before returning, so one discarded background tab in `chrome_debug_profile` meant
+  it never returned, and the download's 180 s `join()` expired first and discarded the real
+  reason — which is why eight runs said *"the download did not arrive within 3 minutes"*
+  while the same work by hand succeeded. `makerworld_uploader.cdp_attach()` bounds it
+  (25 s × 3 tries) and wakes every page target with `PUT /json/activate/<id>` between
+  attempts; the same attach came back in **0.3 s**. The download now records the stage it
+  reached and says *"stalled while <stage>"* instead of inventing a timeout.
+  **(b) The cover was attached to the model-file input.** On live draft 10203098 the Raw
+  Model Files box carries the same `.dropzone` class as the 4:3 cover, so the root
+  `.dropzone:not(.appUpload)` resolved to file input **0** and `.dropzone.appUpload` matched
+  **nothing** (`appUpload` is the dropzone's parent). `set_input_files` reports success on
+  the wrong input, so the run pressed Publish against an empty required box and MakerWorld
+  answered *"Please set the model cover"* — the same note the ledger carries for the
+  Christmas Gnome run at 16:19. Both roots are now scoped inside the covers section
+  (`.js-scroll-cover .dropzone:not(.appUpload .dropzone)` → input 2, `.appUpload .dropzone`
+  → input 3) and the wizard asks the form itself, through `COVER_STATE_JS`, whether the box
+  MakerWorld marks `require` holds an image; if not it stops and names the box.
+  LIVE, after both fixes and nothing else changed: `POST /makerworld/auto/start {"count":2,
+  "assert_ai":true}` clicked from the page ended `done` with **"2 of 2 published"** — *Handl
+  For The Jar* and *Cthulhu Halloween Cosplay Mask*, each reaching `/en/@<user>/verifying`
+  and recorded `published` with `pending_review: True`. Of the two rows that did not
+  publish, one is the CC0 refusal working as designed and the other is a real MakerWorld
+  miss (`TimeoutError: 90000ms exceeded while waiting for event "download"` — the site
+  offered no file for that design), now reported with the stage named.
+  FOUND AND NOT TOUCHED: both publishes return the same `/verifying` URL, so the ledger's
+  identity merge folded the two designs into **one** row (its `identity.source_urls` holds
+  both). `find(source_url=…)` still answers FOUND for each, so nothing will be published
+  twice, but the row's name, `source_url` and `count: 9` misreport two listings as one, and
+  `forget()` would drop both together. A pending-review `published_url` is not an identity
+  key and should not be merged on.
+
 <!--
 Notes for whoever works this ledger:
 - The one finding that changes what the pipeline can publish: MakerWorld requires

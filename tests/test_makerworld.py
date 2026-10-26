@@ -1269,3 +1269,133 @@ def test_the_memory_route_shows_the_makerworld_file_and_forget_never_guesses(
     assert mwl.count() == 2
     assert c.post("/makerworld/forget", json={"match": "Squishy Clicker"}).json()["removed"] == 1
     assert mwl.count() == 1
+
+
+def test_a_frozen_background_tab_cannot_hang_the_run(monkeypatch):
+    """The measured cause of "it never uploads": two discarded tabs in the debug
+    Chrome made Playwright's connect_over_cdp — which initialises every tab before
+    it answers — never return, so the download thread was still attaching when its
+    own wall clock ran out and the row said "the download did not arrive". The
+    attach now has a bound and wakes the tabs between tries."""
+    import asyncio
+    import makerworld_uploader as mu
+
+    woke = []
+    monkeypatch.setattr(mu, "wake_wedged_tabs",
+                        lambda wait=1.5: (woke.append(len(woke)), 3)[1])
+
+    class Wedged:
+        n = 0
+
+        async def connect_over_cdp(self, url):
+            type(self).n += 1
+            if type(self).n < 3:
+                await asyncio.sleep(30)         # the frozen-tab symptom
+            return "browser"
+
+    class PW:
+        chromium = Wedged()
+
+    got = asyncio.run(mu.cdp_attach(PW(), timeout=0.4, tries=3))
+    assert got == "browser"
+    assert woke == [0, 1], woke                  # woken once per failed attach
+    assert Wedged.n == 3
+
+    # a browser with nothing to wake is said out loud, not waited on
+    monkeypatch.setattr(mu, "wake_wedged_tabs", lambda wait=1.5: 0)
+
+    class Dead:
+        async def connect_over_cdp(self, url):
+            await asyncio.sleep(30)
+
+    class DeadPW:
+        chromium = Dead()
+
+    with pytest.raises(RuntimeError) as e:
+        asyncio.run(mu.cdp_attach(DeadPW(), timeout=0.4, tries=3))
+    assert "frozen tab" in str(e.value)
+
+
+def test_the_wake_pokes_only_page_tabs_and_survives_a_closed_browser(monkeypatch):
+    import makerworld_uploader as mu
+    hits = []
+
+    class Resp:
+        def __init__(self, payload): self.payload = payload
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return self.payload
+
+    def fake_urlopen(req, timeout=None):
+        url = req if isinstance(req, str) else req.full_url
+        hits.append(url)
+        if url.endswith("/json"):
+            return Resp(json.dumps([
+                {"type": "page", "id": "A1"}, {"type": "page", "url": "x"},
+                {"type": "iframe", "id": "B2"},
+                {"type": "browser_ui", "id": "C3"}]).encode())
+        return Resp(b"Target activated")
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    assert mu.wake_wedged_tabs(wait=0) == 1        # only the page target with an id
+    assert [h for h in hits if "/json/activate/" in h] == [mu.CDP_URL + "/json/activate/A1"]
+
+    def boom(req, timeout=None):
+        raise OSError("nothing is listening")
+    monkeypatch.setattr("urllib.request.urlopen", boom)
+    assert mu.wake_wedged_tabs(wait=0) == 0, "a closed browser must not raise"
+
+
+def test_the_download_wall_is_longer_than_what_it_waits_on():
+    """The bug was arithmetic: a 180s join around 90s of page load, 7s of settle
+    and 90s of download wait, so the thread was always still working when the run
+    gave up on it — and the reason it was still working was thrown away."""
+    src = (ROOT / "downloader.py").read_text(encoding="utf-8")
+    body = re.search(r"def _mw_download_via_chrome.*?\n    return holder\[.path.\], ..",
+                     src, re.S).group(0)
+    join = int(re.search(r"t\.join\(timeout=(\d+)\)", body).group(1))
+    waits = [int(x) for x in re.findall(r"timeout=(\d{4,})\)", body)]
+    assert join >= sum(waits) / 1000 + 20, (join, waits)
+    assert "cdp_attach" in body, "the download must use the bounded attach"
+    assert "holder[\"stage\"]" in body or 'holder["stage"]' in body
+    assert "stalled while" in body, "the row must say which stage it stalled at"
+
+
+def test_the_cover_slots_point_at_the_cover_boxes_not_the_model_files_box():
+    """Measured 2026-10-26 on live draft 10203098: the Raw Model Files dropzone
+    carries the same `.dropzone` class as the 4:3 cover, so the shipped root
+    `.dropzone:not(.appUpload)` resolved to file input 0 — the 3D-file input —
+    and the cover picture was handed to the model upload. `.dropzone.appUpload`
+    matched nothing at all, because `appUpload` is the dropzone's PARENT, not a
+    class on it. Both attaches reported success; MakerWorld then refused the
+    publish with its own "Please set the model cover"."""
+    src = (ROOT / "makerworld_uploader.py").read_text(encoding="utf-8")
+    js = re.search(r'SLOT_INDEX_JS = r"""(.*?)"""', src, re.S).group(1)
+    roots = {name: re.findall(r'"([^"]+)"', sel)
+             for name, sel in re.findall(r'\["([^"]+)",\s*\[(.*?)\]\]', js)}
+    cover = roots[mw.SLOT_COVER_43] + roots[mw.SLOT_COVER_34]
+    assert roots[mw.SLOT_COVER_43], "the 4:3 cover slot has no root at all"
+    assert roots[mw.SLOT_COVER_34], "the 3:4 cover slot has no root at all"
+    for sel in cover:
+        assert "js-scroll-cover" in sel or "appUpload" in sel, (
+            f"{sel!r} is not scoped inside the covers section, so it can reach the "
+            "model-files dropzone")
+        assert ".dropzone.appUpload" not in sel, (
+            "appUpload is the dropzone's parent — this matches nothing")
+        assert sel != ".dropzone:not(.appUpload)", "the model-files box also carries .dropzone"
+
+
+def test_an_empty_cover_box_stops_the_run_before_publish_is_pressed():
+    """A cover attached to the wrong input still reports ok, so the attach call
+    can never be the check. The wizard has to ask the form whether its own
+    required box holds a picture and stop there — not press Publish and read the
+    rejection back out of MakerWorld's error list."""
+    src = (ROOT / "makerworld_uploader.py").read_text(encoding="utf-8")
+    body = src[src.index("async def upload("):]
+    read = body.index("COVER_STATE_JS")
+    press = body.index("_click_button(page, mw.PUBLISH_BUTTON)")
+    assert read < press, "the cover box is checked after Publish, which is too late"
+    guard = body[read:press]
+    assert "required_set" in guard, "the check must be on the form's own required cover box"
+    assert '"success": False' in guard, "an empty required cover must stop the run"
+    assert "Nothing was published" in guard
+    assert '"cover_state"' in guard, "the row must carry what the form reported"

@@ -1040,36 +1040,45 @@ def _mw_download_via_chrome(model_id: str, slug: str) -> tuple[str, str]:
 
     from playwright.async_api import async_playwright
 
+    import makerworld_uploader as mw_up
+
     ok, why = _mw_debug_browser()
     if not ok:
         return "", why
 
     dest = os.path.join(DOWNLOADS_DIR, f"{slug}.3mf")
-    holder: dict = {}
+    holder: dict = {"stage": "attaching to Chrome"}
 
     async def _once():
         async with async_playwright() as pw:
-            browser = await pw.chromium.connect_over_cdp(CDP_URL)
-            page = await (browser.contexts[0]).new_page()
+            browser = await mw_up.cdp_attach(pw)
             try:
-                await page.goto(f"https://makerworld.com/en/models/{model_id}",
-                                wait_until="domcontentloaded", timeout=90000)
-                await page.wait_for_timeout(6000)
-                await page.evaluate("window.scrollTo(0, 1200)")
-                await page.wait_for_timeout(1200)
-                box = None
-                for text in ("Download 3MF", "Download STL", "Download"):
-                    box = await page.evaluate(MW_FIND_DOWNLOAD_JS, text)
-                    if box:
-                        break
-                if not box:
-                    raise LookupError("the listing page shows no Download control")
-                async with page.expect_download(timeout=90000) as dl:
-                    await page.mouse.click(box["x"], box["y"])
-                await (await dl.value).save_as(dest)
-                return dest
+                holder["stage"] = "opening the listing page"
+                page = await (browser.contexts[0]).new_page()
+                try:
+                    await page.goto(f"https://makerworld.com/en/models/{model_id}",
+                                    wait_until="domcontentloaded", timeout=90000)
+                    holder["stage"] = "waiting for the Print Files card"
+                    await page.wait_for_timeout(6000)
+                    await page.evaluate("window.scrollTo(0, 1200)")
+                    await page.wait_for_timeout(1200)
+                    box = None
+                    for text in ("Download 3MF", "Download STL", "Download"):
+                        box = await page.evaluate(MW_FIND_DOWNLOAD_JS, text)
+                        if box:
+                            break
+                    if not box:
+                        raise LookupError("the listing page shows no Download control")
+                    holder["stage"] = "clicking Download and waiting for the file"
+                    async with page.expect_download(timeout=90000) as dl:
+                        await page.mouse.click(box["x"], box["y"])
+                    await (await dl.value).save_as(dest)
+                    holder["stage"] = "saved"
+                    return dest
+                finally:
+                    await page.close()
             finally:
-                await page.close()
+                await browser.close()
 
     def _run():
         loop = _asyncio.new_event_loop()
@@ -1083,12 +1092,17 @@ def _mw_download_via_chrome(model_id: str, slug: str) -> tuple[str, str]:
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
-    t.join(timeout=180)
+    # Longer than everything it can be waiting on (90s page + 7s settle + 90s
+    # download), because the old 180s wall tripped first and threw the real error
+    # away: every run of 2026-10-26 said "the download did not arrive within 3
+    # minutes" about a browser whose attach had never answered at all.
+    t.join(timeout=240)
     if "error" in holder:
         print(f"[makerworld] logged-in download failed: {holder['error']}")
         return "", f"the logged-in Chrome could not save it ({holder['error']})"
     if not holder.get("path"):
-        return "", "the download did not arrive within 3 minutes"
+        return "", ("the download never reached this machine (stalled while %s)"
+                    % holder.get("stage", "starting"))
     return holder["path"], ""
 
 

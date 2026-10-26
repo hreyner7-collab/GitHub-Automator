@@ -91,6 +91,62 @@ def ensure_browser() -> bool:
     return _debug_port_up()
 
 
+def wake_wedged_tabs(wait: float = 1.5) -> int:
+    """Give every open tab a beat so Chrome reloads a discarded renderer.
+
+    Measured 2026-10-26: two background tabs in the debug profile had been
+    discarded to save memory, and `connect_over_cdp` — which initialises *every*
+    tab in the browser before it answers — never returned. The run reported that
+    as "the model file could not be fetched within 3 minutes", which is why every
+    dashboard run failed while a hand-run one worked. Activating a tab is the
+    cheap, non-destructive wake (a live tab only gains focus, a discarded one
+    reloads); it is plain HTTP, so it runs without Playwright and therefore
+    without the hang. Returns how many tabs were poked.
+    """
+    import urllib.request
+    try:
+        with urllib.request.urlopen(CDP_URL + "/json", timeout=6) as r:
+            targets = json.load(r)
+    except Exception:                                       # noqa: BLE001
+        return 0
+    n = 0
+    for t in targets:
+        if t.get("type") != "page" or not t.get("id"):
+            continue
+        try:
+            with urllib.request.urlopen(
+                    urllib.request.Request(CDP_URL + "/json/activate/" + t["id"],
+                                           method="PUT"), timeout=6):
+                n += 1
+        except Exception:                                   # noqa: BLE001
+            pass
+    if n and wait:
+        time.sleep(wait)
+    return n
+
+
+async def cdp_attach(pw, timeout: float = 25.0, tries: int = 3):
+    """`connect_over_cdp` with a bound and a wake-up between attempts.
+
+    A browser that will not answer is an error the dashboard can say out loud —
+    never a run that sits there until its own wall clock expires.
+    """
+    last: Exception | None = None
+    for attempt in range(tries):
+        try:
+            return await asyncio.wait_for(pw.chromium.connect_over_cdp(CDP_URL),
+                                          timeout=timeout)
+        except Exception as exc:                            # noqa: BLE001
+            last = exc
+            if not await asyncio.to_thread(wake_wedged_tabs):
+                break       # nothing there to wake; another try says the same
+    raise RuntimeError(
+        "Chrome on %s would not answer over its debug port (%gs x %d tries) — a "
+        "window of that debug Chrome has a frozen tab or is not logged in. Close "
+        "its tabs, or restart it, and run again." % (CDP_URL, timeout, tries)
+    ) from last
+
+
 # ── DOM helpers ─────────────────────────────────────────────────────────────
 # Every control is found the same way: locate the MEASURED text that owns it,
 # then take the first matching element after it in document order. That is how
@@ -101,11 +157,17 @@ def ensure_browser() -> bool:
 # "Model Pictures" onto the 4:3 cover input (because "Model Pictures & Videos"
 # starts with "Model Pictures"), so the gallery was attached to the cover slot
 # and input 6 never received a file. These roots were read off the live draft.
+# Re-measured 2026-10-26 on draft 10203098: the Raw Model Files box also carries
+# the `.dropzone` class, so `.dropzone:not(.appUpload)` resolved to input 0 —
+# the 3D-file input — and the cover was never set. MakerWorld then refused the
+# publish with its own "Please set the model cover". `.dropzone.appUpload`
+# matched nothing at all: the app-upload class sits on the PARENT of the dropzone
+# button. Both roots below now resolve to exactly one element on that draft.
 SLOT_INDEX_JS = r"""
 (marker) => {
   const roots = [
-    ["4:3 Cover", [".dropzone:not(.appUpload)"]],
-    ["3:4 Cover is prioritized in App", [".dropzone.appUpload"]],
+    ["4:3 Cover", [".js-scroll-cover .dropzone:not(.appUpload .dropzone)"]],
+    ["3:4 Cover is prioritized in App", [".appUpload .dropzone"]],
     ["Real life photos", [".modelRealPicture"]],
     ["Model Pictures", [".js-scroll-designPictures"]],
   ];
@@ -121,6 +183,44 @@ SLOT_INDEX_JS = r"""
     return { index: -1, how: 'container-without-input', marker };
   }
   return { index: -1, how: 'unknown-slot', marker };
+}
+"""
+
+# Whether the form itself now holds a cover in each slot, read off the two
+# boxes rather than off our own attach call: attaching to the wrong input
+# reports success, an image inside the 4:3 box does not lie. Measured on the
+# live draft: each cover column starts with its own heading, and the mandatory
+# one ("Web/App cover 4:3") carries the plain class `require` while "App cover
+# 3:4" does not. A filled column keeps its file input and gains an <img> — that
+# is how the portrait box looks on the live draft.
+COVER_STATE_JS = r"""
+() => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const sec = document.querySelector('.js-scroll-cover');
+  if (!sec) return { present: false, required_set: false, boxes: [], error: '' };
+  const boxes = [];
+  for (const inp of sec.querySelectorAll('input[type=file]')) {
+    let col = null;
+    for (let n = inp, i = 0; n && n !== sec && i < 8; n = n.parentElement, i++) {
+      const head = n.firstElementChild;
+      if (head && !head.childElementCount && /cover/i.test(norm(head.textContent))) {
+        col = n; break;
+      }
+    }
+    if (!col) continue;
+    const head = col.firstElementChild;
+    const label = norm(head.textContent);
+    if (boxes.some((b) => b.label === label)) continue;
+    boxes.push({ label, required: head.classList.contains('require'),
+                 images: [...col.querySelectorAll('img')]
+                   .filter((i) => (i.naturalWidth || 0) > 1).length });
+  }
+  const err = [...sec.querySelectorAll('p,span')]
+    .map((e) => norm(e.textContent)).filter((t) => /please set/i.test(t)).join(' | ');
+  const need = boxes.filter((b) => b.required);
+  const want = need.length ? need : boxes.slice(0, 1);
+  return { present: true, boxes, error: err.slice(0, 120),
+           required_set: want.length > 0 && want.every((b) => b.images > 0) };
 }
 """
 
@@ -889,7 +989,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
 
     async with async_playwright() as pw:
         try:
-            browser = await pw.chromium.connect_over_cdp(CDP_URL)
+            browser = await cdp_attach(pw)
         except Exception as exc:  # noqa: BLE001
             return {"success": False, "error": f"Could not attach to Chrome on {CDP_URL}. ({exc})"}
         ctx = browser.contexts[0]
@@ -1174,6 +1274,24 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                 return {"success": False, "url": page.url, "draft_id": draft_id,
                         "error": "The cover crop dialog would not submit, so MakerWorld never "
                                  "accepted the 4:3/3:4 covers. Nothing was published.",
+                        "verify": verify}
+            cover_state = await page.evaluate(COVER_STATE_JS)
+            verify["cover_state"] = cover_state
+            if not cover_state.get("required_set"):
+                # Measured 2026-10-26: a cover attached to the wrong file input
+                # still reports ok, and the publish then dies on MakerWorld's own
+                # "Please set the model cover". Say so here, with the box named,
+                # instead of pressing Publish against a form we know is short.
+                empty = [b.get("label") for b in cover_state.get("boxes", [])
+                         if b.get("required") and not b.get("images")]
+                return {"success": False, "url": page.url, "draft_id": draft_id,
+                        "error": "MakerWorld's required cover box %s still holds no image "
+                                 "(its own message: %s). The cover attach reported %s, so the "
+                                 "file went somewhere the form does not read as a cover. "
+                                 "Nothing was published."
+                                 % (empty or ["(no cover box on the page)"],
+                                    cover_state.get("error") or "none shown",
+                                    json.dumps(covers_res, ensure_ascii=False)[:200]),
                         "verify": verify}
             real_res = await _attach_to_slot(page, mw.SLOT_REAL_PHOTOS, plan["print_photos"])
             gallery = [p for p in cover_plan[1:][:mw.MAX_PHOTOS]]
