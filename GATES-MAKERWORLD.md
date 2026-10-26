@@ -187,9 +187,10 @@ Baseline: 527 tests passing before this work; the Creality publish path
   `published, skipped, rejected, skipped, published`: the CC BY source publishes, the page that
   names no licence stops, the BY-ND source is refused with MakerWorld's own sentence, the design
   with no downloadable file stops, and the run ends at the number typed (2), not the number
-  found (5). It publishes with `dry_run=False` and the source listing's own photographs as
-  `print_photos`, and it refuses to start while the Creality run is publishing (one browser,
-  one form). `POST /makerworld/auto/start {"count":0}` → 400 before any browser is touched,
+  found (5). It publishes with `dry_run=False` and a picture set **drawn for that
+  listing** as `print_photos` (changed 2026-10-26, see G12 — it used to send the
+  source listing's own photographs), and it refuses to start while another run is
+  publishing (one browser, one form). `POST /makerworld/auto/start {"count":0}` → 400 before any browser is touched,
   measured live: `Type how many models you want, 1 or more (you sent 0).`
   LIVE: a real listing has now gone through the wizard end to end at the user's explicit
   request (2026-10-25). Design **3495491** was published from the source's own photographs
@@ -227,6 +228,33 @@ Baseline: 527 tests passing before this work; the Creality publish path
   star review or give a boost!") — edited on the owner edit page, saved, and the model went
   back to Verifying (1) for re-review.
 
+- [x] G12: every picture on a MakerWorld listing is drawn for it — no original image reaches the form
+  CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py -k "draw or photo or duplicate or cc0 or Plan or tick"
+  EXPECT: 25 passed
+  EVIDENCE: 2026-10-26, exit 0 — `25 passed, 41 deselected in 6.13s`; the whole file is
+  `66 passed in 6.11s` and the full suite `594 passed in 91.44s`. Asked for by the user ("whenever I click upload or find and publish, it
+  will always regenerate… not a single original image, only new ones", MakerWorld only). Both
+  buttons settle their pictures **before the browser opens**: `photo_mode="generate"` is the
+  default and sends `image_paths: []` and `print_photos: []`, so the scraped gallery and the
+  ticked photographs are not in the payload at all. `photo_gen` (new) draws from the listing's
+  own name and description through the keyless free endpoint; `split_photo_sets` puts the covers
+  and the print-photo slot on different files; a short set is a 502 that publishes nothing
+  (`test_a_short_draw_refuses_the_publish_and_opens_no_browser` runs the real route with the
+  driver and the ledger both watched and asserts neither was touched) and in the loop the row
+  state `photos-failed`, which stops that find and continues the run. Measured live on 26 Oct:
+  3 pictures in 186 s, one 402 recovered by the back-off. The endpoint ignores `nologo=true` and
+  stamps its name in the lowest 5% of the frame, so `_clean` cuts that strip (band detail
+  3954 → 3.1 on a real drawing) and the page says so. `photo_mode` fails closed
+  (`_makerworld_photo_mode`: a typo is not a licence to attach another maker's photo), the plan
+  route checks the set that will be drawn (`photos_drawn`) instead of the empty file lists,
+  `/makerworld/files` names both kinds of non-print file (`generated`, `from_source`) and the
+  picker refuses to tick either as "a print I made", and a duplicate verdict only locks the
+  ledger when it names a design that is not the draft. The two acknowledgements are answers the
+  route requires, not button plumbing: `assert_ai` for `generate`, `assert_prints` for
+  `as_shot`/`restyle`, and the Auto card's own tick for the unattended start — each missing is a
+  400 raised *before* a picture is drawn, `ensure_browser()` runs or the form driver is called
+  (`test_nothing_is_sent_or_started_without_the_tick` watches all three).
+
 <!--
 Notes for whoever works this ledger:
 - The one finding that changes what the pipeline can publish: MakerWorld requires
@@ -234,10 +262,16 @@ Notes for whoever works this ledger:
   views"), and this pipeline's edited images are studio composites of the creator's
   renders. `MIN_REAL_PHOTOS = 3` and a separate `print_photos` input exist so the
   account is never asked to present a render as a print photo. The manual dashboard
-  exposes that as an explicit tick; the auto run (G10) satisfies it a different way — it
-  uploads the photographs the SOURCE listing already carries, taken by the maker of the
-  original, and stops on any design that has fewer than three. No image API and no
-  generated picture is part of either path.
+  exposes that as an explicit tick. CHANGED 2026-10-26, at the user's instruction and
+  after they asked MakerWorld support: neither path attaches the source listing's
+  photographs any more. Both draw their own set from the listing's own words
+  (`photo_mode="generate"`, the default) — see G12 and MAKERWORLD-FLOW-CONFIG.md.
+  The rule that survived the change is the one that matters for the account: a file
+  is never presented as something it is not. A drawn picture cannot be ticked as "a
+  print I made", the machine-picture acknowledgement is on the publish button **and
+  demanded by the route** (as is the unattended run's own tick, before it starts),
+  and a set that comes back short stops the publish instead of being padded with
+  someone else's photograph.
 - MakerWorld's `?type=remix` only accepts a source that is already a MakerWorld
   design (measured placeholder text), so a Thingiverse/Printables original can only
   go out as `?type=original` — the flow module refuses the mismatch instead of

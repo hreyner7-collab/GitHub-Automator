@@ -1113,6 +1113,12 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                         "verify": verify}
             if category:
                 cat_res = await _pick_category(page, category)
+                if not cat_res.get("ok"):
+                    # The picker mounts late on this step — a person filling the
+                    # form by hand just opens it again, so do that once before
+                    # calling it a failure.
+                    await page.wait_for_timeout(700)
+                    cat_res = await _pick_category(page, category)
                 verify["category"] = cat_res
                 if not cat_res.get("ok"):
                     return {"success": False, "url": page.url, "draft_id": draft_id,
@@ -1234,10 +1240,13 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
             verify["publish_click"] = pub
             if not pub.get("clicked"):
                 await page.screenshot(path=_shot("mw_no_publish.png"), full_page=True)
-                return {"success": True, "url": page.url, "draft_id": draft_id,
-                        "verify": verify,
-                        "error": "", "message": "The MakerWorld form is fully filled but the "
-                                 "Publish control was not found — press it in the browser "
+                # Not a success. This used to answer success=True with a note to
+                # press the button by hand, which let an unattended run count a
+                # listing nobody published as published and lock the model.
+                return {"success": False, "url": page.url, "draft_id": draft_id,
+                        "verify": verify, "filled": True, "submitted": False,
+                        "error": "The MakerWorld form is fully filled but the Publish control "
+                                 "was not found, so nothing was published "
                                  "(see downloads/_shots/mw_no_publish.png)."}
             _mark("publish-pressed")
 
@@ -1254,8 +1263,12 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                 st = await page.evaluate(FORM_STATE_JS)
                 final = st
                 u = st.get("url") or page.url
-                text = " ".join([st.get("body") or ""]
-                                + [e or "" for e in st.get("errors") or []])
+                # What the form itself is complaining about, kept apart from the
+                # page text: the body carries the description just typed and the
+                # source model's own name, and "already exists" found in either
+                # is not MakerWorld rejecting the upload.
+                said = " ".join(e or "" for e in st.get("errors") or [])
+                text = " ".join([st.get("body") or "", said])
                 if st.get("designId") or "/en/models/" in u:
                     outcome = "success"
                     break
@@ -1263,8 +1276,8 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                         or re.search(r"/@[^/]+/verifying", u):
                     outcome = "success"
                     break
-                if DUPLICATE_RE.search(text):
-                    outcome, reason = "duplicate", DUPLICATE_RE.search(text).group(0)
+                if DUPLICATE_RE.search(said):
+                    outcome, reason = "duplicate", DUPLICATE_RE.search(said).group(0)
                     break
                 errs = [e for e in (st.get("errors") or []) if ERROR_RE.search(e or "")]
                 if errs:

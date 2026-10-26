@@ -110,7 +110,9 @@ IMAGE_ACCEPT = (".jpg", ".jpeg", ".png", ".webp", ".gif")
 # UNMEASURED: which answer combination renders which licence name is MakerWorld's
 # own mapping. The table below is the ordinary CC reading; the driver never
 # trusts it — it reads the licence name MakerWorld itself renders and refuses if
-# that name is not the source licence (see license_name_matches).
+# that name is not the source licence (see license_name_matches). The cc0 row is
+# the one mapping that IS measured, and it measures badly: Yes/Yes on a CC0
+# source renders "CC BY", so license_plan refuses that code rather than answer it.
 LICENSE_PLAN = {
     "cc0": {LICENSE_Q_ADAPT: "Yes", LICENSE_Q_COMMERCIAL: "Yes"},
     "zero": {LICENSE_Q_ADAPT: "Yes", LICENSE_Q_COMMERCIAL: "Yes"},
@@ -126,6 +128,9 @@ LICENSE_PLAN = {
 #  · the site's own Standard Digital File License, which MakerWorld also names
 #    in the warning under Model Origin.
 REFUSED_CODES = ("standard", "sdl", "sdlf")
+# Codes whose licence the live form cannot render at all, measured rather than
+# assumed — see license_plan, which refuses these before a browser opens.
+FORM_UNREPRESENTABLE = ("cc0", "zero", "publicdomain")
 
 _CC_TOKEN = re.compile(r"(?i)\bCC[\s-]?0\b|public[\s-]?domain|"
                        r"CC[\s-]?BY(?:[\s-]?(?:NC|SA|ND)){0,2}")
@@ -150,7 +155,9 @@ def cc_code(license_raw: str) -> str:
     code = code.strip("-")
     if code in ("0", "zero", "public-domain", "publicdomain"):
         code = "cc0"
-    if not code and "publicdomain" in t:
+    if not code and re.search(r"(?i)public[\s-]?domain", t):
+        # "Public Domain Mark 1.0" is how MakerWorld words CC0 on some listings;
+        # it is the same licence and the form renders it the same wrong way.
         code = "cc0"
     return code
 
@@ -167,6 +174,17 @@ def license_plan(license_raw: str) -> dict:
                 "why": "the source is published under MakerWorld's Standard Digital File "
                        "License, which does not license a re-upload"}
     code = cc_code(license_raw)
+    if code in FORM_UNREPRESENTABLE:
+        # Measured 2026-10-26 (artifacts/makerworld_auto_20261026-161524.json):
+        # answering the form's two questions the way CC0 reads renders the badge
+        # "CC BY". There is no answer that gets CC0 back, and publishing a public
+        # domain source under an attribution licence is a statement about the
+        # source that is not true — so this stops before the browser opens
+        # instead of after a three-minute run.
+        return {"code": code, "refused": True, "answers": {},
+                "why": f"the source licence is {code.upper()}, and MakerWorld's remix form has no "
+                       "answer that renders it: its two licence questions came back as CC BY. "
+                       "Refusing to declare a licence the source does not name"}
     if code in REFUSED_CODES or code.endswith("-nd"):
         return {"code": code, "refused": True, "answers": {},
                 "why": f"the source licence is {code.upper() or 'unreadable'} and MakerWorld's "
@@ -323,6 +341,21 @@ def usable_images(paths, must_exist: bool = True) -> list[str]:
     return out
 
 
+def split_photo_sets(paths, cover_want: int = 2) -> tuple[list[str], list[str]]:
+    """Split a drawn set into (covers, print photos) for the form's two places.
+
+    The 4:3 and 3:4 cover slots, the gallery and the "real photos of your print"
+    slot are separate controls, and the same file in two of them is what came
+    back as "Please set the model cover". So the sets stay apart, and a set that
+    is too small to cover both is reported by leaving one side short rather than
+    by duplicating a picture across slots.
+    """
+    files = list(paths or [])
+    if len(files) <= cover_want + MIN_REAL_PHOTOS - 1:
+        cover_want = max(1, len(files) - MIN_REAL_PHOTOS) if len(files) > MIN_REAL_PHOTOS else 1
+    return files[:cover_want], files[cover_want:]
+
+
 def prepare_print_photos(photo_paths, background: str = "",
                          recolour: str = "") -> dict:
     """Tidy the photographs of your own print before they go on the listing.
@@ -363,7 +396,8 @@ def prepare_print_photos(photo_paths, background: str = "",
 def validate_plan(name: str = "", description: str = "", source_url: str = "",
                   model_file: str = "", cover_images=(), print_photos=(),
                   remix_source_url: str = "", license_raw: str = "",
-                  kind: str = "remix", dry_run: bool = False) -> dict:
+                  kind: str = "remix", dry_run: bool = False,
+                  photos_drawn: int = 0) -> dict:
     """Everything that would make MakerWorld's own form refuse the publish,
     found before a browser opens. {ok, blockers:[…], warnings:[…], plan:{…}}.
 
@@ -372,6 +406,10 @@ def validate_plan(name: str = "", description: str = "", source_url: str = "",
     produces: the covers are renders, the "Real life photos" slot wants ≥3
     photographs of the printed object (measured: 'Upload ≥3 photos of the
     printed model, covering 3 views').
+
+    `photos_drawn` says the pictures do not exist yet — they are drawn when the
+    publish runs — so the plan checks the set that will really be split between
+    the two slots instead of the empty file lists the page sends in that mode.
     """
     blockers: list[str] = []
     warnings: list[str] = []
@@ -391,15 +429,20 @@ def validate_plan(name: str = "", description: str = "", source_url: str = "",
         blockers.append("the model has no name; the form's Model Name is required")
 
     covers = usable_images(cover_images)
+    photos = usable_images(print_photos)
+    if photos_drawn:
+        covers, photos = split_photo_sets([f"drawn{i}.jpg" for i in range(int(photos_drawn))])
     if len(covers) < 1:
         blockers.append("no cover image to upload (the form shows two required cover slots, "
                         f"4:3 and 3:4; accepts {', '.join(IMAGE_ACCEPT)})")
 
-    photos = usable_images(print_photos)
     gap = (f"only {len(photos)} real print photo(s); MakerWorld requires at least "
            f"{MIN_REAL_PHOTOS} photographs of the printed model. The pipeline's own "
            "edited studio renders are NOT print photos — supply photos of a print "
            "you actually made, or do not publish this model.")
+    if photos_drawn:
+        gap = (f"only {len(photos)} of the {MIN_REAL_PHOTOS} pictures the photo slot "
+               "needs would come back from the drawer")
     if len(photos) < MIN_REAL_PHOTOS:
         # A dry run is allowed to walk the wizard without them; a publish is not.
         (warnings if dry_run else blockers).append(gap)

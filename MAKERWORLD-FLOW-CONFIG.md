@@ -255,11 +255,11 @@ halves, so the separation cannot rot back into a merged page.
 | 0 · Find models to remix | `POST /discover` with `site:"makerworld"` (trending / popular / hottest, headless, no login, `&licenses=CC0,BY,BY-SA` read back off the page) | never fetch, plan or publish by itself — publishing is the Auto card's decision, taken once |
 | 1 · Source design (MakerWorld url) | `POST /fetch` with `edit_images:false` | never the AI re-edit — that is a Creality-side choice |
 | 2 · Listing | name/description prefilled by `loadSource()` from `/fetch`; tags and category typed by hand | the description is the source's own text (API `summary` → `boostcontent`) verbatim — never generated, never truncated; the page says so |
-| Auto · Find and publish | `POST /makerworld/auto/start` → `ensure_browser()` (opens the logged-in debug Chrome **before** the run is announced, and answers 503 if it cannot) → `discover()` (licence-filtered) → `downloader.fetch` → `makerworld_uploader.upload(dry_run=False)` | never the Creality loop's modules; never an item whose source page names no licence, or fewer than 3 of the original maker's photographs. It passes the fetched **description, first category and tags** straight into the upload, like the manual form. A download that fails reports the browser's own error (e.g. `ECONNREFUSED`), never "MakerWorld refused the file" |
-| covers grid | the scraped originals (`_raw_orig_images`) | on this manual page, never presented as print photos |
-| 3 · Photographs of your prints | `GET /makerworld/files` → images already in `downloads/`, plus the two opt-in restyles (`photo_background`, `photo_recolour`) | never fills itself from the gallery (the Auto run is the one path that uses the source's own photographs, because they are the original maker's real prints) |
-| 4 · Check | `POST /upload/makerworld/plan` | opens no browser, creates no draft |
-| 4 · Publish (starts disabled) | `POST /upload/makerworld` | unlocks only with a name, a model file, a cover, ≥3 print photos **and** the assertion tick |
+| Auto · Find and publish | `POST /makerworld/auto/start` (400 unless the card's own machine-picture tick is on) → `ensure_browser()` (opens the logged-in debug Chrome **before** the run is announced, and answers 503 if it cannot) → `discover()` (licence-filtered) → `downloader.fetch` → `photo_gen` draws the set → `makerworld_uploader.upload(dry_run=False)` | never the Creality loop's modules; never an item whose source page names no licence, no category or no downloadable file, and never one whose drawn set came back short. It passes the fetched **description, first category and tags** straight into the upload, like the manual form. A download that fails reports the browser's own error (e.g. `ECONNREFUSED`), never "MakerWorld refused the file" |
+| covers grid | the scraped originals (`_raw_orig_images`) | on this manual page, never presented as print photos, and in `generate` mode not sent at all |
+| 3 · Photographs of your prints | `GET /makerworld/files` → images already in `downloads/`, plus the two opt-in restyles (`photo_background`, `photo_recolour`) | never fills itself from the gallery; a drawn (`ai_*`) or source (`*_img_N`) file cannot be ticked as a print you made; the whole card is for the two non-default modes only |
+| 4 · Check | `POST /upload/makerworld/plan` | opens no browser, creates no draft, needs no tick |
+| 4 · Publish (starts disabled) | `POST /upload/makerworld` | `generate` unlocks with a name, a model file, a MakerWorld source url **and** the machine-picture tick; the own-photo modes additionally need ≥3 ticked prints **and** the own-photo tick. Either tick missing is a 400 from the route as well |
 | 5 · Memory | `GET /makerworld/published`, `POST /makerworld/forget` | never reads or writes Creality's `published_models.json` |
 
 The Publish button's lock is the measured rule, not a courtesy: MakerWorld's form
@@ -267,13 +267,92 @@ says "Upload ≥3 photos of the printed model, covering 3 views", so a listing t
 cannot satisfy it is not offered. Forget needs a name, url or design id — an empty
 match is a 400, never "forget everything".
 
+### Where the listing pictures come from (`photo_mode`)
+
+`POST /upload/makerworld` and the Auto loop both settle their pictures **before
+the browser opens**, and the default is `photo_mode="generate"`: the listing's
+pictures are drawn from that listing's own name and description, and no original
+image — not the scraped gallery, not a ticked photograph — goes into the payload
+at all.
+
+| mode | what the form receives |
+|---|---|
+| `generate` (default) | `photo_gen.generate_photos()` draws `want + 2` pictures into `downloads/` as `ai_<slug>_<time>_<seed>.jpg`; `makerworld_flow.split_photo_sets()` keeps the cover slots and the print-photo slot on **different files** (the same file in both is what came back as "Please set the model cover") |
+| `as_shot` | the ticked photographs, untouched, exactly as they sit on disk |
+| `restyle` | the ticked photographs through the local finisher (see below) |
+
+`photo_mode` is a string that arrives from the browser, so
+`main._makerworld_photo_mode()` **fails closed**: anything that is not exactly
+`as_shot` or `restyle` — a typo, an empty value, `Generate` — is `generate`,
+because the other two are the modes that attach files the caller named. In
+`as_shot` the two finisher options are sent empty by the page and forced empty by
+the route, so a backdrop left in a hidden select cannot restyle a photograph the
+user asked to have sent as shot. When no cover is ticked in either own-photo
+mode, the cover comes from the user's own photographs (`split_photo_sets`, one
+file, not reused) and never from the scraped gallery.
+
+The two acknowledgements are answered by the **route**, not only by the page.
+`assert_ai` (the pictures on this listing were drawn by a machine) is required for
+`generate`, and `assert_prints` (these are photographs of a print I made) for
+`as_shot` and `restyle`; either one missing is a **400 before a picture is drawn or
+a browser opens**. The unattended run has its own tick under the button and its own
+400 on `POST /makerworld/auto/start`, placed before `makerworld_ensure_browser()`,
+so a start nobody acknowledged cannot even reach Chrome. The page sends the flags
+from `_payload()` (`assert_ai: gen ? …`) rather than only using them to gate the
+button, because `curl` and a stale tab are callers too.
+
+A drawn set that comes back short is a **502 that publishes nothing**, with the
+per-picture notes — it is never topped up with the source listing's photographs.
+The loop reports the same fact as the row state `photos-failed`, after the cheap
+checks (licence, file, category) so a doomed listing costs no image calls, and a
+drawer that *raises* costs that one row only: the run moves on to the next find.
+
+`POST /upload/makerworld/plan` is checked against the same contract: with
+`photos_drawn` it validates the set that will really be split between the two
+slots, so the Check button cannot say "no cover image to upload" about a listing
+the Publish button would accept.
+
+Three measured facts about the free endpoint, all asserted offline:
+`image.pollinations.ai` answers roughly one picture per minute without an
+account (a live 3-picture run took **186 s** and recovered from one 402), and it
+answers a rate limit (`HTTP 402`) **with an image body**, so `photo_gen._decode`
+checks magic bytes, size, decodability and detail (Laplacian variance) before a
+picture counts. `nologo=true` is **ignored**: every picture comes back with a
+"pollinations.ai" mark in the lowest 5% of the frame, so `photo_gen._clean` cuts
+that strip (`MARK_BAND`) before the file is written — measured band detail
+3954 → 3.1 on a real drawing, object and contact shadow kept. Only `Busy`
+(402/429/5xx) is waited out; any other failure — a machine with no network at all
+— stops that picture immediately instead of sleeping through the back-off, and a
+whole set is bounded by `budget_set` (900 s) so a publish cannot sit at "drawing
+photos" for half an hour. `tests/conftest.py` replaces `photo_gen.fetch_jpeg` for
+every test, so no test can reach it or wait on it.
+
+Two ledger rules, both because an unattended run must not remember a publish that
+never happened: a form whose Publish button was never found returns
+`success: False, submitted: False` (it used to return `success: True` with a note
+to press it by hand), and a "this already exists" verdict only locks the model
+when it names a **design** that is not the draft the wizard is sitting on —
+MakerWorld's page text also carries the description that was just typed, and one
+incidental match used to hide a never-published model from every later run.
+`GET /makerworld/files` says which of the two kinds of file it is listing
+(`generated` for the studio's `ai_*`, `from_source` for the downloader's
+`{slug}_img_N` gallery copies) and the page refuses both at the "a print I made"
+tick, which is the claim MakerWorld actually checks.
+
+Also refused before a browser opens now: a **CC0** source. Measured in
+`artifacts/makerworld_auto_20261026-161524.json`, answering the form's two
+licence questions the way CC0 reads renders the badge **CC BY**, and this
+pipeline will not declare a licence the source does not name — so
+`license_plan()` refuses `cc0`/`zero`/`publicdomain` as
+`FORM_UNREPRESENTABLE` instead of spending three minutes discovering it.
+
 ### Tidying the photographs you ticked (`prepare_print_photos`)
 
-The listing needs photographs of a print this account actually made, and the only
-edits allowed on them are cosmetic: `makerworld_flow.prepare_print_photos(paths,
-background, recolour)` runs the local finisher (`editor.edit_image`) over the
-ticked files and nothing else. Measured behaviour, all of it asserted in
-`tests/test_makerworld.py`:
+The `as_shot` and `restyle` modes use photographs of a print this account
+actually made, and the only edits allowed on them are cosmetic:
+`makerworld_flow.prepare_print_photos(paths, background, recolour)` runs the
+local finisher (`editor.edit_image`) over the ticked files and nothing else.
+Measured behaviour, all of it asserted in `tests/test_makerworld.py`:
 
 | case | what happens |
 |---|---|

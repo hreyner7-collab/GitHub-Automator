@@ -21,21 +21,30 @@ A Python / FastAPI pipeline that turns 3D-print model pages (Thingiverse, Printa
    (`artifacts/makerworld_published.json`) and its own routes (`POST /upload/makerworld`,
    `GET /makerworld/files`, `GET|POST /makerworld/published|forget`, plus
    `POST /upload/makerworld/plan`, which tells you what MakerWorld would refuse without
-   opening a browser). MakerWorld asks for two things Creality does not: **at least 3
-   photographs of a model you actually printed**, and — for the remix path — a source design
-   that already lives on MakerWorld.
-   **Auto · Find and publish** is the headline control: type a number and it pulls that many
-   designs off MakerWorld's licence-filtered listings, downloads each one with the photographs
-   the original listing already has, fills the wizard in your Chrome and publishes it, with no
-   per-item approval (`POST /makerworld/auto/start`, `/stop`, `/status`). The listing filter is
-   measured, not assumed: only Public Domain, BY and BY-SA are selectable, and `discover()`
-   reads those three chips back off the rendered page and refuses to return a list if any other
-   licence is green. An item still stops itself on a fact — a NoDerivatives or NonCommercial
-   source, a page that names no licence, no downloadable file, or fewer than three of the
-   original maker's own photographs. No image API and no generated picture is involved: the
-   photos are the source's. Step 0 is the same listings as a browser, for when you want to pick
-   one yourself. The Creality page at `/` publishes to Creality only; the two are joined by
-   nothing but a link in the top bar.
+   opening a browser). MakerWorld asks for two things Creality does not: **the photo slot wants
+   at least 3 pictures**, and — for the remix path — a source design that already lives on
+   MakerWorld.
+   **Every picture a MakerWorld listing gets is drawn for it** (`photo_mode="generate"`, the
+   default, changed 2026-10-26): `photo_gen.py` writes the pictures from that listing's own name
+   and description through a free keyless endpoint — no API key, no account, no money. Neither
+   the source listing's photographs nor your own are attached unless you deliberately switch the
+   card to *as I shot them* / *tidy them*, and a set that comes back short is a 502 that
+   publishes nothing instead of being padded with somebody else's photo. Both buttons settle
+   their pictures before the browser opens, and the acknowledgement ticks ("these were drawn by
+   a machine", "these are photographs of my print") are required by the routes, not just by the
+   page.
+   **Auto · Find and publish** is the headline control: type a number, tick that the run posts
+   machine-drawn pictures, and it pulls that many designs off MakerWorld's licence-filtered
+   listings, downloads each model, draws its own picture set, fills the wizard in your Chrome and
+   publishes it, with no per-item approval (`POST /makerworld/auto/start`, `/stop`, `/status`).
+   The listing filter is measured, not assumed: only Public Domain, BY and BY-SA are selectable,
+   and `discover()` reads those three chips back off the rendered page and refuses to return a
+   list if any other licence is green. An item still stops itself on a fact — a NoDerivatives or
+   NonCommercial source, a page that names no licence (a public-domain source is refused: the
+   remix form has no answer for it), no downloadable file, no category, or fewer than three
+   pictures coming back from the drawer. Step 0 is the same listings as a browser, for when you
+   want to pick one yourself. The Creality page at `/` publishes to Creality only; the two are
+   joined by nothing but a link in the top bar.
 
 ## What you MUST provide before it will run
 1. **Python 3.10+** installed on your machine.
@@ -103,6 +112,8 @@ not on the dashboard on purpose, so nothing there can unlock a model by accident
 - `uploader.py` — Creality Cloud upload via Chrome CDP
 - `makerworld_uploader.py` — MakerWorld upload via the same Chrome CDP (separate driver)
 - `makerworld_flow.py` — MakerWorld's measured field names, limits and licence plan
+- `photo_gen.py` — the keyless listing-picture drawer MakerWorld uses (retries the free tier's
+  refusals, checks that what came back is a photograph, and cuts the generator's corner mark)
 - `makerworld_ledger.py` — permanent "already on MakerWorld" memory (separate file)
 - `makerworld/index.html` — the MakerWorld dashboard, served at `/makerworld` (its own page)
 - `MAKERWORLD-FLOW-CONFIG.md` · `GATES-MAKERWORLD.md` — the measured flow map and its gates

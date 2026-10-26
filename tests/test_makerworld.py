@@ -6,6 +6,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import json
+import os
 import pathlib
 import re
 
@@ -379,8 +380,11 @@ def test_the_auto_run_is_the_makerworld_shape_not_the_creality_one():
     assert "makerworld_upload(" in body
     assert "makerworld_ledger.find(" in body and "makerworld_ledger.record(" in body
     assert "dry_run=False" in body
-    # the photographs are the source listing's own files, straight off the fetch
-    assert "print_photos=photos" in body and "usable_images(res.get(\"image_paths\")" in body
+    # the pictures are drawn for this listing; the source's own gallery never
+    # reaches the form at all
+    assert "_makerworld_generated_photos" in body and "print_photos=photos" in body
+    assert 'usable_images(res.get("image_paths")' not in body, \
+        "the source listing's photographs must not be attached to a remix"
     for creality_only in ("uploader_upload", "edit_all", "creality_rules"):
         assert creality_only not in body, creality_only
     # the Creality ledger, not makerworld_ledger (hence the lookbehind)
@@ -463,6 +467,20 @@ def test_the_run_loop_publishes_each_find_and_stops_at_the_facts(monkeypatch, tm
                 "design_id": "9999"}
     monkeypatch.setattr(m, "makerworld_upload", fake_upload)
 
+    # The listing's pictures are drawn, not scraped — so the drawer is faked
+    # here too, and what it hands back is split the way the form needs it:
+    # separate files for the cover slots and for the print-photo slot.
+    drawn_sets = []
+    def fake_draw(name, description="", count=0):
+        n = len(drawn_sets)
+        covers = [str(tmp_path / f"cover{n}a.jpg"), str(tmp_path / f"cover{n}b.jpg")]
+        shots = [str(tmp_path / f"shot{n}{i}.jpg") for i in range(3)]
+        d = {"covers": covers, "print_photos": shots, "photos": covers + shots,
+             "ok": True, "got": 5, "asked": 3, "seconds": 12.3, "notes": []}
+        drawn_sets.append(d)
+        return d
+    monkeypatch.setattr(m, "_makerworld_generated_photos", fake_draw)
+
     m.MW_AUTO.update({"state": "running", "items": [], "published": 0, "stop": False,
                       "requested": 2, "error": ""})
     asyncio.run(m._makerworld_auto_worker(2, "testjob"))
@@ -474,8 +492,16 @@ def test_the_run_loop_publishes_each_find_and_stops_at_the_facts(monkeypatch, tm
     assert len(calls) == 2, "it stops at the number typed, not at the number found"
     assert all(c["dry_run"] is False for c in calls)
     assert all(len(c["print_photos"]) >= 3 for c in calls)
-    # the photographs are the source listing's own, and the source is declared
-    assert calls[0]["print_photos"] == calls[0]["image_paths"]
+    # the pictures are the drawn ones, the two slots get different files, and
+    # nothing from the source listing's gallery is attached anywhere
+    assert calls[0]["print_photos"] == drawn_sets[0]["print_photos"]
+    assert calls[0]["image_paths"] == drawn_sets[0]["covers"]
+    assert not set(calls[0]["print_photos"]) & set(calls[0]["image_paths"]), \
+        "the same file in the cover slot and the photo slot is what fails the form"
+    sent = {p for c in calls for p in list(c["print_photos"]) + list(c["image_paths"])}
+    assert not sent & set(photos), "a source listing's own photograph reached the form"
+    assert len(drawn_sets) == 2, "each published listing draws its own set"
+    # the source is still declared, whatever the pictures are
     assert calls[0]["remix_source_url"] == m.MW_AUTO["items"][0]["url"]
     # the description is the source's own; the category and tags come from
     # the source's public design metadata, not from a guess
@@ -553,7 +579,10 @@ def test_finding_models_stays_research_on_this_page_too():
 def test_the_print_photo_assertion_is_what_unlocks_publish():
     html = _page()
     assert 'id="assert-prints"' in html
-    assert "print_photos.length >= 3" in html
+    # 3 for the photo slot, plus one more when no cover was ticked and one of
+    # these has to become it.
+    assert "const need = 3 + (p.image_paths.length ? 0 : 1)" in html
+    assert "p.print_photos.length >= need" in html
     assert '<button class="go" id="pub-btn" onclick="publish()" disabled>' in html
     # the scraped gallery is offered as covers only — never as print photos
     assert "_raw_orig_images" in html and "print_photos: []" not in html
@@ -644,12 +673,506 @@ def test_the_page_sends_both_options_and_defaults_to_neither(tmp_path):
     html = _page()
     for want in ('id="photo-bg"', 'id="photo-colour"', 'id="photo-hex"'):
         assert want in html, want
-    assert "photo_background: document.getElementById('photo-bg').value" in html
-    assert "photo_recolour: document.getElementById('photo-hex').value.trim()" in html
+    # Only "tidied on this machine" may change a photograph: in the other two
+    # modes the hidden selects are sent empty, so a stale value cannot restyle a
+    # picture the user asked to leave as shot.
+    assert "photo_background: restyle ?" in html
+    assert "photo_recolour: restyle" in html
+    assert "const restyle = mode === 'restyle'" in html
+    assert "id=\"style-box\"" in html and "mode === 'restyle' ? '' : 'none'" in html
     assert '<option value="">Leave it exactly as I shot it</option>' in html
     assert '<option value="">Leave it as printed</option>' in html
-    assert '<span class="build" id="mw-version" title="MakerWorld dashboard ' \
-           'version: bumped on every update">V6</span>' in html
+    # The marker itself, not a particular number: the page shows it so a stale tab
+    # can be spotted, and the title is the same string.
+    mark = re.search(r'<span class="build" id="mw-version"[^>]*>(V\d+)</span>', html)
+    assert mark, "the dashboard must carry its own version marker"
+    assert re.search(r"<title>MakerWorld Pipeline " + mark.group(1) + r"</title>", html), \
+        "the title and the marker have to agree"
+
+
+def test_the_page_draws_pictures_by_default_and_sends_no_originals():
+    """The default is the one the user asked for: every publish draws its own
+    pictures, so the scraped gallery and the ticked photographs are not even put
+    in the payload. The other two modes still work, and each has its own tick."""
+    html = _page()
+    assert 'id="photo-mode"' in html
+    assert '<option value="generate">' in html.split('id="photo-mode"')[1][:220], \
+        "generate must be the first (selected by default) option"
+    assert "photo_mode: mode" in html and "photo_count: parseInt" in html
+    assert "image_paths: gen ? [] : picked" in html
+    assert "print_photos: gen ? []" in html
+    assert 'id="assert-ai"' in html and 'id="assert-prints"' in html
+    assert "onPhotoMode();" in html, "the card must open in the mode it shows"
+
+
+def test_the_drawer_is_offline_safe_and_names_every_file_it_made(tmp_path):
+    import photo_gen
+    calls = []
+
+    def fake(prompt_text, seed=0, **kw):
+        calls.append((prompt_text, seed, kw.get("timeout")))
+        # first two answers are the endpoint's own rate limit, then real pixels
+        if len(calls) <= 2:
+            raise photo_gen.Busy(402)
+        import numpy as np
+        import cv2
+        rng = np.random.default_rng(7)
+        buf = rng.integers(0, 90, size=(600, 800, 3), dtype=np.uint8)
+        cv2.rectangle(buf, (200, 120), (600, 520), (30, 90, 200), -1)
+        cv2.circle(buf, (400, 300), 60, (240, 240, 240), -1)
+        cv2.GaussianBlur(buf, (3, 3), 0, dst=buf)
+        return cv2.imencode(".jpg", buf, [cv2.IMWRITE_JPEG_QUALITY, 95])[1].tobytes()
+
+    out = tmp_path / "downloads"
+    slept = []
+    got = photo_gen.generate("a printed thing", str(out), name="Cushion Soap Dispenser",
+                             fetch=fake, waits=(0, 5, 20), budget=90, sleep=slept.append)
+    assert got["ok"] and got["tries"] == 3, got
+    assert slept == [5, 20], slept
+    p = pathlib.Path(got["path"])
+    assert p.name.startswith("ai_cushion_soap_dispenser_") and p.stat().st_size > 1000
+    # the budget is a wall clock, not a suggestion: no request may outlive it
+    assert all(t and t <= 90 for _, _, t in calls), calls
+
+    built = photo_gen.prompt("Cushion Soap Dispenser", "highly realistic cushion structure")
+    for want in ("3D printed", "no watermark", "Exactly one object", "terracotta"):
+        assert want.lower() in built.lower(), want
+    assert "http" not in built and "<" not in built, "the listing's own markup stays out"
+
+    set_ = photo_gen.generate_photos("Cable Clip", "holds 5 cables", count=3,
+                                     out_dir=str(out), fetch=fake, min_photos=3,
+                                     budget_each=90, sleep=lambda s: None)
+    assert set_["got"] == 3 and set_["ok"] and len(set_["photos"]) == 3
+    # a set that comes back short is reported short, not padded
+    def dead(prompt_text, **kw):
+        raise photo_gen.Busy(402)
+    short = photo_gen.generate_photos("Cable Clip", count=3, out_dir=str(out), fetch=dead,
+                                      min_photos=3, waits=(0,), budget_each=1,
+                                      sleep=lambda s: None)
+    assert short["ok"] is False and short["got"] == 0 and "402" in short["notes"][-1]
+
+
+def test_a_machine_with_no_network_is_stopped_at_once_not_after_four_minutes(tmp_path):
+    """The endpoint's own refusals are worth waiting out; a box that cannot reach
+    it at all is not. The failure text requests hands back names the pool
+    ("HTTPSConnectionPool(host=…)"), so a substring check on "HTTP" reads a wall
+    as a queue and sleeps through the whole back-off for every picture."""
+    import photo_gen
+    slept = []
+
+    def offline(prompt_text, **kw):
+        raise RuntimeError("HTTPSConnectionPool(host='image.pollinations.ai', port=443): "
+                           "Max retries exceeded with url: /prompt/x (Caused by "
+                           "NameResolutionError)")
+
+    out = tmp_path / "downloads"
+    got = photo_gen.generate("a printed thing", str(out), fetch=offline,
+                             waits=(0, 20, 45, 90, 120, 180), budget=420,
+                             sleep=slept.append)
+    assert got["ok"] is False and got["tries"] == 1, got
+    assert slept == [], "no back-off for a wall that will never come down"
+    assert "NameResolutionError" in got["why"], got["why"]
+    assert not list(out.iterdir()), "nothing was written"
+
+
+def test_two_drawings_in_the_same_second_do_not_share_a_file(tmp_path):
+    """The cover slot and the photo slot must never be handed the same file —
+    that is the "Please set the model cover" rejection — so two pictures written
+    in one second get two names."""
+    import photo_gen
+    import numpy as np
+    import cv2
+    rng = np.random.default_rng(11)
+    buf = rng.integers(0, 90, size=(600, 800, 3), dtype=np.uint8)
+    cv2.rectangle(buf, (150, 100), (650, 500), (30, 90, 200), -1)
+    frame = cv2.imencode(".jpg", buf, [cv2.IMWRITE_JPEG_QUALITY, 95])[1].tobytes()
+
+    def always(prompt_text, **kw):
+        return frame
+
+    out = tmp_path / "downloads"
+    paths = [photo_gen.generate("p " + str(i), str(out), name="Cable Clip", fetch=always,
+                                sleep=lambda s: None)["path"] for i in range(3)]
+    assert len(set(paths)) == 3, paths
+    assert len({os.path.realpath(p) for p in paths}) == 3, "two names, one file"
+    assert all(os.path.getsize(p) > 8000 for p in paths)
+
+
+def _corner_band_var(img):
+    """Detail in the bottom-right band where this endpoint puts its name."""
+    import cv2
+    h, w = img.shape[:2]
+    band = cv2.cvtColor(img[h - int(h * 0.08):, int(w * 0.55):], cv2.COLOR_BGR2GRAY)
+    return float(cv2.Laplacian(band, cv2.CV_64F).var())
+
+
+def test_a_drawn_picture_is_written_without_the_generators_own_corner_mark(tmp_path):
+    """nologo=true is ignored: every picture comes back stamped "pollinations.ai"
+    bottom-right, so the strip it sits in must be gone before a file is kept."""
+    import cv2
+    import numpy as np
+    import photo_gen
+    h, w = 600, 800
+    buf = np.repeat(np.linspace(40, 90, w, dtype=np.uint8).reshape(1, w, 1),
+                    h, axis=0).repeat(3, axis=2).copy()
+    cv2.rectangle(buf, (200, 90), (600, 460), (30, 90, 200), -1)
+    cv2.putText(buf, "pollinations.ai", (470, h - 18), cv2.FONT_HERSHEY_SIMPLEX,
+                0.7, (250, 250, 250), 2, cv2.LINE_AA)
+    marked = cv2.imencode(".jpg", buf, [cv2.IMWRITE_JPEG_QUALITY, 95])[1].tobytes()
+    assert photo_gen._decode(marked), "the fixture has to pass as a real photograph"
+    assert _corner_band_var(cv2.imdecode(np.frombuffer(marked, np.uint8), 1)) > 60, \
+        "control: the mark must be visible in the band before the crop"
+
+    out = tmp_path / "ai_marked_0_000000.jpg"
+    out.write_bytes(photo_gen._clean(marked))
+    clean = cv2.imread(str(out))
+    assert clean.shape[1] == w and clean.shape[0] < h, "the frame is cut, not stretched"
+    assert _corner_band_var(clean) < 60, "the corner mark is still in the picture"
+    assert cv2.countNonZero(cv2.inRange(clean, (25, 85, 200), (35, 95, 210))) > 0, \
+        "the object itself survives the cut"
+
+    # the same thing through the path a publish actually uses
+    def one(prompt_text, **kw):
+        return marked
+
+    kept = photo_gen.generate("a printed thing", str(tmp_path / "d"), name="Cable Clip",
+                              fetch=one, sleep=lambda s: None)
+    assert kept["ok"]
+    drawn = cv2.imread(kept["path"])
+    assert drawn.shape[0] < h and _corner_band_var(drawn) < 60, kept["path"]
+
+
+def test_a_flat_error_card_is_not_counted_as_a_photograph(tmp_path):
+    import photo_gen
+    import numpy as np
+    flat = np.full((600, 800, 3), 200, dtype=np.uint8)
+    import cv2
+    blank = cv2.imencode(".jpg", flat)[1].tobytes()
+    assert photo_gen._decode(blank) is None, "the endpoint answers a 402 with an image"
+    assert photo_gen._decode(b"\xff\xd8\xff" + b"0" * 20) is None      # too small
+    assert photo_gen._decode(b"not an image at all, longer than 8kB" + b"x" * 9000) is None
+
+
+def test_the_cover_and_photo_slots_never_share_a_file():
+    from makerworld_flow import split_photo_sets
+    files = [f"f{i}.jpg" for i in range(5)]
+    covers, shots = split_photo_sets(files)
+    assert covers == files[:2] and shots == files[2:]
+    covers, shots = split_photo_sets(files[:4])
+    assert not set(covers) & set(shots) and len(shots) >= 3
+    covers, shots = split_photo_sets(files[:3])
+    assert covers and not set(covers) & set(shots), \
+        "a short set is reported short, not duplicated across both slots"
+    assert split_photo_sets([]) == ([], [])
+
+
+def test_neither_a_drawn_nor_another_makers_photo_can_be_ticked_as_a_print(tmp_path, monkeypatch):
+    """Two kinds of file sit in downloads/ and neither is a photograph of the
+    user's print: the studio's drawings (ai_*) and the source gallery the
+    downloader writes as {slug}_img_N. The tick next to a thumbnail is the claim
+    MakerWorld checks, so the route has to name both apart from the rest."""
+    from fastapi.testclient import TestClient
+    import main
+    (tmp_path / "my_print.jpg").write_bytes(b"\xff\xd8\xff" + b"x" * 200)
+    (tmp_path / "ai_cushion_0_1200.jpg").write_bytes(b"\xff\xd8\xff" + b"x" * 200)
+    (tmp_path / "cable_clip_set_img_2.webp").write_bytes(b"RIFFxxxxWEBP" + b"x" * 200)
+    monkeypatch.setattr(main, "DOWNLOADS_DIR", tmp_path)
+    files = TestClient(main.app).get("/makerworld/files").json()["files"]
+    by = {f["name"]: f for f in files}
+    assert by["ai_cushion_0_1200.jpg"]["generated"] is True
+    assert by["cable_clip_set_img_2.webp"]["from_source"] is True
+    assert by["my_print.jpg"] == {**by["my_print.jpg"], "generated": False,
+                                  "from_source": False}
+    html = _page()
+    assert "(f.generated || f.from_source)" in html
+    assert "cannot be ticked as a print you made" in html
+    assert "from another maker’s listing" in html
+
+
+def _mw_publish(client, calls, record=None, **payload):
+    """POST the real route with the browser driver and the ledger both watched."""
+    import main
+    body = dict(name="Cable Clip", description="holds five cables in a row",
+                stl_path="cable.3mf", kind="remix",
+                source_url="https://makerworld.com/en/models/2964241-gt-r",
+                remix_source_url="https://makerworld.com/en/models/2964241-gt-r",
+                license_raw="CC BY 4.0", photo_mode="generate", photo_count=3,
+                assert_ai=True,
+                image_paths=[], print_photos=[], tags=["cable"], category="Organization")
+    body.update(payload)
+    record = [] if record is None else record
+
+    async def driver(**kw):
+        calls.append(kw)
+        return {"success": True, "design_id": "5001",
+                "url": "https://makerworld.com/en/models/5001-clip", "verify": {}}
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(main, "makerworld_upload", driver)
+    monkey.setattr(main.makerworld_ledger, "record",
+                   lambda **kw: record.append(kw))
+    try:
+        return client.post("/upload/makerworld", json=body)
+    finally:
+        monkey.undo()
+
+
+def _draw_five(monkeypatch):
+    """A drawer that fills the set, for tests about everything except the draw."""
+    import main
+
+    def full(name, description="", count=0):
+        files = [f"/d{i}.jpg" for i in range(5)]
+        return {"ok": True, "got": 5, "asked": 3, "seconds": 1, "photos": files,
+                "covers": files[:2], "print_photos": files[2:], "notes": [],
+                "generated": True}
+    monkeypatch.setattr(main, "_makerworld_generated_photos", full)
+
+
+def test_a_short_draw_refuses_the_publish_and_opens_no_browser(tmp_path, monkeypatch):
+    """The headline guarantee, run through the route rather than read out of it:
+    when the drawer cannot fill the set, nothing opens, nothing is recorded, and
+    the source listing's own photographs are not used to make up the difference."""
+    from fastapi.testclient import TestClient
+    import main
+
+    def short(name, description="", count=0):
+        return {"ok": False, "got": 4, "asked": 3, "covers": ["d0.jpg"],
+                "print_photos": ["d1.jpg", "d2.jpg", "d3.jpg"],
+                "notes": ["picture 5 of 5 did not come back — HTTP 402"],
+                "seconds": 300, "photos": [], "generated": True}
+    monkeypatch.setattr(main, "_makerworld_generated_photos", short)
+    calls, rec = [], []
+    client = TestClient(main.app)
+    r = _mw_publish(client, calls, rec,
+                    image_paths=["other_maker_img_0.webp"],
+                    print_photos=["other_maker_img_1.webp"])
+    assert r.status_code == 502, r.text
+    assert "nothing was published" in r.json()["detail"]
+    assert "402" in r.json()["detail"]
+    assert calls == [], "the form driver ran on a short set"
+    assert rec == [], "the ledger was written for a publish that never happened"
+    assert mwl.find(name="Cable Clip", source_url="https://makerworld.com/en/models/2964241-gt-r"
+                    )["found"] is False
+
+
+def test_a_full_draw_reaches_the_form_and_no_original_file_with_it(tmp_path, monkeypatch):
+    """The other half: a complete set goes to the form, split so the two slots
+    never share a file, and the source gallery the page also knows about is not
+    part of either."""
+    from fastapi.testclient import TestClient
+    import main
+    drawn = [str(tmp_path / f"d{i}.jpg") for i in range(5)]
+
+    def full(name, description="", count=0):
+        return {"ok": True, "got": 5, "asked": 3, "seconds": 300, "photos": list(drawn),
+                "covers": drawn[:2], "print_photos": drawn[2:], "notes": [],
+                "generated": True}
+    monkeypatch.setattr(main, "_makerworld_generated_photos", full)
+    calls, rec = [], []
+    r = _mw_publish(TestClient(main.app), calls, rec,
+                    image_paths=[str(tmp_path / "other_maker_img_0.webp")],
+                    print_photos=[str(tmp_path / "my_print.jpg")])
+    assert r.status_code == 200, r.text
+    assert len(calls) == 1
+    assert calls[0]["image_paths"] == drawn[:2]
+    assert calls[0]["print_photos"] == drawn[2:]
+    assert not set(calls[0]["image_paths"]) & set(calls[0]["print_photos"])
+    leaked = set(calls[0]["image_paths"]) | set(calls[0]["print_photos"])
+    assert "other_maker_img_0.webp" not in " ".join(leaked)
+    assert "my_print.jpg" not in " ".join(leaked)
+    assert rec and rec[0]["outcome"] == "published"
+    assert r.json()["photo_draw"]["files"] == ["d2.jpg", "d3.jpg", "d4.jpg"]
+
+
+def test_an_unknown_photo_mode_cannot_slip_an_original_onto_the_form(monkeypatch):
+    """photo_mode is a string from the browser. Anything that is not one of the
+    three names must fall to the drawer, because the other two are the modes that
+    attach files the caller named — a typo is not a licence to publish another
+    maker's photograph."""
+    import main
+    for bad in ("", "Generate", "generate ", "as_shots", "original", "GENERATE"):
+        assert main._makerworld_photo_mode(bad) == "generate", bad
+    for good in ("generate", "as_shot", "restyle"):
+        assert main._makerworld_photo_mode(good) == good
+    # and the route honours it: with mode "as_shots" and files attached, the
+    # drawer still decides what the form gets.
+    from fastapi.testclient import TestClient
+    _draw_five(monkeypatch)
+    calls, rec = [], []
+    r = _mw_publish(TestClient(main.app), calls, rec, photo_mode="as_shots",
+                    image_paths=["/tmp/other_maker_img_0.webp"],
+                    print_photos=["/tmp/other_maker_img_1.webp"])
+    assert r.status_code == 200, r.text
+    assert calls[0]["image_paths"] == ["/d0.jpg", "/d1.jpg"]
+    assert calls[0]["print_photos"] == ["/d2.jpg", "/d3.jpg", "/d4.jpg"]
+
+
+def test_as_shot_sends_the_photographs_untouched_and_restyle_does_not(monkeypatch, tmp_path):
+    """The page's two own-photo modes differ by one thing, and the server has to
+    keep them apart: "exactly as I shot them" must not run the finisher even if a
+    stale backdrop is still in the form."""
+    import main
+    shots = []
+    for i in range(4):
+        p = tmp_path / f"print{i}.jpg"
+        p.write_bytes(b"\xff\xd8\xff" + b"x" * 400)
+        shots.append(str(p))
+    seen = {}
+
+    def style(paths, background="", recolour=""):
+        seen["args"] = (list(paths), background, recolour)
+        return {"photos": list(paths), "styled": bool(background or recolour),
+                "background": background, "recolour": recolour, "notes": []}
+    monkeypatch.setattr(main.makerworld_flow, "prepare_print_photos", style)
+    from fastapi.testclient import TestClient
+    calls = []
+    r = _mw_publish(TestClient(main.app), calls, [], photo_mode="as_shot",
+                    assert_prints=True, print_photos=shots,
+                    photo_background="gray", photo_recolour="blue")
+    assert r.status_code == 200, r.text
+    assert seen["args"][1] == "" and seen["args"][2] == "", \
+        "as_shot was allowed to restyle"
+    # no cover ticked: one of the user's own photographs becomes it, and the
+    # photo slot keeps the rest — never the same file twice.
+    assert calls[0]["image_paths"] == shots[:1]
+    assert calls[0]["print_photos"] == shots[1:]
+    assert not set(calls[0]["image_paths"]) & set(calls[0]["print_photos"])
+
+
+def test_nothing_is_sent_or_started_without_the_tick(monkeypatch):
+    """The two acknowledgements are ticks on the page, and the page's own words
+    promise "without this tick nothing is sent". This route has other callers —
+    scripts, curl, a stale tab — so both ticks and the unattended start are
+    answered here too, before a picture is drawn or a browser is opened."""
+    from fastapi.testclient import TestClient
+    import main
+    client = TestClient(main.app)
+    drew, calls = [], []
+    monkeypatch.setattr(main, "_makerworld_generated_photos",
+                        lambda *a, **k: (drew.append("drew"), {"ok": True})[1])
+    r = _mw_publish(client, calls, [], assert_ai=False)
+    assert r.status_code == 400, r.text
+    assert "machine" in r.json()["detail"] and "nothing is sent" in r.json()["detail"]
+    assert drew == [] and calls == [], "the draw ran on an unacknowledged publish"
+
+    r = _mw_publish(client, calls, [], assert_ai=False, assert_prints=False,
+                    photo_mode="as_shot", print_photos=["/p1.jpg", "/p2.jpg", "/p3.jpg"])
+    assert r.status_code == 400, r.text
+    assert "print" in r.json()["detail"]
+    assert calls == []
+
+    opened = []
+    before = main.MW_AUTO.get("state")
+    monkeypatch.setattr(main, "makerworld_ensure_browser",
+                        lambda: opened.append("browser") or False)
+    r = client.post("/makerworld/auto/start", json={"count": 1})
+    assert r.status_code == 400, r.text
+    assert "machine" in r.json()["detail"]
+    assert opened == [], "the run went looking for a browser before it asked permission"
+    assert main.MW_AUTO.get("state") == before, \
+        "a refused start still changed the run state"
+    html = _page()
+    assert "assert_ai: gen ?" in html and "assert_prints: gen ?" in html
+    assert 'id="assert-ai-auto"' in html and "assert_ai: true" in html
+
+
+def test_a_duplicate_that_points_at_the_draft_does_not_lock_the_model(monkeypatch):
+    """MakerWorld's page text carries the description just typed, so "already
+    exists" found there is not a rejection. Locking on it hid a model that was
+    never published, on a draft link, for good."""
+    import main
+    _draw_five(monkeypatch)
+    from fastapi.testclient import TestClient
+    dup = {"success": False, "duplicate": True, "draft_id": "8899",
+           "url": "https://makerworld.com/en/models/upload/3mf?draft=8899",
+           "error": "MakerWorld says this model already exists (already exists).",
+           "verify": {}}
+
+    async def driver(**kw):
+        return dup
+    monkeypatch.setattr(main, "makerworld_upload", driver)
+    rec = []
+    monkeypatch.setattr(main.makerworld_ledger, "record", lambda **kw: rec.append(kw))
+    r = TestClient(main.app).post("/upload/makerworld", json=dict(
+        name="Cable Clip", description="holds five cables", stl_path="c.3mf",
+        source_url="https://makerworld.com/en/models/2964241-gt-r",
+        remix_source_url="https://makerworld.com/en/models/2964241-gt-r",
+        license_raw="CC BY 4.0", photo_mode="generate", assert_ai=True))
+    assert r.status_code == 200, r.text
+    assert rec == [], "a draft-page duplicate locked a model that never went out"
+    # the same verdict with a real design behind it is believed
+    dup["url"] = "https://makerworld.com/en/models/7777-cable-clip"
+    r2 = TestClient(main.app).post("/upload/makerworld", json=dict(
+        name="Cable Clip", description="holds five cables", stl_path="c.3mf",
+        source_url="https://makerworld.com/en/models/2964241-gt-r",
+        remix_source_url="https://makerworld.com/en/models/2964241-gt-r",
+        license_raw="CC BY 4.0", photo_mode="generate", assert_ai=True))
+    assert r2.status_code == 200, r2.text
+    assert rec and rec[0]["outcome"] == "published"
+
+
+def test_cc0_is_refused_before_anything_opens(monkeypatch):
+    """Measured: the remix form's two licence questions come back as CC BY, so a
+    public-domain source cannot be represented at all. The refusal has to happen
+    in the plan and in the run loop, not in front of a half-filled form."""
+    for raw in ("CC0", "CC0 1.0 Universal", "Public Domain Mark 1.0",
+                "https://creativecommons.org/publicdomain/zero/1.0/"):
+        lp = mw.license_plan(raw)
+        assert lp["refused"] is True, raw
+        assert "no answer" in lp["why"] or "CC BY" in lp["why"], lp
+    assert mw.license_plan("CC BY 4.0")["refused"] is False
+    assert mw.license_plan("CC BY-SA 4.0")["refused"] is False
+    # and the plan route carries it as a blocker, with no browser involved
+    from fastapi.testclient import TestClient
+    import main
+    d = TestClient(main.app).post("/upload/makerworld/plan", json=dict(
+        name="Cable Clip", stl_path="c.3mf", license_raw="CC0",
+        source_url="https://makerworld.com/en/models/2964241-gt-r",
+        remix_source_url="https://makerworld.com/en/models/2964241-gt-r")).json()
+    assert d["ok"] is False
+    assert any("Refusing" in b for b in d["blockers"]), d["blockers"]
+
+
+def test_the_plan_in_generate_mode_describes_the_run_it_is_checking(tmp_path, monkeypatch):
+    """The check button must not contradict the publish button: in this mode the
+    page sends no files at all, because the pictures are drawn when the run
+    starts, so the plan has to count the set that will be drawn."""
+    from fastapi.testclient import TestClient
+    import main
+    stl = tmp_path / "clip.3mf"
+    stl.write_bytes(b"not really a 3mf")
+    client = TestClient(main.app)
+    body = dict(name="Cable Clip", description="holds five cables", stl_path=str(stl),
+                source_url="https://makerworld.com/en/models/2964241-gt-r",
+                remix_source_url="https://makerworld.com/en/models/2964241-gt-r",
+                license_raw="CC BY 4.0", photo_mode="generate", photo_count=3,
+                image_paths=[], print_photos=[], category="Organization")
+    d = client.post("/upload/makerworld/plan", json=body).json()
+    assert d["ok"] is True, d
+    assert d["photos"]["will_generate"] == 5
+    assert not any("cover" in b.lower() for b in d["blockers"]), d["blockers"]
+    assert not any("real print photo" in b.lower() for b in d["blockers"]), d["blockers"]
+    # a mode that names files is still checked against the files it names
+    d2 = client.post("/upload/makerworld/plan",
+                     json=dict(body, photo_mode="as_shot", photo_count=0)).json()
+    assert d2["ok"] is False
+    assert any("print photo" in b.lower() for b in d2["blockers"]), d2["blockers"]
+    assert d2["photos"]["will_generate"] == 0
+
+
+def test_the_publish_route_settles_the_pictures_before_it_opens_the_browser():
+    src = (ROOT / "main.py").read_text(encoding="utf-8")
+    body = re.search(r"@app.post\(\"/upload/makerworld\"\).*?\n\n\n@app.get",
+                     src, re.S).group(0)
+    assert 'makerworld_flow.prepare_print_photos(' in body
+    assert "_makerworld_generated_photos" in body
+    # neither the drawer nor the finisher runs inside the browser lock, and a
+    # short drawn set is a 502 that publishes nothing rather than a fallback
+    assert body.index("_makerworld_generated_photos") < body.index("async with UPLOAD_LOCK")
+    assert body.index("prepare_print_photos") < body.index("async with UPLOAD_LOCK")
+    assert 'print_photos=print_photos' in body and 'image_paths=cover_photos' in body
+    assert "print_photos=req.print_photos" not in body
+    assert 'status_code=400' in body and 'status_code=502' in body
 
 
 def test_the_ai_studio_is_its_own_page_and_says_what_it_draws():
@@ -702,16 +1225,6 @@ def test_the_studio_words_are_said_every_time_not_only_when_asked():
     assert re.search(r"buildPrompt\(\);", html), "no prompt on first load"
 
 
-def test_the_publish_route_restyles_before_it_opens_the_browser():
-    src = (ROOT / "main.py").read_text(encoding="utf-8")
-    body = re.search(r"@app.post\(\"/upload/makerworld\"\).*?\n\n\n@app.get",
-                     src, re.S).group(0)
-    assert 'makerworld_flow.prepare_print_photos(' in body
-    assert 'print_photos=prep["photos"]' in body
-    assert "print_photos=req.print_photos" not in body
-    # the restyle is outside the browser lock, and a bad option is a 400
-    assert body.index("prepare_print_photos") < body.index("async with UPLOAD_LOCK")
-    assert 'status_code=400' in body
 
 
 def test_the_creality_page_no_longer_publishes_to_makerworld():
