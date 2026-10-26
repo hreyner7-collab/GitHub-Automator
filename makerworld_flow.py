@@ -393,6 +393,67 @@ def prepare_print_photos(photo_paths, background: str = "",
             "background": style, "recolour": colour}
 
 
+# Backdrops the same-model route builds, rotated so a set of pictures is not the
+# same frame five times. The list lives beside the critics that judge the result
+# (photo_critic.CUT_BACKDROPS) so a backdrop can never be offered here that the
+# panel does not know how to review.
+CUT_BACKGROUNDS = ("white", "gray", "graphite", "charcoal", "wood")
+
+
+def cut_out_photos(source_paths, background: str = "") -> dict:
+    """The model from the source listing's own picture, on a backdrop this
+    machine built — and looked at afterwards, so "looks wrong" is not published.
+
+    `photo_critic` cuts the picture out, measures it against the source and
+    answers: same silhouette, backdrop really changed and clean, plastic colour
+    untouched, no words. A picture that fails is rebuilt on a backdrop chosen
+    for contrast, and one that still fails is dropped and named. It is never
+    replaced with the source's untouched file.
+
+    Nothing in the frame is invented and `recolour` is never passed here: the
+    model keeps the colour it was photographed in.
+    """
+    import editor                      # heavy (cv2/onnx), and only needed here
+    import photo_critic
+
+    files = usable_images(source_paths)
+    # A file named twice is one photograph. Counting it twice would report a
+    # bigger set than exists and let `split_photo_sets` hand the same picture to
+    # the cover slot and the photo slot — the "Please set the model cover" case.
+    seen, uniq = set(), []
+    for path in files:
+        real = os.path.realpath(path)
+        if real not in seen:
+            seen.add(real)
+            uniq.append(real)
+    files = uniq
+    fixed = (background or "").strip()
+    if fixed:
+        checked, _ = editor.check_options(fixed, "")
+        if checked == "keep":
+            raise ValueError(
+                "this mode cannot keep the background — that would send the source "
+                "listing's own photograph unchanged. Name a backdrop, or use "
+                "\"the photographs I ticked\" for a picture you shot yourself.")
+    notes, out, reviews, backgrounds = [], [], [], []
+    for i, path in enumerate(files):
+        style = fixed or CUT_BACKGROUNDS[i % len(CUT_BACKGROUNDS)]
+        look = photo_critic.improve(path, background=style)
+        notes.extend(look["notes"])
+        reviews.append({"source": os.path.basename(path),
+                        "looked_right": look["ok"],
+                        "attempts": look["attempts"]})
+        if look["ok"]:
+            out.append(look["path"])
+            backgrounds.append(look["attempts"][-1]["background"])
+        else:
+            notes.append(f"{os.path.basename(path)}: dropped — it never looked "
+                         f"enough like the source to post")
+    return {"photos": out, "notes": notes, "asked": len(files), "got": len(out),
+            "styled": True, "reviews": reviews,
+            "background": fixed or ", ".join(sorted(set(backgrounds)))}
+
+
 def validate_plan(name: str = "", description: str = "", source_url: str = "",
                   model_file: str = "", cover_images=(), print_photos=(),
                   remix_source_url: str = "", license_raw: str = "",

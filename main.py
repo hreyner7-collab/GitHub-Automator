@@ -219,22 +219,31 @@ class MakerWorldUploadRequest(BaseModel):
     photo_recolour are the only edits those photographs may get, and both are
     opt-in — with neither set the files go to the form exactly as shot.
 
-    photo_mode decides where the pictures come from at all: "generate" (the
-    default, and what both buttons do) draws a whole new set from the listing's
-    own words and sends no original image; "as_shot" uses the ticked photographs
-    untouched; "restyle" runs them through the local finisher."""
+    photo_mode decides where the pictures come from at all: "same_model" (what
+    both buttons do — the source listing's own photograph of the model, with only
+    its background rebuilt here), "generate" draws a whole new set from the
+    listing's own words and sends no original image, "as_shot" uses the ticked
+    photographs untouched and "restyle" runs them through the local finisher.
+    This field's own default stays "generate" — a caller that names no mode must
+    land on the one mode that cannot attach somebody else's picture — while the
+    page's default option and the auto run both name same_model explicitly.
+    The page sends its own answer for the mode in use: same_model is answered by
+    `assert_source`, generate by `assert_ai` and the own-photo modes by
+    `assert_prints`, and each is checked here before anything is made or sent."""
     name: str
     description: str = ""
     stl_path: str
     image_paths: list[str] = []
     print_photos: list[str] = []
+    source_photos: list[str] = []
     photo_mode: str = "generate"
     photo_count: int = 3
-    # The two acknowledgements are on the page as ticks, and the page is not the
-    # only caller of this route: both are checked here too, so "without this tick
+    # The acknowledgements are on the page as ticks, and the page is not the only
+    # caller of this route: each is checked here too, so "without this tick
     # nothing is sent" is a fact about the pipeline rather than about a browser.
     assert_ai: bool = False
     assert_prints: bool = False
+    assert_source: bool = False
     photo_background: str = ""
     photo_recolour: str = ""
     source_url: str = ""
@@ -290,10 +299,11 @@ class AutoRequest(BaseModel):
     niches to search for. The count is typed by the user (any number, 1 or more)."""
     count: int = 5
     keywords: list[str] | None = None
-    # Only the MakerWorld run reads this: that run draws every listing picture
-    # with a machine, and starting it unattended needs the same acknowledgement
-    # the single publish needs. The Creality run ignores it.
-    assert_ai: bool = False
+    # Only the MakerWorld run reads this: its pictures are the source listing's own
+    # photographs of the model with the background rebuilt, so starting it
+    # unattended needs the same acknowledgement the single publish needs. The
+    # Creality run ignores it.
+    assert_source: bool = False
 
 
 class OriginalsRequest(BaseModel):
@@ -709,17 +719,137 @@ async def upload_to_creality(req: UploadRequest):
 
 PHOTO_COVERS = 2          # the form's separate 4:3 and 3:4 cover slots
 OWN_PHOTO_MODES = ("as_shot", "restyle")
+# "same_model" is what both buttons do now: the model as the source listing
+# photographed it, with only the backdrop rebuilt locally. The auto run and the
+# page's default option both name it, so it is one word here rather than two.
+MW_PHOTO_MODE = "same_model"
+ALL_PHOTO_MODES = (MW_PHOTO_MODE, "generate") + OWN_PHOTO_MODES
 
 
 def _makerworld_photo_mode(mode: str = "") -> str:
-    """One of the page's three modes, with anything unrecognised sent to generate.
+    """One of the page's four modes, with anything unrecognised sent to generate.
 
-    Failing closed matters: the other two modes attach the files the caller
-    named, so a typo must never be a way to put another maker's gallery picture
-    on the listing.
+    Failing closed matters: the other three attach files, so a typo must never
+    be a way to put a picture nobody here made onto the listing. "generate" is
+    the only mode that sends nothing it did not make itself.
     """
     m = (mode or "").strip()
-    return m if m in OWN_PHOTO_MODES else "generate"
+    return m if m in ALL_PHOTO_MODES else "generate"
+
+
+_GALLERY_NAME = re.compile(r"_img_\d+$")
+
+# A gallery capture plus every picture the finisher wrote from one
+# ({slug}_img_N, _edited_gray, _mask_gray, _repair_gray, and the recolour
+# variants the finisher tags a second deep — {slug}_img_N_edited_gray_red). All
+# of them are the source maker's photograph, so none may be passed off as the
+# user's own photograph of their print — the picker refuses them by name and so
+# do the own-photo routes. `_GALLERY_NAME` alone stays the test for what may go
+# INTO the finisher, which must never see its own output again.
+_SOURCE_FILE_NAME = re.compile(
+    r"_img_\d+(?:_(?:edited|mask|repair)(?:_[a-z0-9]+)*)?$")
+
+# What the AI studio and the drawer write into the same folder (photo_gen names
+# its files `ai_{slug}_{time}_{seed}`): a machine drawing, never a photograph of
+# a print. The own-photo routes refuse these by name too, because a listing
+# posted with them in the print slot is the one rejection this pipeline was
+# built to stop.
+_GENERATED_FILE_NAME = re.compile(r"^ai_")
+
+
+def _makerworld_gallery_files(paths) -> list[str]:
+    """The scraped gallery's files and everything cut from them, by name.
+
+    These are another maker's photographs. No mode may put one of them on the
+    form as it stands: `same_model` cuts the model out of them and posts the
+    cut, `generate` never looks at them, and the two own-photo modes are the
+    photographs the user ticked — a gallery file named there is the leak this
+    closes, because the route cannot tell "my print photo" from "the picture I
+    scraped" by anything except the name this machine gave it.
+
+    The name is the whole test, deliberately: an earlier version also required
+    the file to sit in downloads/, and that turned out to be a way *round* the
+    check rather than a tighter one — copy the scrape anywhere else on the disk
+    and it sailed through as the user's own photograph.
+    """
+    out = []
+    for p in makerworld_flow.usable_images(paths, must_exist=True):
+        real = os.path.realpath(p)
+        if _SOURCE_FILE_NAME.search(os.path.splitext(os.path.basename(real))[0]):
+            out.append(real)
+    return out
+
+
+def _makerworld_own_files(paths) -> list[str]:
+    """The files the own-photo modes may use, in the order given, without
+    repeats: really on disk, really an image, and neither a gallery capture
+    from another listing, a cut taken from one, nor a machine drawing.
+
+    Deduplicated here because three ticks on the same photograph is one view,
+    and MakerWorld's "covering 3 views" is the requirement the count is being
+    read against.
+    """
+    gallery = set(_makerworld_gallery_files(paths))
+    out, seen = [], set()
+    for p in makerworld_flow.usable_images(paths, must_exist=True):
+        real = os.path.realpath(p)
+        base = os.path.basename(real)
+        if real in gallery or real in seen:
+            continue
+        if _GENERATED_FILE_NAME.search(base):
+            continue
+        seen.add(real)
+        out.append(real)
+    return out
+
+
+def _makerworld_source_files(paths) -> list[str]:
+    """The source listing's own gallery files, and only those.
+
+    The caller hands over what the listing was loaded with; this keeps the files
+    that are really on disk, really images, and really named the way this
+    machine's downloader names a listing gallery ({slug}_img_N). So a path from
+    elsewhere on the disk cannot be passed off as "the source's picture", and an
+    already-cut `_edited` file cannot be run through the finisher twice. Which
+    listing a set belongs to is still the caller's answer, backed by the tick —
+    but one listing's gallery is all it can be: files from two different
+    listings' galleries are refused, because a spliced set would post a model
+    that is not the one the source URL names.
+    """
+    root = str(DOWNLOADS_DIR.resolve()) + os.sep
+    kept: dict[str, list[str]] = {}
+    for p in makerworld_flow.usable_images(paths, must_exist=True):
+        real = os.path.realpath(p)
+        if not real.startswith(root):
+            continue
+        stem = os.path.splitext(os.path.basename(real))[0]
+        if not _GALLERY_NAME.search(stem):
+            continue
+        kept.setdefault(stem.rsplit("_img_", 1)[0], []).append(real)
+    if len(kept) > 1:
+        raise ValueError(
+            "the pictures named for this listing come from %d different source "
+            "galleries (%s) — a remix's pictures must all come from the one "
+            "listing it declares. Reload the source in step 1, or publish with "
+            "your own photographs. Nothing was published."
+            % (len(kept), ", ".join(sorted(k[:40] for k in kept))))
+    return next(iter(kept.values()), [])
+
+
+def _makerworld_cutout_photos(source_paths, background: str = "") -> dict:
+    """Cut the model out of the source's own pictures and rebuild the backdrop.
+    Blocking (cv2 + the segmenter), so the routes call it in a thread.
+
+    The set is split the same way a drawn set is, because the form's cover slots
+    and its photo slot are separate controls and the same file in both is what
+    reads back as "Please set the model cover".
+    """
+    cut = makerworld_flow.cut_out_photos(source_paths, background)
+    covers, photos = makerworld_flow.split_photo_sets(cut["photos"])
+    cut.update({"covers": covers, "print_photos": photos,
+                "ok": len(covers) >= 1
+                      and len(photos) >= makerworld_flow.MIN_REAL_PHOTOS})
+    return cut
 
 
 def _makerworld_photo_want(count: int = 0) -> int:
@@ -769,15 +899,58 @@ async def makerworld_plan(req: MakerWorldUploadRequest):
             photo_style_check(req.photo_background or "keep", req.photo_recolour)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+    if mode == MW_PHOTO_MODE and req.photo_background:
+        try:
+            style, _ = photo_style_check(req.photo_background, "")
+            if style == "keep":
+                raise ValueError(
+                    "this mode cannot keep the background — that would post the source "
+                    "listing's photograph unchanged, which is the one thing it exists to "
+                    "avoid. Name a backdrop, or use \"the photographs I ticked\".")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    # The pictures this mode will post are decided here exactly the way the
+    # publish route decides them — which files survive the name tests, how the
+    # set splits between the cover slots and the photo slot — because a plan
+    # that answered a different question from the publish would be worse than no
+    # plan. None of it opens a browser and none of it calls the image endpoint.
+    cuttable = []
+    plan_covers = list(req.image_paths)
+    plan_photos = list(req.print_photos)
+    if mode == MW_PHOTO_MODE:
+        try:
+            cuttable = _makerworld_source_files(req.source_photos)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    elif mode in OWN_PHOTO_MODES:
+        shots = _makerworld_own_files(req.print_photos)
+        covers = _makerworld_own_files(req.image_paths)[:PHOTO_COVERS]
+        shots = [p for p in shots if p not in set(covers)]
+        shots = shots[:makerworld_flow.MAX_PHOTOS - len(covers)]
+        if covers:
+            plan_covers, plan_photos = covers, shots
+        elif shots:
+            # Same rule as the publish: one of the ticked prints becomes the cover.
+            plan_covers, plan_photos = makerworld_flow.split_photo_sets(shots, 1)
+        else:
+            plan_covers, plan_photos = [], []
     out = makerworld_flow.validate_plan(
         name=req.name, description=req.description, source_url=req.source_url,
-        model_file=req.stl_path, cover_images=req.image_paths,
-        print_photos=req.print_photos, remix_source_url=src,
+        model_file=req.stl_path, cover_images=plan_covers,
+        print_photos=plan_photos, remix_source_url=src,
         license_raw=req.license_raw, kind=req.kind, dry_run=req.dry_run,
-        photos_drawn=(want + PHOTO_COVERS) if mode == "generate" else 0)
+        photos_drawn=((want + PHOTO_COVERS) if mode == "generate" else len(cuttable)))
+    if mode == MW_PHOTO_MODE and len(cuttable) < makerworld_flow.MIN_REAL_PHOTOS + 1:
+        out["blockers"].append(
+            f"the source listing has only {len(cuttable)} of its own pictures in "
+            f"downloads/, and the form needs {makerworld_flow.MIN_REAL_PHOTOS} for the "
+            "photo slot plus one for the cover")
+        out["ok"] = False
     out["photos"] = {
         "mode": mode,
         "will_generate": (want + PHOTO_COVERS) if mode == "generate" else 0,
+        "will_cut": len(cuttable) if mode == MW_PHOTO_MODE else 0,
+        "own_photos": len(plan_photos) if mode in OWN_PHOTO_MODES else 0,
         "minimum": makerworld_flow.MIN_REAL_PHOTOS,
         "prompt": (photo_gen.prompt(req.name, req.description)
                    if mode == "generate" else ""),
@@ -805,7 +978,7 @@ async def upload_to_makerworld(req: MakerWorldUploadRequest):
     # The pictures are settled before the browser opens, because a publish that
     # discovers it has no images halfway through is the failure being removed.
     mode = _makerworld_photo_mode(req.photo_mode)
-    # The two ticks on the page, honoured here as well. The page is not the only
+    # The ticks on the page, honoured here as well. The page is not the only
     # caller of this route, and "without this tick nothing is sent" has to be a
     # fact about the pipeline rather than about a browser.
     if mode == "generate" and not req.assert_ai:
@@ -813,12 +986,19 @@ async def upload_to_makerworld(req: MakerWorldUploadRequest):
             "The pictures for this listing would be drawn by a machine, not photographed off "
             "the printer. MakerWorld can reject a listing for that, so nothing is sent until "
             "the tick that says you know that is on.")
-    if mode != "generate" and not req.assert_prints:
+    if mode == MW_PHOTO_MODE and not req.assert_source:
+        raise HTTPException(status_code=400, detail=
+            "The pictures for this listing are the source listing's own photographs of the "
+            "model, with only their background rebuilt on this machine. They are not "
+            "photographs of a print you made, and MakerWorld can reject a listing for that, so "
+            "nothing is sent until the tick that says you know that is on.")
+    if mode in OWN_PHOTO_MODES and not req.assert_prints:
         raise HTTPException(status_code=400, detail=
             "MakerWorld asks for photographs of the object you actually printed. Nothing is "
             "sent until the tick that says these are your own print photos is on.")
     drawn = None
     prep = None
+    cut = None
     if mode == "generate":
         try:
             drawn = await asyncio.to_thread(_makerworld_generated_photos,
@@ -836,18 +1016,68 @@ async def upload_to_makerworld(req: MakerWorldUploadRequest):
                 + " | ".join(drawn["notes"][-3:]))
         cover_photos = drawn["covers"]
         print_photos = drawn["print_photos"]
+    elif mode == MW_PHOTO_MODE:
+        # The model exactly as the source listing photographed it, with the
+        # backdrop rebuilt here and every result looked at before it is used.
+        try:
+            src_imgs = _makerworld_source_files(req.source_photos)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        need = makerworld_flow.MIN_REAL_PHOTOS + 1
+        if len(src_imgs) < need:
+            raise HTTPException(status_code=409, detail=
+                f"The source listing has {len(src_imgs)} of its own picture(s) on this machine "
+                f"and this mode needs {need} — {makerworld_flow.MIN_REAL_PHOTOS} for the photo "
+                "slot plus one for the cover. Load the source in step 1 first, or switch the "
+                "picture mode. Nothing was published.")
+        # Every picture here costs a cut and a look, and the form's photo slot has
+        # a measured ceiling, so a gallery bigger than that is not all cut.
+        src_imgs = src_imgs[:makerworld_flow.MAX_PHOTOS]
+        try:
+            cut = await asyncio.to_thread(_makerworld_cutout_photos, src_imgs,
+                                          req.photo_background)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if not cut["ok"]:
+            raise HTTPException(status_code=502, detail=
+                f"Only {cut['got']} of {cut['asked']} source pictures came out looking right "
+                f"with a new background, and the form needs {need}, so nothing was published — "
+                f"a refused picture is never sent as the source's own file. "
+                + " | ".join(cut["notes"][-3:]))
+        cover_photos, print_photos = cut["covers"], cut["print_photos"]
     else:
-        # Restyled before the browser opens, and never in place: the finisher
-        # writes new files beside the photographs, so the originals stay untouched.
-        # `as_shot` means exactly that — only `restyle` is allowed to change them.
+        # The two own-photo modes post photographs the user ticked, and a file off
+        # the scraped gallery is not one of them however the caller names it — so
+        # both lists are filtered by name here, not only greyed out in the picker,
+        # because curl and a stale tab are callers too. Restyling happens before
+        # the browser opens and never in place: the finisher writes new files
+        # beside the photographs, so the originals stay untouched, and `as_shot`
+        # means exactly that — only `restyle` is allowed to change them.
+        own_shots = _makerworld_own_files(req.print_photos)
+        own_covers = _makerworld_own_files(req.image_paths)[:PHOTO_COVERS]
+        # The two form slots are separate controls and one file in both is what
+        # reads back as "Please set the model cover", so a photograph ticked on
+        # both sides stays only on the cover side.
+        own_shots = [p for p in own_shots if p not in set(own_covers)]
+        # Measured ceiling on the whole submission, so a ticked gallery of 40
+        # prints is cut to what the form can actually take rather than sent and
+        # refused.
+        own_shots = own_shots[:makerworld_flow.MAX_PHOTOS - len(own_covers)]
+        if not own_shots and not own_covers:
+            raise HTTPException(status_code=409, detail=
+                f"None of the {len(req.print_photos)} photo file(s) named is one of your own "
+                "photographs: this machine names the pictures it scraped off a listing "
+                "slug_img_N and the pictures it drew ai_, and refuses both in the own-photo "
+                "modes whatever slot they are named for. Tick your own prints, or use "
+                "\"same model, new background\". Nothing was published.")
         background = req.photo_background if mode == "restyle" else ""
         recolour = req.photo_recolour if mode == "restyle" else ""
         try:
             prep = makerworld_flow.prepare_print_photos(
-                req.print_photos, background, recolour)
+                own_shots, background, recolour)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        cover_photos = req.image_paths
+        cover_photos = own_covers
         print_photos = prep["photos"]
         if not cover_photos and print_photos:
             # No cover was ticked. It comes from the user's own photographs, in a
@@ -855,6 +1085,12 @@ async def upload_to_makerworld(req: MakerWorldUploadRequest):
             # the same file twice, which is what reads back as "Please set the
             # model cover".
             cover_photos, print_photos = makerworld_flow.split_photo_sets(print_photos, 1)
+        if len(print_photos) < makerworld_flow.MIN_REAL_PHOTOS:
+            raise HTTPException(status_code=409, detail=
+                f"Only {len(print_photos)} of your own photographs would reach the photo slot "
+                f"and MakerWorld wants at least {makerworld_flow.MIN_REAL_PHOTOS} covering 3 "
+                "views — tick more of your own prints (one of them becomes the cover when no "
+                "cover is ticked). Nothing was published.")
     try:
         async with UPLOAD_LOCK:
             result = await makerworld_upload(
@@ -876,6 +1112,17 @@ async def upload_to_makerworld(req: MakerWorldUploadRequest):
                                 "files": [os.path.basename(p)
                                           for p in drawn["print_photos"]],
                                 "notes": drawn["notes"]}
+    if cut and isinstance(result, dict):
+        result["photo_cut"] = {
+            "got": cut["got"], "asked": cut["asked"], "background": cut["background"],
+            "covers": [os.path.basename(p) for p in cut["covers"]],
+            "files": [os.path.basename(p) for p in cut["print_photos"]],
+            "looked_at": [{"source": r["source"],
+                           "looked_right": r["looked_right"],
+                           "tries": [{"background": a["background"],
+                                      "ok": a["ok"]} for a in r["attempts"]]}
+                          for r in cut.get("reviews", [])],
+            "notes": cut["notes"]}
     # Only what really landed. A dry run, a MAKERWORLD_NO_SUBMIT fill and a form
     # left waiting for a manual Publish press all put nothing on MakerWorld, so
     # none of them may lock the model.
@@ -935,7 +1182,11 @@ async def makerworld_ai_save(req: AiSaveRequest):
     if not m:
         raise HTTPException(status_code=400, detail=
             "expected a base64 image data url (data:image/png;base64,…)")
-    raw = base64.b64decode(m.group(2), validate=False)
+    try:
+        raw = base64.b64decode(m.group(2), validate=False)
+    except ValueError as exc:                    # binascii.Error is a ValueError
+        raise HTTPException(status_code=400, detail=
+            f"that data url is not decodable base64 ({exc}) — nothing was written")
     if not raw:
         raise HTTPException(status_code=400, detail="the image came through empty")
     if len(raw) > AI_MAX_BYTES:
@@ -977,7 +1228,10 @@ async def makerworld_files():
         out.append({"name": p.name, "path": str(p), "url": "/file/" + p.name,
                     "bytes": st.st_size,
                     "generated": p.name.startswith("ai_"),
-                    "from_source": bool(re.search(r"_img_\d+$", p.stem)),
+                    # Either the listing's own gallery or a cut-out made from it —
+                    # neither is a photograph of the user's print, and the picker
+                    # must be able to refuse both by name rather than by trust.
+                    "from_source": bool(_SOURCE_FILE_NAME.search(p.stem)),
                     "modified": time.strftime("%Y-%m-%d %H:%M",
                                               time.localtime(st.st_mtime))})
     return {"downloads_dir": str(DOWNLOADS_DIR), "files": out}
@@ -1903,31 +2157,59 @@ async def _makerworld_auto_worker(count: int, job_id: str) -> None:
                 _log()
                 continue
             tag_list = res.get("tags") or []
-            # Only now that the listing is going out is a picture drawn. The
-            # source's own photographs are never attached — this publishes a
-            # remix with its own images, drawn from the words on that listing.
-            row["state"] = "drawing photos"
+            need = makerworld_flow.MIN_REAL_PHOTOS + 1
+            # How many pictures this listing can be cut from is settled before the
+            # finisher runs, not after: a gallery thinner than the form's own
+            # minimum cannot be made into enough pictures by any amount of work,
+            # and the minutes it would take are the run's scarcest resource.
+            try:
+                src_imgs = _makerworld_source_files(res.get("image_paths") or [])
+            except Exception as exc:                       # noqa: BLE001
+                row["state"] = "photos-failed"
+                row["why"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+                _log()
+                continue
+            if len(src_imgs) < need:
+                row["state"] = "photos-failed"
+                row["why"] = (f"the source listing shows {len(src_imgs)} of its own "
+                              f"photographs and this route needs {need} — "
+                              f"{makerworld_flow.MIN_REAL_PHOTOS} for the photo slot "
+                              "plus one for the cover — so it was skipped before "
+                              "anything was cut")
+                _log()
+                continue
+            # Only now that the listing is going out are its pictures made. They
+            # are the source's own photographs of the model with the backdrop
+            # rebuilt here, and each one is looked at before it is used — the
+            # listing shows the real model, not a machine's idea of it.
+            row["pictures"] = "same model, new background"
+            row["state"] = "cutting the model out of the source's photos"
             _log()
             try:
-                drawn = await asyncio.to_thread(_makerworld_generated_photos, name,
-                                                res.get("description", ""), 0)
-                enough = drawn["ok"]
+                pics = await asyncio.to_thread(_makerworld_cutout_photos, src_imgs, "")
+                enough = pics["ok"]
             except Exception as exc:                     # noqa: BLE001
                 # One bad picture must not end the run: this find is skipped and
                 # the next one still gets its turn.
-                drawn = {"got": 0, "asked": _makerworld_photo_want(0),
-                         "notes": [f"{type(exc).__name__}: {str(exc)[:200]}"]}
+                pics = {"got": 0, "asked": need,
+                        "notes": [f"{type(exc).__name__}: {str(exc)[:200]}"]}
                 enough = False
             if not enough:
                 row["state"] = "photos-failed"
-                row["why"] = (f"only {drawn['got']} of {drawn['asked'] + PHOTO_COVERS} pictures "
-                              f"came back and the form needs {makerworld_flow.MIN_REAL_PHOTOS} "
-                              f"plus a cover — " + " | ".join(drawn["notes"][-2:]))
+                row["why"] = (
+                    f"only {pics['got']} of {pics['asked']} of the source's own pictures came "
+                    f"out looking like the model on a new background, and the form needs "
+                    f"{makerworld_flow.MIN_REAL_PHOTOS} plus a cover — "
+                ) + " | ".join(pics["notes"][-2:])
                 _log()
                 continue
-            covers, photos = drawn["covers"], drawn["print_photos"]
+            covers, photos = pics["covers"], pics["print_photos"]
+            row["looked_at"] = [{"source": r["source"], "looked_right": r["looked_right"],
+                                 "tries": [{"background": a["background"], "ok": a["ok"]}
+                                           for a in r["attempts"]]}
+                                for r in pics.get("reviews", [])]
             row["photos"] = len(photos)
-            row["drawn"] = [os.path.basename(p) for p in covers + photos]
+            row["picture_files"] = [os.path.basename(p) for p in covers + photos]
             row["state"] = "uploading"
             _log()
             try:
@@ -1963,6 +2245,15 @@ async def _makerworld_auto_worker(count: int, job_id: str) -> None:
         MW_AUTO["state"] = "failed"
         MW_AUTO["error"] = f"{type(exc).__name__}: {str(exc)[:400]}"
     finally:
+        # A cancellation (the task stopped, the loop's own stop, an interpreter
+        # shutdown) is a BaseException and sails straight past the handler above,
+        # which used to leave state at "running" forever — and every later
+        # publish by hand was then refused with 409 by its own overlap guard.
+        if MW_AUTO.get("state") in ("discovering", "running"):
+            MW_AUTO["state"] = "stopped" if _stopped() else "interrupted"
+            MW_AUTO["error"] = MW_AUTO.get("error") or (
+                "the run ended mid-loop (it was stopped, or the task was cancelled) — "
+                "nothing is publishing now")
         MW_AUTO["finished"] = time.strftime("%Y-%m-%d %H:%M:%S")
         MW_AUTO["note"] = (f"{MW_AUTO['published']} of {count} published"
                            + (f" — {MW_AUTO['error']}" if MW_AUTO.get("error") else ""))
@@ -1973,11 +2264,15 @@ async def _makerworld_auto_worker(count: int, job_id: str) -> None:
 async def makerworld_auto_start(req: AutoRequest):
     """Find N licence-remixable MakerWorld designs and publish each one."""
     global MW_AUTO_TASK
-    if not req.assert_ai:
+    # The run posts the source listing's own model with a rebuilt background, and
+    # refuses to start without the acknowledgement for that — the page's tick is
+    # an answer, not plumbing.
+    if not req.assert_source:
         raise HTTPException(status_code=400, detail=
-            "Every picture this run posts is drawn by a machine, not photographed off a "
-            "printer, and MakerWorld can reject a listing for that. Nothing is started "
-            "until the tick that says you know that is on.")
+            "Every picture this run posts is the source listing's own photograph of the "
+            "model with only its background rebuilt here — not a photograph of a print you "
+            "made — and MakerWorld can reject a listing for that. Nothing is started until "
+            "the tick that says you know that is on.")
     if MW_AUTO.get("state") in ("discovering", "running"):
         raise HTTPException(status_code=409, detail=
             "A MakerWorld auto run is already going (%s). Stop it first or wait for it."

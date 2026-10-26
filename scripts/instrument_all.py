@@ -9,6 +9,7 @@ Dumps to  debug/<source_stem>/  per the instrumentation contract:
 """
 import glob
 import os
+import re
 import shutil
 import sys
 import traceback
@@ -21,11 +22,15 @@ import editor  # noqa: E402
 
 DL = os.path.join(BASE, "downloads")
 DEBUG_ROOT = os.path.join(BASE, "debug")
+# The pictures the finisher wrote beside a source photo. Feeding one of these
+# back in re-cuts a cut, and a tagged variant (`…_edited_gray`) slipped past the
+# endswith(".png") filter this replaces.
+_DERIVATIVE = re.compile(r"_(?:edited|mask|repair)(?:_[a-z0-9]+)?$")
 
 
 def main(pattern: str = "*") -> None:
     srcs = sorted(p for p in glob.glob(os.path.join(DL, f"*{pattern}*"))
-                  if not p.endswith(("_edited.png", "_mask.png", "_repair.png")))
+                  if not _DERIVATIVE.search(os.path.splitext(p)[0]))
     print(f"{len(srcs)} images to instrument")
     shipped = refused = 0
     for src in srcs:

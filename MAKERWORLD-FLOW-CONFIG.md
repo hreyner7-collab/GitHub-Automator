@@ -279,47 +279,227 @@ match is a 400, never "forget everything".
 ### Where the listing pictures come from (`photo_mode`)
 
 `POST /upload/makerworld` and the Auto loop both settle their pictures **before
-the browser opens**, and the default is `photo_mode="generate"`: the listing's
-pictures are drawn from that listing's own name and description, and no original
-image — not the scraped gallery, not a ticked photograph — goes into the payload
-at all.
+the browser opens**. The default — on the page and in the unattended run — is
+`photo_mode="same_model"`: the model in every listing picture is the one the
+source listing photographed, copied pixel-for-pixel, and the only thing this
+machine rebuilds is the background around it. A fully drawn set is still
+available as `generate`; it is no longer what either button sends.
 
 | mode | what the form receives |
 |---|---|
-| `generate` (default) | `photo_gen.generate_photos()` draws `want + 2` pictures into `downloads/` as `ai_<slug>_<time>_<seed>.jpg`; `makerworld_flow.split_photo_sets()` keeps the cover slots and the print-photo slot on **different files** (the same file in both is what first surfaced as "Please set the model cover" — the other half of that message was the cover attached to the wrong input, see **Model Covers** above) |
+| `same_model` (default) | the source listing's own gallery pictures, each cut out and composited onto a new backdrop by `makerworld_flow.cut_out_photos()`, and every result looked at by `photo_critic` before it is used (below) |
+| `generate` | `photo_gen.generate_photos()` draws `want + 2` pictures into `downloads/` as `ai_<slug>_<time>_<seed>.jpg`; `makerworld_flow.split_photo_sets()` keeps the cover slots and the print-photo slot on **different files** (the same file in both is what first surfaced as "Please set the model cover" — the other half of that message was the cover attached to the wrong input, see **Model Covers** above) |
 | `as_shot` | the ticked photographs, untouched, exactly as they sit on disk |
 | `restyle` | the ticked photographs through the local finisher (see below) |
 
+`same_model` reads files the caller names, so the route does not trust the names
+by themselves. `main._makerworld_source_files()` keeps only files that are on
+disk, are images the form accepts, live under `downloads/`, and are named the way
+this machine names a listing gallery — `{slug}_img_{N}`. A photograph from
+elsewhere on the disk cannot be passed off as "the source's picture", and an
+already-cut `_edited` file cannot go through the finisher twice. It needs
+`MIN_REAL_PHOTOS + 1` of them (three for the photo slot, one for the cover);
+fewer is a **409 that names how many are on the machine** and publishes nothing.
+
+The backdrop is rotated across a set (`CUT_BACKGROUNDS`: white, gray, graphite,
+charcoal, wood) so five pictures are not the same frame five times, and a fixed
+`photo_background` is honoured for the whole set. `keep` is refused by name in
+this mode: leaving the source's own background in the frame is precisely the
+"you didn't change anything" picture the route exists to avoid.
+
 `photo_mode` is a string that arrives from the browser, so
 `main._makerworld_photo_mode()` **fails closed**: anything that is not exactly
-`as_shot` or `restyle` — a typo, an empty value, `Generate` — is `generate`,
-because the other two are the modes that attach files the caller named. In
-`as_shot` the two finisher options are sent empty by the page and forced empty by
-the route, so a backdrop left in a hidden select cannot restyle a photograph the
-user asked to have sent as shot. When no cover is ticked in either own-photo
-mode, the cover comes from the user's own photographs (`split_photo_sets`, one
-file, not reused) and never from the scraped gallery.
+one of the four names — a typo, an empty value, `Generate` — is `generate`.
+In `as_shot` the two finisher options are sent empty by the page and forced
+empty by the route, so a backdrop left in a hidden select cannot restyle a
+photograph the user asked to have sent as shot. When no cover is ticked in
+either own-photo mode, the cover comes from the user's own photographs
+(`split_photo_sets`, one file, not reused) and never from the scraped gallery.
 
-The two acknowledgements are answered by the **route**, not only by the page.
-`assert_ai` (the pictures on this listing were drawn by a machine) is required for
-`generate`, and `assert_prints` (these are photographs of a print I made) for
-`as_shot` and `restyle`; either one missing is a **400 before a picture is drawn or
-a browser opens**. The unattended run has its own tick under the button and its own
-400 on `POST /makerworld/auto/start`, placed before `makerworld_ensure_browser()`,
-so a start nobody acknowledged cannot even reach Chrome. The page sends the flags
-from `_payload()` (`assert_ai: gen ? …`) rather than only using them to gate the
-button, because `curl` and a stale tab are callers too.
+The three acknowledgements are answered by the **route**, not only by the page.
+`assert_source` (the pictures are the source listing's photographs with the
+background rebuilt) is required for `same_model`; `assert_ai` (drawn by a
+machine) for `generate`; `assert_prints` (these are photographs of a print I
+made) for `as_shot` and `restyle`. Any missing one is a **400 before a cut run,
+a picture drawn or a browser opened** — and one is never accepted in place of
+another. The unattended run has its own tick under the button and its own 400 on
+`POST /makerworld/auto/start`, placed before `makerworld_ensure_browser()`, so a
+start nobody acknowledged cannot even reach Chrome. The page sends the flags
+from `_payload()` (`assert_source: cut ? …`) rather than only using them to gate
+the button, because `curl` and a stale tab are callers too.
 
 A drawn set that comes back short is a **502 that publishes nothing**, with the
 per-picture notes — it is never topped up with the source listing's photographs.
-The loop reports the same fact as the row state `photos-failed`, after the cheap
+The same is true of a `same_model` set the panel refused too much of: the 502
+says, in so many words, that a refused picture is never sent as the source's own
+file. The loop reports that as the row state `photos-failed`, after the cheap
 checks (licence, file, category) so a doomed listing costs no image calls, and a
-drawer that *raises* costs that one row only: the run moves on to the next find.
+drawer or cut that *raises* costs that one row only: the run moves on to the
+next find.
 
 `POST /upload/makerworld/plan` is checked against the same contract: with
 `photos_drawn` it validates the set that will really be split between the two
-slots, so the Check button cannot say "no cover image to upload" about a listing
-the Publish button would accept.
+slots, and in `same_model` it reports `will_cut` (the source pictures it can
+trust) and blocks below four, so the Check button cannot say "no cover image to
+upload" about a listing the Publish button would accept, or the reverse.
+
+### The critic panel (`photo_critic`)
+
+`editor` copies the product's pixels and paints its own backdrop; `photo_critic`
+measures whether that intent actually survived, then acts on what it measured.
+Eight critics look at the produced file beside its source, and none trusts the
+pipeline's own report:
+
+| critic | measures | passes when |
+|---|---|---|
+| model in the photo | IoU of a fresh u2net segmentation of the **source photograph** vs the mask the composite used | ≥ 0.55, or not judgeable |
+| shape | IoU of a fresh u2net segmentation of the **shipped file** vs the same mask | ≥ 0.85 |
+| background | mean ΔE between the source's backdrop and the new one (outside the model) | ≥ 18 |
+| backdrop is clean | std of the new backdrop's lightness | ≤ 18 |
+| colour kept | mean ΔE of the model's own pixels, before vs after | ≤ 9 |
+| coverage | share of the frame the model fills | 6–95% |
+| no words | verified text outside the model | ≤ 0.15% |
+| no leftovers | pixels matching the source's backdrop tone, away from the model | ≤ 0.10% |
+
+`model in the photo` is the critic that answers the user's own sentence — "that
+doesn't look like the original model". Only the photograph can say what the
+model looked like, so the panel segments it independently and compares what it
+finds with what the finisher actually pasted. Where the photograph will not
+segment at all (measured: `cable_channel_img_0`, whose own u2net mask covers
+0.1% of the frame) the critic reports "the photograph would not segment" and
+leaves the verdict to the others rather than inventing a failure.
+
+The two shape thresholds come from a pass over the nine listing photographs the
+finisher would ship at all (five more were refused before the panel saw them):
+`output vs mask` measured 0.11 / 0.36 / 0.74 for the three broken cuts and
+0.89 / 0.90 / 0.91 / 0.91 / 0.93 / 0.93 / 0.98 for the seven healthy ones, so
+the first threshold sits at 0.85 — the old 0.90 was on the segmenter's own
+noise between two runs and refused cuts that were fine. `source vs mask` measured
+0.67 – 0.98 (excluding the unsegmentable one), which is why 0.55 is a refusal
+only for a cut that lost the model, not for a hard photograph.
+
+The "backdrop is clean" limit was 26 and did nothing. A reviewer measured the
+statistic on every picture the panel had actually shipped and none of them came
+near it, so it could not have refused a half-erased workbench either. Measured
+here on the composition masks of 20 real shipped pairs: **4.1 – 12.3** (and
+4.5 – 15.1 over the 18 files of a whole panel pass). Then the failure it is
+supposed to name, built out of those same pictures — the photograph's own
+backdrop pasted back into the far field, i.e. nothing erased — measures
+**21.9 – 30.8**. The limit sits in the gap at 18.0: every picture this machine
+has ever posted still passes it, and the case it describes now refuses itself.
+(A *small* leftover patch measures 5.3 on the same statistic and is not this
+critic's job; connected components of the old backdrop tone are what "no
+leftovers" counts, and that one catches it.)
+
+An unmeasurable side is named, not NaN'd. When the mask covers the whole frame
+or nothing, the backdrop and colour critics used to report `nan` — a reader
+could not tell a bad cut from a broken measurement — and the words critic
+answered a detector exception with `0.0`, a clean report invented out of a
+failure. Both now say which side is missing and fail.
+
+The "no leftovers" critic ignores a band of 2% of the short side around the
+model on purpose: the editor paints a contact shadow there, and a shadow that
+touches the object is a photograph looking more real, not a piece of the old
+background coming through. Only components of at least 300 px (and 0.02% of the
+frame) count, so sensor noise cannot fail a good cut. `no words` likewise
+measures only outside the model: letters printed on the object are part of the
+model the user asked to keep, and text across the product is the finisher's own
+repair stage's business (`editor._verify_text_bands`).
+
+`photo_critic.improve()` produces, measures, and carries out the remedies the
+failing critics name. Every remedy it can act on is the same rebuild on a
+**different** backdrop — the sweep ranked furthest from both the plastic and the
+photo's own backdrop (`_wants_contrast`), with the backdrops already spent on
+that picture left out. A critic that names `drop` (the plastic was recoloured,
+words across the frame) stops the loop at once: another backdrop cannot argue
+with a fact about the photograph. When all five sweeps have been spent, the
+picture is **dropped** — never shipped as the source's untouched file.
+
+The retry used to rebuild on the *same* backdrop once, because a comment said a
+second pass might help. Measured 2026-10-26 it cannot: `editor.edit_image` is
+deterministic, and two runs of one photograph on one backdrop are byte-for-byte
+identical, so that retry could only repeat the verdict it was trying to change.
+`_wants_contrast` also used to discard any sweep whose score fell below −1,
+which ended a picture's retries after three of five backdrops while still
+reporting that every one had been tried.
+
+    attempt 1 on charcoal does not look right — background 13.8 (wants ≥ 18.0)
+    → rebuilding the same cut on wood → shape 0.29 (wants ≥ 0.85)
+    → rebuilding the same cut on white
+    → looks right on white (shape 0.94, backdrop moved 36, plastic unchanged 0.1)
+
+Measured on the real listings in `downloads/`, over the same fourteen photographs
+each time, one per listing, with the backdrop rotation the loop uses:
+
+| pass | what the panel was | accepted | retried | seconds |
+|---|---|---|---|---|
+| 1 | four critics, no retry | 3 of 14 | — | — |
+| 2 | eight critics, retry on the **same** backdrop | 4 of 9 | spent, no-ops | — |
+| 3 | retry moves the backdrop | **6 of 14** | 5 pictures, 9 extra attempts | total 453, median 15, worst 236 |
+| 4 | + the ranking floor fixed (all five sweeps reachable) | **6 of 14** | 4 pictures | total 431, median 16, worst 218 |
+| 5 | + the reviewer round (flatness 26→18, words fails closed, grey/gray one attempt) | **6 of 14** | 5 pictures, 9 extra attempts | total 517, median 17, worst 274 |
+
+Pass 5 is the control on the re-thresholding: the same six pictures came back, the
+accepted set measured **4.5–12.9** against the new 18.0 limit, and **no** picture was
+dropped by the flatness critic. (Pass 5's worst seconds overlap a test-suite run on
+the same four cores; its median is pass 3 and 4's.)
+
+**Six of fourteen is the honest yield**, and the eight that go missing are not the
+panel being fussy: five are refused by the finisher itself (every candidate mask
+fails its QA before the panel is ever shown the picture), and the rest fail on a
+fact a backdrop cannot change. A listing whose surviving cuts are fewer than four
+stops with `photos-failed` and the count in the sentence, and the run skips it
+before spending a minute cutting. The retry earns its place: `cable_guide` was
+rescued by charcoal → wood → white and shipped at shape **0.94**, and pass 5's
+first picture (a white clip on a white bench) fails `background` at moved **3.8**,
+moves to wood and ships at **0.93**.
+
+Older evidence, still true, from the first pair the panel was built against: the
+first attempt on `modular_driver_organizers_img_1` scored shape **0.73**, the
+rebuilt cut **0.95** and passed. The contact-shadow exclusion turned a good
+picture's `no leftovers` from a false **0.11%** into **0.00%**. A synthetic
+healthy pair measures shape 0.955 / move 55.7 / colour 0.0 / coverage 25% /
+leftovers 0.00%; the same file with a 150×100 block of the source's backdrop
+painted back in measures **10.93%** leftovers and is refused with the remedy
+`remask`. Both directions are in `tests/test_makerworld.py`
+(`test_the_panel_passes_a_faithful_cut_and_catches_the_backdrop_painted_back`).
+
+### What the reviewer round closed (2026-10-26)
+
+Three review agents read the route, the panel and the page against the measured
+rules. The findings that were real, and are now tests, were all of one kind: the
+page and the route answering different questions.
+
+· **A scraped photograph was refused only while it stayed in `downloads/`.** The
+own-photo modes checked the name *and* the folder, so copying
+`slug_img_1.png` anywhere else made it the user's own print photo. The name is now
+the whole test, and the derivative pattern repeats its tag group so a
+`…_img_1_edited_gray_red.png` is refused too — the finisher tags two deep when a
+recolour is set.
+· **A studio drawing (`ai_*`) could be ticked as a print.** The page refused the
+click; the route took it. Both refuse it now.
+· **Repeats filled the photo slot.** Five ticks of one photograph were five
+"views", and one file could sit in the cover and the photo slot at once — which is
+the shape that reads back as *"Please set the model cover"*. Own-photo lists are
+deduplicated, the two slots are kept disjoint, and the pair is capped at the
+measured 16.
+· **Check-plan disagreed with publish.** The page ships no cover paths, so the plan
+answered "no cover image" for the two own-photo modes every time; and a spliced
+gallery raised its `ValueError` straight through the plan route, which is a 500
+where the user was owed the sentence about two listings. The plan now runs the same
+filters and the same cover split, and answers 400.
+· **A cancelled run said "running" forever.** The auto worker cleared its state in
+`except Exception`, and a cancellation is a `BaseException`, so after a stopped run
+every manual publish was refused with 409 by the overlap guard. The `finally` now
+lands the state on `stopped` / `interrupted`.
+· **The page published the wrong design.** `_src` held whatever the last scrape
+returned, so typing a second URL over the box and publishing posted the first
+design's model file, description and licence as a remix of the second. Every read
+of the scrape goes through one comparison with the box now, and the box's own
+keystroke re-runs the readiness check. The same sweep pruned ticks whose files are
+gone, hid the backdrop picker in the mode that ignores it, counted the gallery by
+the files really on disk, and said out loud that a CC0 source is refused.
+
 
 ## Reaching the logged-in browser, and what the form must confirm
 

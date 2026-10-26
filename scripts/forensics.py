@@ -10,6 +10,7 @@ For every edited image, verify:
 Run:  python scripts/forensics.py
 """
 import os
+import re
 import sys
 
 import cv2
@@ -17,6 +18,10 @@ import numpy as np
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DL = os.path.join(BASE, "downloads")
+# The pictures the finisher wrote beside a source photo. They are not sources:
+# a tagged variant (`…_edited_gray`) used to slip past an endswith(".png")
+# filter and get measured as if it were the photograph.
+_DERIVATIVE = re.compile(r"_(?:edited|mask|repair)(?:_[a-z0-9]+)?$")
 sys.path.insert(0, BASE)
 from editor import _verify_text_bands  # noqa: E402
 
@@ -39,7 +44,7 @@ def sharp_in(img, region):
 def main():
     sources = sorted(
         f for f in os.listdir(DL)
-        if "_img_" in f and not f.endswith(("_edited.png", "_mask.png", "_repair.png"))
+        if "_img_" in f and not _DERIVATIVE.search(os.path.splitext(f)[0])
         and f.endswith((".png", ".jpg", ".jpeg", ".webp")))
     all_ok = True
     for s in sources:

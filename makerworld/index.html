@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MakerWorld Pipeline V9</title>
+<title>MakerWorld Pipeline V12</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root { --bg:#101315; --card:#181d20; --line:#2a3135; --ink:#e8eaed; --dim:#9aa4aa;
@@ -68,7 +68,7 @@
 <body>
 <div class="topbar">
   <h1>MakerWorld <span>Pipeline</span></h1>
-  <span class="build" id="mw-version" title="MakerWorld dashboard version: bumped on every update">V9</span>
+  <span class="build" id="mw-version" title="MakerWorld dashboard version: bumped on every update">V12</span>
   <span class="build" id="build-stamp" title="Which code this server process is running"></span>
   <a href="/">Creality dashboard &rarr;</a>
 </div>
@@ -80,19 +80,26 @@
   <p class="hint">Type a number and it runs the whole job: it pulls that many designs off
   MakerWorld's <b>licence-filtered</b> listings — only Public Domain, BY and BY-SA can be
   selected there, so a NoDerivatives or NonCommercial source cannot enter the queue — then for
-  each one downloads the model, <b>draws its own pictures</b> for the listing from that listing's
-  name and description, opens the publish wizard in your Chrome, fills every field, declares that
-  listing as the source, and publishes. Nothing asks you per item, and <b>no photograph from the
-  source listing is attached anywhere</b>. An item stops itself only on a fact: no downloadable
-  file, no category named, a licence the form cannot declare (CC0 included — see the note in
-  card 3), fewer than 3 drawn pictures coming back, or it is already in the ledger below. The
-  pictures come from the free keyless generator: no API key, no account, no money, and it is thin
-  on capacity, so a listing can spend a minute or two waiting on it.</p>
+  each one downloads the model, <b>cuts the model out of that listing's own photographs and
+  rebuilds only the background</b>, opens the publish wizard in your Chrome, fills every field,
+  declares that listing as the source, and publishes. Nothing asks you per item. Before a picture
+  is used it is <b>looked at against the source photograph</b> by eight independent checks — the
+  model in the new picture is the one that photograph shows, same silhouette, backdrop really
+  changed, backdrop flat rather than half-erased clutter, the model's
+  own colour kept, the model filling the frame, no old background left behind, no words — and one
+  that does not look right is rebuilt on a contrasting backdrop
+  or dropped from the set; it is never posted as the source's untouched file. Measured on 26 Oct
+  over 14 real listing photographs: 6 came out right, so a thin gallery is the normal reason an
+  item stops. An item stops
+  itself only on a fact: no downloadable file, no category named, a licence the form cannot
+  declare (CC0 included — see the note in card 3), fewer than 4 of the source's pictures coming
+  out right, or it is already in the ledger below.</p>
   <label class="tick">
-    <input type="checkbox" id="assert-ai-auto">
-    <span>Every picture this run posts is drawn by a machine, not photographed off my printer,
-    and I am starting an unattended run knowing MakerWorld can reject a listing for that.
-    Without this tick the run does not start.</span>
+    <input type="checkbox" id="assert-source-auto">
+    <span>Every picture this run posts is the source listing's own photograph of the model with
+    only its background rebuilt here — not a photograph of a print I made — and I am starting an
+    unattended run knowing MakerWorld can reject a listing for that. Without this tick the run
+    does not start, and the server refuses the start without it too.</span>
   </label>
   <div class="row">
     <input type="number" id="auto-count" value="5" min="1" max="20" style="width:90px">
@@ -174,14 +181,15 @@
     <div style="flex:2;min-width:250px">
       <label>Where they come from</label>
       <select id="photo-mode" onchange="onPhotoMode()" style="width:100%">
+        <option value="same_model">Same model, new background — cut from the source listing's own photos</option>
         <option value="generate">Draw brand new ones every time — no original image is sent</option>
         <option value="as_shot">Use the photographs I ticked, exactly as I shot them</option>
         <option value="restyle">Use the photographs I ticked, tidied on this machine</option>
       </select>
     </div>
     <div style="flex:1;min-width:120px" id="count-box">
-      <label>How many to draw</label>
-      <input type="number" id="photo-count" min="3" max="16" value="3" style="width:100%">
+      <label>How many for the photo slot</label>
+      <input type="number" id="photo-count" min="3" max="14" value="3" style="width:100%">
     </div>
   </div>
   <div class="kv" id="mode-note">Every picture on the listing is drawn here from the model's
@@ -189,8 +197,26 @@
   corner mark is cut off the bottom of the frame before the file is kept. The other maker's gallery
   photographs are never attached, and neither are your own. The free generator is thin on capacity:
   measured on 26 Oct, one picture in about 6 seconds and then a refusal for a minute or two, so a
-  set of five takes up to five minutes. If fewer than 3 come back the publish stops and says so
+  set of five takes up to five minutes. If the set comes back short of what the form needs — this
+  number for the photo slot plus two more for the cover slots — the publish stops and says so
   instead of quietly using someone else's photo.</div>
+  <div class="kv" id="cut-note">The model in these pictures is the one on the source listing:
+  each picture is that listing's own photograph with the model cut out and pasted onto a background
+  built here — the plastic keeps the colour it was photographed in and its geometry is untouched.
+  Before a picture is used it is compared with the source photograph by eight checks (the model
+  in the new picture is the one that photograph shows, same
+  silhouette, backdrop really changed, backdrop clean, colour kept, the model filling the frame,
+  no old background left behind, no words);
+  one that does not look right is rebuilt on a contrasting background, and one that still fails is
+  dropped rather than posted. Needs at least 4 of the source's own pictures — 3 for the photo slot,
+  1 for the cover — so it refuses a listing with fewer instead of padding the set with drawn ones.</div>
+  <label class="tick" id="source-assert">
+    <input type="checkbox" id="assert-source">
+    <span>The pictures on this listing are the source listing's own photographs of the model, with
+    only their background rebuilt by this machine. They are not photographs of a print I made, and
+    MakerWorld can reject a listing for that. Without this tick nothing is sent — the server
+    refuses the publish without it too, so this is not a button that can be clicked past.</span>
+  </label>
   <label class="tick" id="ai-assert">
     <input type="checkbox" id="assert-ai">
     <span>The pictures on this listing are drawn by a machine, not photographed off my printer,
@@ -206,7 +232,8 @@
   <button class="ghost" onclick="loadFiles()">List images in downloads/</button>
   <div id="files-status" class="status"></div>
   <div id="print-picks"></div>
-  <div class="count" id="print-count">0 of 3 selected</div>
+  <div class="count" id="print-count">0 of 4 selected (3 photos + 1 cover)</div>
+  </div>
   <div class="row" style="margin-top:10px" id="style-box">
     <div style="flex:1;min-width:210px">
       <label>Background of the photo</label>
@@ -220,7 +247,7 @@
         <option value="keep">Keep my background, only change the colour</option>
       </select>
     </div>
-    <div style="flex:1;min-width:210px">
+    <div style="flex:1;min-width:210px" id="colour-box">
       <label>Colour of the printed item</label>
       <div class="row">
         <select id="photo-colour" style="flex:1;min-width:130px">
@@ -246,18 +273,18 @@
       </div>
     </div>
   </div>
-  <div class="kv">Both run on <b>the photographs you ticked</b> and change nothing about the
-  object: the same pixels of your print are kept, the workbench behind it can be replaced, and the
-  plastic can be shifted to another filament colour. Edited files are written next to the
-  originals as <span class="kv" style="font-family:ui-monospace,monospace">name_edited_gray_blue.png</span>
+  <div class="kv" id="style-note">Both run on <b>the photographs you ticked</b> and change
+  nothing about the object: the same pixels of your print are kept, the workbench behind it can be
+  replaced, and the plastic can be shifted to another filament colour. Edited files are written
+  next to the originals as
+  <span class="kv" style="font-family:ui-monospace,monospace">name_edited_gray_blue.png</span>
   — the photo you took is never overwritten. A photo the finisher refuses goes out exactly as it
   was shot, and the result names it.</div>
-  <label class="tick">
+  <label class="tick" id="prints-assert">
     <input type="checkbox" id="assert-prints">
     <span>Every photo above is a photograph of a print I made myself, and I have the right to
     post them. Without this tick nothing is sent to MakerWorld.</span>
   </label>
-  </div>
   <div class="kv">Separate tool, separate page: <a href="/makerworld/studio"
     style="color:#7fc4ff">the AI studio</a> draws a picture from a prompt instead of editing one you
   took. Nothing here sends anything to MakerWorld for you.</div>
@@ -296,7 +323,7 @@
 <script>
 'use strict';
 let _src = null;                 // what /fetch returned for the source design
-let _covers = new Set();         // indices into _srcImagePaths
+let _srcUrl = '';                // the URL box held when that scrape ran
 let _prints = new Set();         // absolute paths from /makerworld/files
 let _files = [];
 
@@ -317,10 +344,24 @@ async function post(url, body) {
   return d;
 }
 
+// The scrape in memory is only usable while the URL box still names the design it
+// was scraped from. Typing a different design over it used to leave the old one's
+// model file, description and licence in the payload — listing B published with
+// A's model and A's gallery behind it. Everything that reads the scrape goes
+// through here, so a mismatched box reads as "nothing loaded" until step 1 runs.
+function _liveSrc() {
+  return (_src && _srcUrl === document.getElementById('src-url').value.trim()) ? _src : null;
+}
+
+// /makerworld/files and /fetch both hand back absolute paths, and one of them has
+// been seen to use the other separator, so lists from the two are compared by name.
+function _base(p) { return String(p || '').split(/[\\/]/).pop(); }
+
 function _srcImagePaths() {
-  if (!_src) return [];
-  return (_src._raw_orig_images && _src._raw_orig_images.length)
-    ? _src._raw_orig_images : (_src._raw_images || []);
+  const s = _liveSrc();
+  if (!s) return [];
+  return (s._raw_orig_images && s._raw_orig_images.length)
+    ? s._raw_orig_images : (s._raw_images || []);
 }
 
 // ── auto · find and publish ─────────────────────────────────────────────────
@@ -333,15 +374,16 @@ async function mwAutoStart() {
     return;
   }
   const btn = document.getElementById('auto-start');
-  if (!document.getElementById('assert-ai-auto').checked) {
+  if (!document.getElementById('assert-source-auto').checked) {
     setStatus('auto-status', 'error',
-      'This run draws every listing picture with a machine. The tick under the button has to be '
-      + 'on before it starts — and the server refuses the start without it too.');
+      'This run posts the source listing\'s own photographs with the background rebuilt — not '
+      + 'your prints. The tick under the button has to be on before it starts — and the server '
+      + 'refuses the start without it too.');
     return;
   }
   btn.disabled = true;
   try {
-    const d = await post('/makerworld/auto/start', { count: n, assert_ai: true });
+    const d = await post('/makerworld/auto/start', { count: n, assert_source: true });
     setStatus('auto-status', 'info',
       'Finding up to ' + d.requested + ' designs licensed ' + esc(d.licences) + '…');
     pollAuto();
@@ -498,17 +540,24 @@ async function loadSource() {
     // edit_images:false — MakerWorld wants the creator's own pictures as covers,
     // and the AI re-edit is a Creality-side choice that must not follow here.
     _src = await post('/fetch', { url: url, edit_images: false });
-    _covers = new Set();
+    _srcUrl = url;
     setStatus('src-status', 'ok', '✓ Loaded.' + (_mode() === 'generate'
       ? ' Its own gallery is shown for reference only — in this mode nothing from it is sent.'
-      : ' Tick the pictures to use as covers.'));
+      : _mode() === 'same_model'
+        ? ' The model is cut out of these pictures; only their backgrounds are rebuilt.'
+        : ' These are the other maker&rsquo;s photographs, shown for reference only — the two '
+          + '"photographs I ticked" modes never send them, not even as the cover.'));
     const lic = (_src.license || {}).raw || '';
     document.getElementById('name').value = (_src.name || '').slice(0, 50);
     document.getElementById('desc').value = _src.description || '';
     document.getElementById('lic-line').innerHTML = 'Source licence: <b>' + (esc(lic) || 'none stated')
       + '</b> · author <b>' + (esc(_src.author) || '?') + '</b>'
       + (/(no derivatives|\bnd\b)/i.test(lic) ? '<br><span class="bad">✗ A NoDerivatives source cannot be remixed — MakerWorld refuses it and says so on the form.</span>' : '')
-      + (/(nc|noncommercial|non-commercial)/i.test(lic) ? '<br><span class="bad">✗ NonCommercial source: this account pays creators, so the pipeline refuses these.</span>' : '');
+      + (/(nc|noncommercial|non-commercial)/i.test(lic) ? '<br><span class="bad">✗ NonCommercial source: this account pays creators, so the pipeline refuses these.</span>' : '')
+      // Measured on the live form: the answers that would stand for CC0 make
+      // MakerWorld render "CC BY", so a CC0 source cannot be declared honestly and
+      // license_plan refuses it before a browser opens. Say so here, not at publish.
+      + (/(cc[\s-]?0|\bzero\b|public[\s-]?domain)/i.test(lic) ? '<br><span class="bad">✗ A CC0 / Public Domain source: the form cannot render that licence — measured, the answers it takes show the remix as &ldquo;CC BY&rdquo;. The pipeline refuses these rather than mis-state the source, so pick another design.</span>' : '');
     nameCount();
     renderCovers();
     updatePublish();
@@ -526,21 +575,40 @@ function renderCovers() {
     box.innerHTML = _mode() === 'generate'
       ? '<div class="kv">That listing carried no gallery pictures. In "Draw brand new ones" mode '
         + 'that changes nothing: the listing gets drawn pictures either way.</div>'
-      : '<div class="kv bad">No pictures came off that page — MakerWorld needs cover images, so '
-        + 'switch to "Draw brand new ones" or add your own before publishing.</div>';
+      : _mode() === 'same_model'
+        ? '<div class="kv bad">That listing carried no gallery pictures, and "Same model, new '
+          + 'background" cuts the model out of exactly those — nothing can be posted for it. '
+          + 'Pick another design.</div>'
+        : '<div class="kv bad">No pictures came off that page. In the two "photographs I ticked" '
+          + 'modes that changes nothing either — the cover comes from your own photographs.</div>';
     return;
   }
-  let h = '<div class="kv">Cover candidates (' + paths.length + ') — only used by the two '
-    + '"photographs I ticked" modes; the form’s two cover slots both take the first one: '
-    + '</div><div class="grid">';
-  paths.forEach((p, i) => {
-    h += '<div class="thumb' + (_covers.has(i) ? ' on' : '') + '" onclick="toggleCover(' + i + ')">'
+  const cut = _mode() === 'same_model';
+  // These thumbnails are never a tick target in any mode. They are the other
+  // maker's photographs: same_model cuts the model out of them and posts the
+  // cut, and the two own-photo modes take their cover from the user's own
+  // pictures instead. Nothing here can put one of them on the form as it stands.
+  let h = '<div class="kv">The listing&rsquo;s own pictures (' + paths.length + ') — '
+    + (cut
+        ? 'this mode cuts the model out of these and rebuilds the background; the whole set is '
+          + 'used, so there is nothing to tick here'
+        : _mode() === 'generate'
+          ? 'shown for reference only — this mode draws every picture and sends none of these'
+          : 'shown for reference only — they are another maker&rsquo;s photographs, so they are '
+            + 'never sent, not even as the cover')
+    + ':</div>'
+    + (cut && paths.length < 4
+        ? '<div class="kv bad">This mode needs at least 4 of them — 3 for the photo slot and 1 for '
+          + 'the cover — and this listing has ' + paths.length + '.</div>'
+        : '')
+    + '<div class="grid">';
+  paths.forEach(p => {
+    h += '<div class="thumb">'
        + '<img src="/file/' + encodeURIComponent((p.split(/[\\/]/).pop())) + '" alt="">'
        + '<div class="cap">' + esc(p.split(/[\\/]/).pop()) + '</div></div>';
   });
   box.innerHTML = h + '</div>';
 }
-function toggleCover(i) { _covers.has(i) ? _covers.delete(i) : _covers.add(i); renderCovers(); updatePublish(); }
 
 function nameCount() {
   const v = document.getElementById('name').value;
@@ -554,8 +622,24 @@ async function loadFiles() {
   try {
     const d = await (await fetch('/makerworld/files')).json();
     _files = d.files || [];
+    // A tick is a claim about a file, and this list is the only answer about
+    // which files exist and what kind each is. So a path that has since been
+    // deleted, or that this machine now names as another listing's photograph or
+    // as a studio drawing, stops being ticked here — otherwise the count shown
+    // is a number of photographs the publish route cannot find.
+    const onDisk = new Set(_files.map(f => f.path));
+    const usable = new Set(_files.filter(f => !f.generated && !f.from_source).map(f => f.path));
+    let lost = 0, refused = 0;
+    [..._prints].forEach(p => {
+      if (!onDisk.has(p)) { _prints.delete(p); lost++; }
+      else if (!usable.has(p)) { _prints.delete(p); refused++; }
+    });
     setStatus('files-status', _files.length ? 'ok' : 'error',
       _files.length ? '✓ ' + _files.length + ' image file(s) in ' + esc(d.downloads_dir)
+                    + (lost ? ' — ' + lost + ' ticked photo(s) are no longer in that folder, '
+                              + 'so the ticks are off' : '')
+                    + (refused ? ' — ' + refused + ' ticked file(s) this machine now names as a '
+                                 + "drawing or another maker's photograph, so the ticks are off" : '')
                     : '✗ No images in downloads/ yet. Put the photos of your prints there first.');
     renderPrints();
   } catch (err) { setStatus('files-status', 'error', '✗ ' + esc(err.message)); }
@@ -563,7 +647,7 @@ async function loadFiles() {
 function renderPrints() {
   const box = document.getElementById('print-picks');
   box.innerHTML = '';
-  if (!_files.length) return;
+  if (!_files.length) { printCount(); return; }
   const grid = document.createElement('div');
   grid.className = 'grid';
   _files.forEach(f => {
@@ -605,12 +689,18 @@ function renderPrints() {
 }
 function printCount() {
   const n = _prints.size, el = document.getElementById('print-count');
-  el.className = 'count' + (n >= 3 ? ' met' : '');
-  el.textContent = n >= 3 ? n + ' print photos selected — MakerWorld wants 3 or more, covering 3 views'
-                          : n + ' of 3 selected';
+  el.className = 'count' + (n >= 4 ? ' met' : '');
+  el.textContent = n >= 4
+    ? n + ' print photos selected — MakerWorld wants 3 for the photos and this pipeline takes '
+      + 'a 4th for the cover'
+    : n + ' of 4 selected (3 photos + 1 cover)';
 }
 document.getElementById('assert-prints').addEventListener('change', updatePublish);
 document.getElementById('assert-ai').addEventListener('change', updatePublish);
+document.getElementById('assert-source').addEventListener('change', updatePublish);
+// Typing over the URL box invalidates the scrape the payload is built from, so
+// the buttons have to notice the keystroke and not only the next Load.
+document.getElementById('src-url').addEventListener('input', updatePublish);
 
 function _mode() { return document.getElementById('photo-mode').value; }
 
@@ -619,15 +709,42 @@ function _mode() { return document.getElementById('photo-mode').value; }
 // gates the button, and only its own files go in the payload — so a box that is
 // hidden can never be the reason something was sent, or not sent.
 function onPhotoMode() {
-  const mode = _mode(), gen = mode === 'generate';
-  document.getElementById('own-photos').style.display = gen ? 'none' : '';
+  const mode = _mode(), gen = mode === 'generate', cut = mode === 'same_model';
+  const restyle = mode === 'restyle';
+  const own = !gen && !cut;                 // the two "my own photographs" modes
+  document.getElementById('own-photos').style.display = own ? '' : 'none';
   document.getElementById('ai-assert').style.display = gen ? '' : 'none';
+  document.getElementById('source-assert').style.display = cut ? '' : 'none';
   document.getElementById('count-box').style.display = gen ? '' : 'none';
   document.getElementById('mode-note').style.display = gen ? '' : 'none';
+  document.getElementById('cut-note').style.display = cut ? '' : 'none';
   // The cover ticks come off the source listing, which generate mode never uses.
-  document.getElementById('cover-picks').style.display = gen ? 'none' : '';
-  // Only "tidied on this machine" is allowed to change a photograph.
-  document.getElementById('style-box').style.display = mode === 'restyle' ? '' : 'none';
+  document.getElementById('cover-picks').style.display = (own || cut) ? '' : 'none';
+  // Both the restyle and the same-model route rebuild a background; only the
+  // restyle is allowed to change the plastic's colour. "exactly as I shot them"
+  // gets neither control, because the route drops both for that mode — showing
+  // the picker there offered a choice that did nothing.
+  document.getElementById('style-box').style.display = (restyle || cut) ? '' : 'none';
+  document.getElementById('colour-box').style.display = mode === 'restyle' ? '' : 'none';
+  document.getElementById('style-note').style.display = mode === 'restyle' ? '' : 'none';
+  document.getElementById('prints-assert').style.display = own ? '' : 'none';
+  // "Keep my background" is not something same_model can honour — the whole point
+  // is that the backdrop is rebuilt, and the server refuses the publish if it is
+  // asked — so the option is taken off the list here rather than offered and
+  // rejected later. Its own label changes with the mode, because in this mode an
+  // empty choice means "rotate the sweeps", not "leave my photo alone".
+  const bg = document.getElementById('photo-bg');
+  const keepOpt = bg.querySelector('option[value="keep"]');
+  if (keepOpt) {
+    keepOpt.disabled = cut;
+    if (cut && bg.value === 'keep') bg.value = '';
+  }
+  const asShotOpt = bg.querySelector('option[value=""]');
+  if (asShotOpt) {
+    asShotOpt.textContent = cut
+      ? 'Choose for me (the panel rotates the studio sweeps until the picture looks right)'
+      : 'Leave it exactly as I shot it';
+  }
   updatePublish();
 }
 
@@ -636,30 +753,40 @@ function _payload() {
   const mode = _mode();
   const gen = mode === 'generate';
   const restyle = mode === 'restyle';
+  const cut = mode === 'same_model';
+  const s = _liveSrc();
   const paths = _srcImagePaths();
-  const picked = [..._covers].sort((a, b) => a - b).map(i => paths[i]).filter(Boolean);
   const url = document.getElementById('src-url').value.trim();
   return {
     name: document.getElementById('name').value.trim(),
     description: document.getElementById('desc').value.trim(),
-    stl_path: (_src && _src.stl_path) || '',
+    stl_path: (s && s.stl_path) || '',
     photo_mode: mode,
     photo_count: parseInt(document.getElementById('photo-count').value, 10) || 3,
-    // The two ticks travel to the server as answers, not as button plumbing: the
-    // route refuses without them, so a caller that is not this page cannot skip
-    // the acknowledgement.
+    // The ticks travel to the server as answers, not as button plumbing: the
+    // route refuses without the one the mode needs, so a caller that is not this
+    // page cannot skip the acknowledgement.
     assert_ai: gen ? document.getElementById('assert-ai').checked : false,
-    assert_prints: gen ? false : document.getElementById('assert-prints').checked,
-    image_paths: gen ? [] : picked,
-    print_photos: gen ? []
+    assert_prints: (restyle || mode === 'as_shot')
+      ? document.getElementById('assert-prints').checked : false,
+    assert_source: cut ? document.getElementById('assert-source').checked : false,
+    // same_model is cut from the listing's own gallery, which is exactly what
+    // the loader downloaded — never from a file the page picked itself.
+    source_photos: cut ? paths : [],
+    // The cover is never a scraped gallery picture. same_model takes it from the
+    // cuts, the two own-photo modes and generate take it from the pictures this
+    // machine made or the user ticked, and the route splits one off for the cover
+    // slot when nothing is named for it.
+    image_paths: [],
+    print_photos: gen || cut ? []
       : (document.getElementById('assert-prints').checked ? [..._prints] : []),
-    photo_background: restyle ? document.getElementById('photo-bg').value : '',
+    photo_background: (restyle || cut) ? document.getElementById('photo-bg').value : '',
     photo_recolour: restyle
       ? (document.getElementById('photo-hex').value.trim()
          || document.getElementById('photo-colour').value) : '',
     source_url: url,
     remix_source_url: url,
-    license_raw: (_src && _src.license && _src.license.raw) || '',
+    license_raw: (s && s.license && s.license.raw) || '',
     tags: document.getElementById('tags').value.split(',').map(s => s.trim()).filter(Boolean),
     category: document.getElementById('category').value.trim(),
     kind: document.getElementById('kind').value,
@@ -670,32 +797,55 @@ function _payload() {
 function updatePublish() {
   const p = _payload();
   const gen = p.photo_mode === 'generate';
+  const cut = p.photo_mode === 'same_model';
   const source = /makerworld\.com\/.*\/models\/\d+/i.test(p.remix_source_url);
-  // In the own-photo modes a cover is optional: with none ticked the route takes
-  // one from the photographs ticked here, so the gate is 3 for the photo slot
-  // plus 1 more for that cover.
-  const need = 3 + (p.image_paths.length ? 0 : 1);
+  // The own-photo modes need 4 of the user's own photographs: 3 for the photo
+  // slot, and 1 more that becomes the cover, because the scraped gallery is
+  // never a cover candidate. The same-model route needs the same 3 + 1, and
+  // those four are the source listing's own pictures.
+  const need = 4;
+  // What this route can post is what the publish route can find: it counts the
+  // listing's gallery files that are really in downloads/. Once that folder has
+  // been read the button counts the same thing, so a scrape whose images failed
+  // to land greys the button out instead of enabling a publish that must be
+  // refused. Before the folder is read it counts what the scrape reported.
+  const listed = _files.filter(f => f.from_source).map(f => _base(f.path));
+  const pics = _srcImagePaths()
+    .filter(p => !listed.length || listed.includes(_base(p))).length;
   const ready = !!p.name && !!p.stl_path && (p.kind !== 'remix' || source)
     && (gen ? document.getElementById('assert-ai').checked
-            : (p.print_photos.length >= need
-               && document.getElementById('assert-prints').checked));
+            : cut ? (pics >= 4 && document.getElementById('assert-source').checked)
+                  : (p.print_photos.length >= need
+                     && document.getElementById('assert-prints').checked));
   document.getElementById('pub-btn').disabled = !ready;
   document.getElementById('pub-btn').title = ready ? ''
     : (gen ? 'Needs a name, a model file, the AI tick, and (for a remix) a MakerWorld source URL'
-           : 'Needs a name, a model file, ' + need + ' of your own print photos with the tick'
-             + (p.image_paths.length ? '' : ' (one becomes the cover)')
-             + ', and (for a remix) a MakerWorld source URL');
+       : cut ? 'Needs a name, a model file, at least 4 of the source listing\'s own pictures '
+             + '(Load it in step 1 — ' + pics + ' on hand), the source-photo tick, and (for a '
+             + 'remix) a MakerWorld source URL'
+             : 'Needs a name, a model file, ' + need + ' of your own print photos with the tick '
+               + '(3 for the photos, 1 for the cover)'
+               + ', and (for a remix) a MakerWorld source URL');
 }
 
 function planHtml(d) {
-  let h = d.ok ? '✓ MakerWorld will take this listing as it stands.'
-               : '✗ MakerWorld would refuse this listing right now.';
+  // This check runs the rules this machine measured off the form. It cannot speak
+  // for the site's live verdict, and it does not look at the acknowledgement
+  // ticks — say what it checked, not what MakerWorld will do.
+  let h = d.ok ? '✓ Nothing this machine checks would stop this listing. The site still decides '
+    + 'at publish, and the pictures are only cut and judged then.'
+               : '✗ This listing is not ready: the checks this machine measured refuse it now.';
   (d.blockers || []).forEach(b => { h += '\n  • ' + esc(b); });
   (d.warnings || []).forEach(w => { h += '\n  ⚠ ' + esc(w); });
   const pl = d.plan || {};
   if (d.photos && d.photos.will_generate) {
     h += '\n\nPictures: ' + d.photos.will_generate + ' will be drawn when you publish '
       + '(nothing is sent to the image endpoint by this check).';
+  }
+  if (d.photos && d.photos.will_cut) {
+    h += '\n\nPictures: ' + d.photos.will_cut + ' of the source listing\'s own pictures will be '
+      + 'cut out and given a new background when you publish, and each result is checked against '
+      + 'the photograph before it is used.';
   }
   if (pl.name) {
     h += '\n\nName "' + esc(pl.name) + '" (' + pl.name.length + '/50) · ' + (pl.covers || []).length
@@ -717,8 +867,14 @@ async function publish() {
   const btn = document.getElementById('pub-btn');
   const p = _payload();
   btn.disabled = true;
-  const first = p.photo_mode === 'generate'
-    ? 'First drawing ' + (p.photo_count + 2) + ' new pictures (two for the cover slots). Measured '
+  const first = p.photo_mode === 'same_model'
+    ? 'First cutting the model out of the source listing\'s own pictures, rebuilding the '
+      + 'backdrop and checking every result against the photograph — a few seconds each. '
+    : p.photo_mode === 'generate'
+    // The same clamp the route applies: at least 3 for the photo slot, at most
+    // what is left of the form's measured 16 once the 2 covers are taken off.
+    ? 'First drawing ' + (Math.max(3, Math.min(p.photo_count || 3, 14)) + 2)
+      + ' new pictures (two for the cover slots). Measured '
       + 'on the free generator: about a minute each once it starts queueing, so allow up to five '
       + 'minutes before the browser opens. '
     : ((p.photo_background || p.photo_recolour)

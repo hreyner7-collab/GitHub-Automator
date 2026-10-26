@@ -380,11 +380,13 @@ def test_the_auto_run_is_the_makerworld_shape_not_the_creality_one():
     assert "makerworld_upload(" in body
     assert "makerworld_ledger.find(" in body and "makerworld_ledger.record(" in body
     assert "dry_run=False" in body
-    # the pictures are drawn for this listing; the source's own gallery never
-    # reaches the form at all
-    assert "_makerworld_generated_photos" in body and "print_photos=photos" in body
+    # the pictures are cut out of the listing's own photographs and looked at
+    # before use, and only those cut files are attached — an untouched gallery
+    # file never reaches the form
+    assert "_makerworld_cutout_photos" in body and "_makerworld_source_files" in body
+    assert "print_photos=photos" in body
     assert 'usable_images(res.get("image_paths")' not in body, \
-        "the source listing's photographs must not be attached to a remix"
+        "the source listing's own photograph must not be attached as it stands"
     for creality_only in ("uploader_upload", "edit_all", "creality_rules"):
         assert creality_only not in body, creality_only
     # the Creality ledger, not makerworld_ledger (hence the lookbehind)
@@ -420,7 +422,9 @@ def test_the_run_loop_publishes_each_find_and_stops_at_the_facts(monkeypatch, tm
     """The whole point of the Auto card: type a number, it finds that many and
     publishes them. Driven here with fakes — no Chrome, no network, no account —
     and it must publish the eligible ones, refuse the ND source, skip the one
-    whose page names no licence, skip the one with no file, and stop at N."""
+    whose page names no licence, skip the one with no file, and stop at N.
+    The pictures each publish carries are the ones cut from the source listing's
+    own photographs, never those files as they stand."""
     import main as m
 
     (tmp_path / "artifacts").mkdir()
@@ -442,9 +446,12 @@ def test_the_run_loop_publishes_each_find_and_stops_at_the_facts(monkeypatch, tm
 
     stl = tmp_path / "m.3mf"
     stl.write_bytes(b"PK\x03\x04fake")
+    # The listing's own pictures live where the downloader puts them —
+    # downloads/{slug}_img_N — and the same-model route only trusts that shape.
+    monkeypatch.setattr(m, "DOWNLOADS_DIR", tmp_path)
     photos = []
-    for i in range(3):
-        p = tmp_path / f"photo{i}.png"
+    for i in range(5):
+        p = tmp_path / f"listing_img_{i}.png"
         p.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 400)
         photos.append(str(p))
 
@@ -467,19 +474,24 @@ def test_the_run_loop_publishes_each_find_and_stops_at_the_facts(monkeypatch, tm
                 "design_id": "9999"}
     monkeypatch.setattr(m, "makerworld_upload", fake_upload)
 
-    # The listing's pictures are drawn, not scraped — so the drawer is faked
-    # here too, and what it hands back is split the way the form needs it:
-    # separate files for the cover slots and for the print-photo slot.
-    drawn_sets = []
-    def fake_draw(name, description="", count=0):
-        n = len(drawn_sets)
-        covers = [str(tmp_path / f"cover{n}a.jpg"), str(tmp_path / f"cover{n}b.jpg")]
-        shots = [str(tmp_path / f"shot{n}{i}.jpg") for i in range(3)]
+    # The listing's pictures are cut from its own photographs, so the panel that
+    # cuts them (and looks at the result) is faked here. It hands back separate
+    # files for the cover slots and for the print-photo slot.
+    cut_sets = []
+    def fake_cut(paths, background=""):
+        n = len(cut_sets)
+        covers = [str(tmp_path / f"cut{n}_cover_a.png"),
+                  str(tmp_path / f"cut{n}_cover_b.png")]
+        shots = [str(tmp_path / f"cut{n}_shot{i}.png") for i in range(3)]
         d = {"covers": covers, "print_photos": shots, "photos": covers + shots,
-             "ok": True, "got": 5, "asked": 3, "seconds": 12.3, "notes": []}
-        drawn_sets.append(d)
+             "ok": len(paths) >= 4, "got": 5, "asked": len(paths), "notes": [],
+             "background": "white",
+             "reviews": [{"source": os.path.basename(p), "looked_right": True,
+                          "attempts": [{"background": "white", "ok": True}]}
+                         for p in paths]}
+        cut_sets.append(d)
         return d
-    monkeypatch.setattr(m, "_makerworld_generated_photos", fake_draw)
+    monkeypatch.setattr(m, "_makerworld_cutout_photos", fake_cut)
 
     m.MW_AUTO.update({"state": "running", "items": [], "published": 0, "stop": False,
                       "requested": 2, "error": ""})
@@ -492,15 +504,19 @@ def test_the_run_loop_publishes_each_find_and_stops_at_the_facts(monkeypatch, tm
     assert len(calls) == 2, "it stops at the number typed, not at the number found"
     assert all(c["dry_run"] is False for c in calls)
     assert all(len(c["print_photos"]) >= 3 for c in calls)
-    # the pictures are the drawn ones, the two slots get different files, and
-    # nothing from the source listing's gallery is attached anywhere
-    assert calls[0]["print_photos"] == drawn_sets[0]["print_photos"]
-    assert calls[0]["image_paths"] == drawn_sets[0]["covers"]
+    # the pictures are the cut ones, the two slots get different files, and the
+    # source listing's own photographs are never attached as they stand
+    assert calls[0]["print_photos"] == cut_sets[0]["print_photos"]
+    assert calls[0]["image_paths"] == cut_sets[0]["covers"]
     assert not set(calls[0]["print_photos"]) & set(calls[0]["image_paths"]), \
         "the same file in the cover slot and the photo slot is what fails the form"
     sent = {p for c in calls for p in list(c["print_photos"]) + list(c["image_paths"])}
-    assert not sent & set(photos), "a source listing's own photograph reached the form"
-    assert len(drawn_sets) == 2, "each published listing draws its own set"
+    assert not sent & set(photos), \
+        "a source listing's own photograph reached the form untouched"
+    assert len(cut_sets) == 2, "each published listing cuts its own set"
+    assert m.MW_AUTO["items"][0]["pictures"] == "same model, new background"
+    assert m.MW_AUTO["items"][0]["looked_at"], \
+        "the panel's verdicts travel with the row, not only in a log file"
     # the source is still declared, whatever the pictures are
     assert calls[0]["remix_source_url"] == m.MW_AUTO["items"][0]["url"]
     # the description is the source's own; the category and tags come from
@@ -579,9 +595,10 @@ def test_finding_models_stays_research_on_this_page_too():
 def test_the_print_photo_assertion_is_what_unlocks_publish():
     html = _page()
     assert 'id="assert-prints"' in html
-    # 3 for the photo slot, plus one more when no cover was ticked and one of
-    # these has to become it.
-    assert "const need = 3 + (p.image_paths.length ? 0 : 1)" in html
+    # 3 for the photo slot plus 1 that becomes the cover, and no branch for a
+    # ticked scraped cover any more: the gallery is never a cover candidate.
+    assert "const need = 4;" in html
+    assert "p.image_paths.length" not in html
     assert "p.print_photos.length >= need" in html
     assert '<button class="go" id="pub-btn" onclick="publish()" disabled>' in html
     # the scraped gallery is offered as covers only — never as print photos
@@ -669,17 +686,47 @@ def test_a_typo_in_the_style_is_named_before_a_single_photo_is_touched(tmp_path,
         mw.prepare_print_photos([str(tmp_path / "one.png")], "", "chartreuse-ish")
 
 
+def test_the_page_refuses_to_publish_a_scrape_it_never_loaded_for_that_url():
+    """The page held whatever /fetch last returned, so typing a second design over
+    the URL box and pressing publish posted the FIRST design's model file,
+    description and licence as a remix of the second. Every read of the scrape now
+    goes through one function that compares it with the box, and the box itself
+    re-runs the readiness check on a keystroke."""
+    html = _page()
+    assert "let _srcUrl = ''" in html
+    assert "_srcUrl = url;" in html
+    assert "function _liveSrc()" in html
+    # nothing may read the scrape except through the comparison
+    assert "(_src && _src.license" not in html
+    assert "s.license && s.license.raw" in html and "stl_path: (s && s.stl_path)" in html
+    assert "_srcImagePaths()" in html and "const s = _liveSrc();" in html
+    assert "addEventListener('input', updatePublish)" in html
+    # a tick whose file has since gone, or been named a drawing, stops being a tick
+    assert "no longer in that folder" in html
+    assert "const onDisk = new Set(_files.map(f => f.path));" in html
+    # CC0 is refused by license_plan on a measurement, so the licence line says so
+    # when the listing loads instead of at publish.
+    assert "public[\\s-]?domain" in html and "cannot render that licence" in html
+    # the number of pictures the mode can post is the number the route can find
+    assert "listed.includes(_base(p))" in html
+    # and the drawer's own clamp is on the page, not invented there
+    assert 'max="14"' in html
+    assert "Math.max(3, Math.min(p.photo_count || 3, 14)) + 2" in html
+
+
 def test_the_page_sends_both_options_and_defaults_to_neither(tmp_path):
     html = _page()
     for want in ('id="photo-bg"', 'id="photo-colour"', 'id="photo-hex"'):
         assert want in html, want
-    # Only "tidied on this machine" may change a photograph: in the other two
-    # modes the hidden selects are sent empty, so a stale value cannot restyle a
-    # picture the user asked to leave as shot.
-    assert "photo_background: restyle ?" in html
+    # Only "restyled" may change a photograph's colour: in the other modes the
+    # hidden selects are sent empty, so a stale value cannot restyle a picture the
+    # user asked to leave as shot. The backdrop is offered by both modes that
+    # rebuild one, and the colour only by the restyle.
+    assert "photo_background: (restyle || cut) ?" in html
     assert "photo_recolour: restyle" in html
     assert "const restyle = mode === 'restyle'" in html
-    assert "id=\"style-box\"" in html and "mode === 'restyle' ? '' : 'none'" in html
+    assert "id=\"style-box\"" in html and "(restyle || cut) ? '' : 'none'" in html
+    assert "id=\"colour-box\"" in html and "mode === 'restyle' ? '' : 'none'" in html
     assert '<option value="">Leave it exactly as I shot it</option>' in html
     assert '<option value="">Leave it as printed</option>' in html
     # The marker itself, not a particular number: the page shows it so a stale tab
@@ -690,19 +737,35 @@ def test_the_page_sends_both_options_and_defaults_to_neither(tmp_path):
         "the title and the marker have to agree"
 
 
-def test_the_page_draws_pictures_by_default_and_sends_no_originals():
-    """The default is the one the user asked for: every publish draws its own
-    pictures, so the scraped gallery and the ticked photographs are not even put
-    in the payload. The other two modes still work, and each has its own tick."""
+def test_the_page_cuts_the_source_model_by_default_and_says_what_it_is():
+    """The default is the one the user asked for: the model exactly as the source
+    listing photographed it, with only the background rebuilt. The payload sends
+    the listing's own pictures for that mode, its own tick (never the "these are
+    my prints" one), and no drawn-picture plumbing."""
     html = _page()
     assert 'id="photo-mode"' in html
-    assert '<option value="generate">' in html.split('id="photo-mode"')[1][:220], \
-        "generate must be the first (selected by default) option"
+    assert '<option value="same_model">' in html.split('id="photo-mode"')[1][:240], \
+        "same_model must be the first (selected by default) option"
     assert "photo_mode: mode" in html and "photo_count: parseInt" in html
-    assert "image_paths: gen ? [] : picked" in html
-    assert "print_photos: gen ? []" in html
+    # the one mode that puts files on the form names its own files and its own tick
+    assert "source_photos: cut ? paths : []" in html
+    assert "assert_source: cut ?" in html
+    # Nothing the page scraped from the source listing can be named as a cover in
+    # any mode — that was the last way another maker's photograph reached the form.
+    assert "image_paths: []" in html
+    assert "print_photos: gen || cut ? []" in html
+    assert "toggleCover" not in html and "_covers" not in html, \
+        "the scraped gallery must not be tickable as a cover"
+    assert 'onclick="toggleCover' not in html
+    assert "document.getElementById('assert-source').addEventListener" in html, \
+        "the source-photo tick must gate the button live, like the other two"
     assert 'id="assert-ai"' in html and 'id="assert-prints"' in html
+    assert 'id="source-assert"' in html and 'id="assert-source"' in html
+    # and the run card asks the same question for the unattended start
+    assert 'id="assert-source-auto"' in html and "assert_source: true" in html
     assert "onPhotoMode();" in html, "the card must open in the mode it shows"
+    # the drawn route is still there, one option down
+    assert '<option value="generate">' in html
 
 
 def test_the_drawer_is_offline_safe_and_names_every_file_it_made(tmp_path):
@@ -986,14 +1049,15 @@ def test_a_full_draw_reaches_the_form_and_no_original_file_with_it(tmp_path, mon
 
 def test_an_unknown_photo_mode_cannot_slip_an_original_onto_the_form(monkeypatch):
     """photo_mode is a string from the browser. Anything that is not one of the
-    three names must fall to the drawer, because the other two are the modes that
-    attach files the caller named — a typo is not a licence to publish another
+    four names must fall to the drawer, because the other three are the modes that
+    read files the caller named — a typo is not a licence to publish another
     maker's photograph."""
     import main
-    for bad in ("", "Generate", "generate ", "as_shots", "original", "GENERATE"):
+    for bad in ("", "Generate", "generate ", "as_shots", "original", "GENERATE",
+                "same_models", "Same_Model"):
         assert main._makerworld_photo_mode(bad) == "generate", bad
-    for good in ("generate", "as_shot", "restyle"):
-        assert main._makerworld_photo_mode(good) == good
+    for good in ("generate", "as_shot", "restyle", "same_model"):
+        assert main._makerworld_photo_mode(good) == good, good
     # and the route honours it: with mode "as_shots" and files attached, the
     # drawer still decides what the form gets.
     from fastapi.testclient import TestClient
@@ -1055,6 +1119,15 @@ def test_nothing_is_sent_or_started_without_the_tick(monkeypatch):
     assert "machine" in r.json()["detail"] and "nothing is sent" in r.json()["detail"]
     assert drew == [] and calls == [], "the draw ran on an unacknowledged publish"
 
+    # The same-model route has an acknowledgement of its own, because what it
+    # posts is the source listing's photograph, not the user's print — and the
+    # drawn-picture tick is not a substitute for it.
+    r = _mw_publish(client, calls, [], photo_mode="same_model", assert_ai=True,
+                    assert_source=False)
+    assert r.status_code == 400, r.text
+    assert "source listing's own photograph" in r.json()["detail"]
+    assert calls == [], "the cut still ran on an unacknowledged publish"
+
     r = _mw_publish(client, calls, [], assert_ai=False, assert_prints=False,
                     photo_mode="as_shot", print_photos=["/p1.jpg", "/p2.jpg", "/p3.jpg"])
     assert r.status_code == 400, r.text
@@ -1067,13 +1140,17 @@ def test_nothing_is_sent_or_started_without_the_tick(monkeypatch):
                         lambda: opened.append("browser") or False)
     r = client.post("/makerworld/auto/start", json={"count": 1})
     assert r.status_code == 400, r.text
-    assert "machine" in r.json()["detail"]
+    assert "source listing's own photograph" in r.json()["detail"]
     assert opened == [], "the run went looking for a browser before it asked permission"
     assert main.MW_AUTO.get("state") == before, \
         "a refused start still changed the run state"
+    # the other tick is the drawn route's answer; it cannot start the same-model run
+    r = client.post("/makerworld/auto/start", json={"count": 1, "assert_ai": True})
+    assert r.status_code == 400, r.text
+    assert opened == [], "the generated-pictures tick was taken as permission for the other mode"
     html = _page()
-    assert "assert_ai: gen ?" in html and "assert_prints: gen ?" in html
-    assert 'id="assert-ai-auto"' in html and "assert_ai: true" in html
+    assert "assert_ai: gen ?" in html and "assert_source: cut ?" in html
+    assert 'id="assert-source-auto"' in html and "assert_source: true" in html
 
 
 def test_a_duplicate_that_points_at_the_draft_does_not_lock_the_model(monkeypatch):
@@ -1251,6 +1328,30 @@ def test_the_files_route_lists_only_images_already_in_downloads(tmp_path, monkey
         assert f["url"] == "/file/" + f["name"]
 
 
+def test_the_picker_labels_a_cut_of_a_source_photo_as_the_sources(tmp_path, monkeypatch):
+    """The page refuses a file by name, so the name has to answer for everything
+    the finisher wrote from a gallery picture — not just the gallery picture.
+    A tagged cut (`…_img_1_edited_gray.png`) used to read as one of the user's
+    own photographs, which is a leak with a thumbnail on it."""
+    from fastapi.testclient import TestClient
+    import main
+    for n in ("widget_img_1.png",                    # the other maker's photo
+              "widget_img_1_edited_gray.png",        # a cut taken from it
+              "widget_img_1_mask_gray.png",          # and its sidecar
+              "ai_something.png",                    # the studio's own drawing
+              "my_print_on_the_bench.jpg"):          # the user's real photograph
+        (tmp_path / n).write_bytes(b"\x89PNG\r\n\x1a\n")
+    monkeypatch.setattr(main, "DOWNLOADS_DIR", tmp_path)
+    files = {f["name"]: f for f in TestClient(main.app).get("/makerworld/files").json()["files"]}
+    assert files["widget_img_1.png"]["from_source"] is True
+    assert files["widget_img_1_edited_gray.png"]["from_source"] is True, \
+        "a cut of the source's photograph is still the source's photograph"
+    assert files["widget_img_1_mask_gray.png"]["from_source"] is True
+    assert files["ai_something.png"]["generated"] is True
+    assert files["my_print_on_the_bench.jpg"]["from_source"] is False
+    assert files["my_print_on_the_bench.jpg"]["generated"] is False
+
+
 def test_the_memory_route_shows_the_makerworld_file_and_forget_never_guesses(
         isolated_ledger, monkeypatch):
     from fastapi.testclient import TestClient
@@ -1399,3 +1500,686 @@ def test_an_empty_cover_box_stops_the_run_before_publish_is_pressed():
     assert '"success": False' in guard, "an empty required cover must stop the run"
     assert "Nothing was published" in guard
     assert '"cover_state"' in guard, "the row must carry what the form reported"
+
+
+# ── the same-model route: the source's own picture, only the backdrop rebuilt ─
+def _source_photo_set(tmp_path, n=5):
+    """A downloader-shaped gallery: {slug}_img_N.png in a downloads folder."""
+    import cv2
+    import numpy as np
+    root = tmp_path / "downloads"
+    root.mkdir(exist_ok=True)
+    shots = []
+    for i in range(n):
+        img = np.full((160, 160, 3), 58, np.uint8)
+        cv2.circle(img, (80, 82), 46, (150, 120, 40), -1)
+        p = root / f"cable_clip_set_img_{i}.png"
+        cv2.imwrite(str(p), img)
+        shots.append(str(p))
+    return root, shots
+
+
+def test_only_the_listings_own_gallery_files_can_be_cut(tmp_path, monkeypatch):
+    """same_model reads files the caller names, so the names are the guard. A
+    photograph from elsewhere on the disk, a file the finisher already wrote
+    (`_edited`), and anything that is not an image must all be refused — or
+    "the source's own picture" is just a word the caller controls."""
+    import main
+    root, shots = _source_photo_set(tmp_path)
+    outside = tmp_path / "someone_elses_model_img_0.png"   # right name, wrong place
+    outside.write_bytes((root / "cable_clip_set_img_0.png").read_bytes())
+    edited = root / "cable_clip_set_img_0_edited_a1b.png"  # already cut once
+    edited.write_bytes((root / "cable_clip_set_img_1.png").read_bytes())
+    notimage = root / "cable_clip_set_img_9.txt"
+    notimage.write_text("nope")
+    monkeypatch.setattr(main, "DOWNLOADS_DIR", root)
+    kept = main._makerworld_source_files(shots + [str(outside), str(edited), str(notimage)])
+    assert kept == [os.path.realpath(p) for p in shots], kept
+
+
+def test_a_picture_the_panel_refuses_is_dropped_never_sent_as_the_source_file(tmp_path, monkeypatch):
+    """The user's rule — same model, new background — held at its hardest point.
+    When the panel cannot make a picture that still looks like the source, the
+    listing loses that picture. The source listing's own photograph is never
+    quietly put back in its place, and no run reports a cut it did not make."""
+    import makerworld_flow as flow
+
+    root, shots = _source_photo_set(tmp_path)
+    good = str(tmp_path / "looks_right.png")
+    calls = []
+
+    def fake_improve(path, background="", attempts=3):
+        calls.append((os.path.basename(path), background))
+        ok = "img_1" not in os.path.basename(path)
+        return {"ok": ok, "path": good if ok else "",
+                "attempts": [{"background": background, "ok": ok, "verdicts": []}],
+                "notes": ["looks right"] if ok else ["does not look right"],
+                "measurements": {}}
+    monkeypatch.setattr("photo_critic.improve", fake_improve)
+
+    out = flow.cut_out_photos(shots)
+    assert out["asked"] == 5 and out["got"] == 4, out
+    assert len(out["photos"]) == 4 and all(p == good for p in out["photos"])
+    assert shots[1] not in out["photos"], "a refused picture was shipped as the source file"
+    assert any("dropped" in n for n in out["notes"])
+    assert [r["looked_right"] for r in out["reviews"]] == [True, False, True, True, True]
+    # each picture is tried on a different sweep, not the same frame five times
+    assert [c[1] for c in calls] == list(flow.CUT_BACKGROUNDS)
+    # "keep" is refused by name: that is the source photograph, unchanged
+    with pytest.raises(ValueError) as e:
+        flow.cut_out_photos(shots, background="keep")
+    assert "cannot keep the background" in str(e.value)
+
+
+def test_the_panel_passes_a_faithful_cut_and_catches_the_backdrop_painted_back(tmp_path, monkeypatch):
+    """The panel's real job, measured on real pictures. The composite of the
+    source's own pixels on a new sweep is accepted — model intact, backdrop
+    moved. The same file with a slab of the old backdrop painted back in is
+    refused with "remask", which is the complaint this route exists to make:
+    "the background is still this colour"."""
+    import shutil
+    import cv2
+    import numpy as np
+    import editor
+    import photo_critic as pc
+
+    img = np.full((360, 360, 3), 58, np.uint8)              # dark studio backdrop
+    cv2.circle(img, (180, 185), 105, (150, 120, 40), -1)    # blue base
+    cv2.circle(img, (155, 160), 40, (60, 180, 60), -1)      # green sub-shape
+    noise = np.random.default_rng(7).normal(0, 10, (360, 360)).astype(np.float32)
+    img = np.clip(img.astype(np.float32) + noise[..., None], 0, 255).astype(np.uint8)
+    src = str(tmp_path / "cable_clip_set_img_0.png")
+    cv2.imwrite(src, img)
+
+    out = editor.edit_image(src, background="white", recolour="")
+    clean = pc.critique(src, out)
+    assert clean["ok"], [v for v in clean["verdicts"] if not v["ok"]]
+    assert clean["measurements"]["shape"] >= pc.SHAPE_MIN
+    assert clean["measurements"]["colour_kept"] <= pc.COLOUR_KEEP_MAX
+    assert clean["measurements"]["leftovers"] <= pc.LEFTOVER_MAX
+
+    # the control: the photo's own backdrop tone, painted back into the sweep
+    comp = cv2.imread(out)
+    mask = pc._composition_mask(src, out)
+    lab = pc._lab(cv2.imread(src))
+    bg = np.median(lab[mask == 0], axis=0)
+    bgr = cv2.cvtColor(np.uint8([[[bg[0] * 255.0 / 100.0, bg[1] + 128.0, bg[2] + 128.0]]]),
+                       cv2.COLOR_LAB2BGR)[0, 0]
+    comp[8:108, 8:158] = bgr
+    bad = out.replace("_edited", "_edited_ctl", 1)
+    cv2.imwrite(bad, comp)
+    shutil.copyfile(out.replace("_edited", "_mask", 1), bad.replace("_edited", "_mask", 1))
+
+    caught = pc.critique(src, bad)
+    assert not caught["ok"], "the backdrop came back and the panel said nothing"
+    assert "remask" in caught["fixes"]
+    assert caught["measurements"]["leftovers"] > pc.LEFTOVER_MAX
+
+
+def test_the_same_model_route_refuses_too_few_source_pictures_before_anything_opens(tmp_path, monkeypatch):
+    """The route's own arithmetic: four source pictures are needed (three for the
+    photo slot, one for the cover), and a set that comes up short stops before a
+    browser, a form or the ledger. A cut the panel dropped is also refused —
+    never padded with the source's own file."""
+    import main
+    from fastapi.testclient import TestClient
+    root, shots = _source_photo_set(tmp_path, 3)
+    monkeypatch.setattr(main, "DOWNLOADS_DIR", root)
+    cut_calls = []
+    monkeypatch.setattr(main, "_makerworld_cutout_photos",
+                        lambda *a, **k: cut_calls.append(a) or {})
+    client = TestClient(main.app)
+    calls, rec = [], []
+    r = _mw_publish(client, calls, rec, photo_mode="same_model", assert_ai=False,
+                    assert_source=True, source_photos=shots)
+    assert r.status_code == 409, r.text
+    assert "needs 4" in r.json()["detail"] and "Nothing was published" in r.json()["detail"]
+    assert cut_calls == [], "the cut ran on a set too short to fill the form"
+    assert calls == [] and rec == [], "a short source set still reached the browser"
+
+    root, shots = _source_photo_set(tmp_path, 5)
+    monkeypatch.setattr(main, "DOWNLOADS_DIR", root)
+    monkeypatch.setattr(main, "_makerworld_cutout_photos", lambda *a, **k: {
+        "photos": ["only_one.png"], "covers": ["only_one.png"], "print_photos": [],
+        "ok": False, "got": 1, "asked": 5, "notes": ["4 of them never looked right"],
+        "background": "white", "reviews": []})
+    r = _mw_publish(client, calls, rec, photo_mode="same_model", assert_ai=False,
+                    assert_source=True, source_photos=shots)
+    assert r.status_code == 502, r.text
+    assert "never sent as the source's own file" in r.json()["detail"]
+    assert calls == [] and rec == []
+
+
+def test_a_retry_moves_the_backdrop_because_the_finisher_is_deterministic(tmp_path, monkeypatch):
+    """Measured on 2026-10-26: two runs of one photograph on one backdrop come
+    back byte-for-byte identical, so the "rebuild the cut once more" retry this
+    route used to make could only repeat the verdict it was trying to change. The
+    panel now retries by MOVING the backdrop, and says so when there is nowhere
+    left to move. A critic that names "drop" is a fact about the photograph, so it
+    stops without spending another minute on a rebuild that cannot answer it."""
+    import editor
+    import cv2
+    import numpy as np
+    import photo_critic as pc
+
+    src = str(tmp_path / "cable_clip_set_img_0.png")
+    cv2.imwrite(src, np.full((120, 120, 3), 60, np.uint8))
+    asked = []
+
+    def fake_edit(path, background="wood", recolour=""):
+        asked.append(background)
+        out = str(tmp_path / f"cut_{background}.png")
+        cv2.imwrite(out, np.full((120, 120, 3), 200, np.uint8))
+        return out
+    monkeypatch.setattr(editor, "edit_image", fake_edit)
+
+    def fail_with(fix):
+        def look(path, out):
+            return {"ok": False,
+                    "verdicts": [{"critic": "shape", "ok": False, "measured": "0.40",
+                                  "limit": "≥ 0.85", "fix": fix}],
+                    "fixes": [fix],
+                    "measurements": dict.fromkeys(
+                        ("shape", "model_in_photo", "background_move", "backdrop_flat",
+                         "colour_kept", "coverage", "leftovers", "words"), 0.0)}
+        return look
+
+    monkeypatch.setattr(pc, "critique", fail_with("remask"))
+    r = pc.improve(src, background="white", attempts=3)
+    assert not r["ok"] and r["path"] == ""
+    assert len(asked) == 3 and len(set(asked)) == 3, asked
+    assert asked[0] == "white"
+
+    # given more attempts than there are backdrops, it stops when it has spent
+    # them all rather than repeating one and calling it a retry. The picture here
+    # is built so that two of the five sweeps rank BELOW zero for this machine's
+    # score — measured, the ranking used to discard those as if none were left,
+    # and the loop gave up on three of five while claiming it had tried every one.
+    bright = str(tmp_path / "cable_clip_set_img_1.png")
+    img = np.full((120, 120, 3), 245, np.uint8)          # pale backdrop, L* ≈ 96
+    cv2.circle(img, (60, 60), 34, (153, 153, 153), -1)   # mid plastic, L* ≈ 62
+    cv2.imwrite(bright, img)
+    asked.clear()
+    r = pc.improve(bright, background="white", attempts=9)
+    assert len(asked) == len(pc.CUT_BACKDROPS) == len(set(asked)), asked
+    assert "has now been tried" in " ".join(r["notes"])
+    assert asked[0] == "white" and asked[-1] != asked[0]
+
+    monkeypatch.setattr(pc, "critique", fail_with("drop"))
+    asked.clear()
+    r = pc.improve(src, background="white", attempts=3)
+    assert asked == ["white"], "a critic that named drop was answered with a rebuild"
+    assert not r["ok"]
+
+    # and the choice of backdrop honours what has already been spent on this
+    # picture, so a retry can never return the same file again
+    assert pc._wants_contrast("white", src,
+                              ("gray", "graphite", "charcoal", "wood")) == ""
+    assert pc._wants_contrast("white", src) not in ("", "white")
+
+
+def test_the_panel_asks_the_photograph_whose_model_this_is(tmp_path, monkeypatch):
+    """The complaint the user made in words — "that doesn't look like the
+    original model" — is only answerable by segmenting the SOURCE and comparing
+    what the photograph shows with what was pasted. So that critic exists, it is
+    judged against the mask the composite used, and a photograph that will not
+    segment on its own is reported as unjudgeable instead of failed."""
+    import cv2
+    import numpy as np
+    import photo_critic as pc
+
+    assert pc.MODEL_MIN > 0
+    src = str(tmp_path / "cable_clip_set_img_0.png")
+    cv2.imwrite(src, np.full((120, 120, 3), 60, np.uint8))
+    out = str(tmp_path / "cable_clip_set_img_0_edited_gray.png")
+    cv2.imwrite(out, np.full((120, 120, 3), 150, np.uint8))
+    mask = np.zeros((120, 120), np.uint8)        # the model, with backdrop round it
+    mask[10:110, 10:110] = 255
+    cv2.imwrite(str(tmp_path / "cable_clip_set_img_0_mask_gray.png"), mask)
+
+    monkeypatch.setattr(pc, "_fresh_mask",
+                        lambda img: np.ones(img.shape[:2], np.uint8))
+    look = pc.critique(src, out)
+    names = [v["critic"] for v in look["verdicts"]]
+    assert "model in the photo" in names and "shape" in names
+    assert len(names) == 8, names
+    assert look["measurements"]["model_in_photo"] >= 0
+
+    # a source that yields nothing to compare against must not become a failure
+    monkeypatch.setattr(pc, "_fresh_mask",
+                        lambda img: np.zeros(img.shape[:2], np.uint8))
+    look = pc.critique(src, out)
+    v = next(x for x in look["verdicts"] if x["critic"] == "model in the photo")
+    assert v["ok"] and "would not segment" in v["measured"]
+    assert look["measurements"]["model_in_photo"] == -1.0
+
+    # and when the photograph does show a model that the cut threw away, it fails
+    # with the remedy the loop can actually carry out.
+    def half(img):
+        m = np.zeros(img.shape[:2], np.uint8)
+        m[:, : img.shape[1] // 2] = 1
+        return m
+    monkeypatch.setattr(pc, "_fresh_mask", half)
+    look = pc.critique(src, out)
+    v = next(x for x in look["verdicts"] if x["critic"] == "model in the photo")
+    assert not v["ok"] and v["fix"] == "remask"
+
+
+def test_a_mask_that_leaves_no_backdrop_is_named_not_measured_as_nan(tmp_path, monkeypatch):
+    """Every backdrop-and-colour critic compares the two sides of the cut. When
+    one side is missing numpy answers with NaN, which compares False against every
+    limit — so the picture did get refused, but the log said `nan` and a reader
+    could not tell a broken cut from a broken measurement. Say which side is
+    missing, and stop pretending the sweep was measured."""
+    import cv2
+    import numpy as np
+    import photo_critic as pc
+
+    src = str(tmp_path / "cable_clip_set_img_0.png")
+    cv2.imwrite(src, np.full((120, 120, 3), 60, np.uint8))
+    out = str(tmp_path / "cable_clip_set_img_0_edited_gray.png")
+    cv2.imwrite(out, np.full((120, 120, 3), 150, np.uint8))
+    monkeypatch.setattr(pc, "_fresh_mask", lambda img: np.ones(img.shape[:2], np.uint8))
+
+    all_in = np.full((120, 120), 255, np.uint8)     # nothing was cut: whole frame kept
+    cv2.imwrite(str(tmp_path / "cable_clip_set_img_0_mask_gray.png"), all_in)
+    look = pc.critique(src, out)
+    said = " ".join(v["measured"] for v in look["verdicts"])
+    assert "nan" not in said.lower(), said
+    bad = [v["critic"] for v in look["verdicts"] if not v["ok"]]
+    assert {"background", "backdrop is clean", "colour kept"} <= set(bad), bad
+    assert not look["ok"]
+
+    all_out = np.zeros((120, 120), np.uint8)        # the model itself was erased
+    all_out[30:90, 30:90] = 0
+    cv2.imwrite(str(tmp_path / "cable_clip_set_img_0_mask_gray.png"), all_out)
+    look = pc.critique(src, out)
+    assert "the mask covers nothing" in " ".join(v["measured"] for v in look["verdicts"])
+    assert not look["ok"]
+
+
+def test_the_words_critic_does_not_pass_a_picture_it_never_read(tmp_path, monkeypatch):
+    """The detector is the same one the finisher trusts. If it cannot run, nothing
+    has vouched that a watermark is absent, and the old handler answered that with
+    `0.0` — a clean report invented out of a failure."""
+    import cv2
+    import numpy as np
+    import editor
+    import photo_critic as pc
+
+    src = str(tmp_path / "cable_clip_set_img_0.png")
+    cv2.imwrite(src, np.full((120, 120, 3), 60, np.uint8))
+    out = str(tmp_path / "cable_clip_set_img_0_edited_gray.png")
+    cv2.imwrite(out, np.full((120, 120, 3), 150, np.uint8))
+    mask = np.zeros((120, 120), np.uint8)
+    mask[10:110, 10:110] = 255
+    cv2.imwrite(str(tmp_path / "cable_clip_set_img_0_mask_gray.png"), mask)
+    monkeypatch.setattr(pc, "_fresh_mask", lambda img: mask.copy())
+
+    def explode(img, *a, **k):
+        raise RuntimeError("the text detector is not loaded")
+    monkeypatch.setattr(editor, "_verify_text_bands", explode)
+    look = pc.critique(src, out)
+    v = next(x for x in look["verdicts"] if x["critic"] == "no words")
+    assert not v["ok"] and "could not be measured" in v["measured"], v
+    assert not look["ok"]
+    assert look["measurements"]["words"] == -1.0
+
+
+def test_a_retry_never_spends_an_attempt_on_the_same_sweep_wearing_another_spelling(
+        tmp_path, monkeypatch):
+    """editor.BACKGROUNDS holds `gray` and `grey` for the identical 150-level
+    sweep, and the finisher is deterministic, so a loop that walked from one
+    spelling to the other burned a whole attempt to re-derive the same file and
+    the same verdict. It works on one spelling."""
+    import cv2
+    import numpy as np
+    import editor
+    import photo_critic as pc
+
+    assert pc.BACKDROP_ALIAS.get("grey") == "gray"
+    src = str(tmp_path / "cable_clip_set_img_0.png")
+    cv2.imwrite(src, np.full((120, 120, 3), 60, np.uint8))
+    asked = []
+
+    def fake_edit(path, background="wood", recolour=""):
+        asked.append(background)
+        out = str(tmp_path / f"cut_{background}.png")
+        cv2.imwrite(out, np.full((120, 120, 3), 150, np.uint8))
+        cv2.imwrite(str(tmp_path / f"cut_{background}_mask.png"),
+                    np.zeros((120, 120), np.uint8))
+        return out
+    monkeypatch.setattr(editor, "edit_image", fake_edit)
+    monkeypatch.setattr(pc, "critique", lambda s, o: {
+        "ok": False, "verdicts": [{"critic": "shape", "ok": False, "measured": "0.4",
+                                   "limit": "≥ 0.85", "fix": "remask"}],
+        "fixes": ["remask"],
+        "measurements": dict.fromkeys(("shape", "model_in_photo", "background_move",
+                                       "backdrop_flat", "colour_kept", "coverage",
+                                       "leftovers", "words"), 0.0)})
+    r = pc.improve(src, background="grey", attempts=2)
+    assert asked[0] == "gray", asked
+    assert len(set(asked)) == len(asked), asked
+    # the last permitted attempt is not allowed to announce a rebuild it cannot do
+    assert "the attempts allowed on one picture have run out" in r["notes"][-1], r["notes"]
+    assert not any("rebuilding the same cut" in n for n in r["notes"][-1:]), r["notes"]
+
+
+def test_two_listings_galleries_cannot_be_spliced_into_one_remix(tmp_path, monkeypatch):
+    """same_model takes whatever files the caller names, so the only thing
+    holding a remix's pictures to the remix's own source is the name this machine
+    gave them. Two slugs in one set is a model that is not the one the source URL
+    names, and the route refuses it with the publish already stopped."""
+    import cv2
+    import numpy as np
+    import main
+    from fastapi.testclient import TestClient
+
+    root = tmp_path / "downloads"
+    root.mkdir()
+
+    def write(slug, i):
+        p = root / f"{slug}_img_{i}.png"
+        cv2.imwrite(str(p), np.full((120, 120, 3), 60, np.uint8))
+        return str(p)
+
+    a = [write("cable_clip_set", i) for i in range(5)]
+    b = [write("arcane_bloom", i) for i in range(3)]
+    monkeypatch.setattr(main, "DOWNLOADS_DIR", root)
+    cut_calls = []
+    monkeypatch.setattr(main, "_makerworld_cutout_photos",
+                        lambda *ar, **k: cut_calls.append(ar) or {})
+    calls, rec = [], []
+    r = _mw_publish(TestClient(main.app), calls, rec, photo_mode="same_model",
+                    assert_ai=False, assert_source=True, source_photos=a + b)
+    assert r.status_code == 400, r.text
+    assert "different source galleries" in r.json()["detail"]
+    assert "Nothing was published" in r.json()["detail"]
+    assert cut_calls == [] and calls == [] and rec == []
+
+
+def test_the_own_photo_modes_refuse_another_listings_files_by_name(tmp_path, monkeypatch):
+    """The last way a scraped photograph could reach the form was the own-photo
+    modes: a gallery file named there is stripped by name, whatever slot it is
+    named for — and the refusal that follows is a 409 that reads as English, not
+    a 500 from an f-string that interpolated a variable no one ever defined."""
+    import cv2
+    import numpy as np
+    import main
+    from fastapi.testclient import TestClient
+
+    root, gallery = _source_photo_set(tmp_path, 5)
+    mine = []
+    for i in range(2):
+        p = root / f"my_print_{i}.png"
+        cv2.imwrite(str(p), np.full((120, 120, 3), 90, np.uint8))
+        mine.append(str(p))
+    monkeypatch.setattr(main, "DOWNLOADS_DIR", root)
+    assert main._makerworld_own_files(gallery + mine) == \
+        [os.path.realpath(m) for m in mine]
+    # a cut of a gallery picture is not the user's photograph either
+    cut = root / "cable_clip_set_img_0_edited_gray.png"
+    cv2.imwrite(str(cut), np.full((120, 120, 3), 90, np.uint8))
+    assert os.path.realpath(str(cut)) not in main._makerworld_own_files([str(cut)] + mine)
+
+    client = TestClient(main.app)
+    calls, rec = [], []
+    r = _mw_publish(client, calls, rec, photo_mode="as_shot", assert_ai=False,
+                    assert_prints=True, print_photos=list(gallery))
+    assert r.status_code == 409, r.text
+    assert "None of the 5 photo file(s)" in r.json()["detail"]
+    assert "Nothing was published" in r.json()["detail"]
+    assert calls == [] and rec == []
+
+    # two own prints plus four gallery files: the gallery is stripped and the set
+    # that is left is too short for the photo slot once one becomes the cover.
+    calls, rec = [], []
+    r = _mw_publish(client, calls, rec, photo_mode="as_shot", assert_ai=False,
+                    assert_prints=True, print_photos=mine + gallery[:4])
+    assert r.status_code == 409, r.text
+    assert "would reach the photo slot" in r.json()["detail"]
+    assert calls == [] and rec == []
+
+
+def test_a_moved_copy_of_a_scraped_photograph_is_still_refused(tmp_path, monkeypatch):
+    """The tell is the NAME this machine gave the file, so the name has to be the
+    whole test. The first version of the guard also required the file to sit in
+    downloads/, which was not a tighter rule but a way round it: copy the scrape
+    anywhere else and it walked into the own-photo modes as the user's own
+    photograph of their print. A recolour-tagged cut is refused too, because the
+    finisher tags its files two deep (`_edited_gray_red`), not one."""
+    import cv2
+    import numpy as np
+    import main
+
+    root, gallery = _source_photo_set(tmp_path, 5)
+    monkeypatch.setattr(main, "DOWNLOADS_DIR", root)
+    roll = tmp_path / "Camera Roll"
+    roll.mkdir()
+    moved = str(roll / "cable_clip_set_img_0.png")
+    cv2.imwrite(moved, np.full((120, 120, 3), 90, np.uint8))
+    assert main._makerworld_gallery_files([moved]) == [os.path.realpath(moved)]
+    assert main._makerworld_own_files([moved]) == []
+
+    for tagged in ("cable_clip_set_img_2_edited_gray_red.png",
+                   "cable_clip_set_img_2_mask_gray_red.png",
+                   "cable_clip_set_img_2_repair_gray_red.png"):
+        p = root / tagged
+        cv2.imwrite(str(p), np.full((120, 120, 3), 90, np.uint8))
+        assert main._makerworld_gallery_files([str(p)]) == [os.path.realpath(str(p))], tagged
+        assert main._makerworld_own_files([str(p)]) == [], tagged
+
+
+def test_a_studio_drawing_cannot_be_ticked_as_a_print_off_the_printer(tmp_path, monkeypatch):
+    """downloads/ holds three kinds of file and only one of them is a photograph
+    the user took: the scrape, the cuts, and what the AI studio drew. The page
+    refuses the `ai_` names on click, and the route has to refuse them too,
+    because curl is a caller and a stale tab is another."""
+    import cv2
+    import numpy as np
+    import main
+    from fastapi.testclient import TestClient
+
+    root = tmp_path / "downloads"
+    root.mkdir()
+    drawn = []
+    for i in range(4):
+        p = root / f"ai_cable_clip_1815_{i}.jpg"
+        cv2.imwrite(str(p), np.full((120, 120, 3), 200, np.uint8))
+        drawn.append(str(p))
+    monkeypatch.setattr(main, "DOWNLOADS_DIR", root)
+    assert main._makerworld_own_files(drawn) == []
+
+    client = TestClient(main.app)
+    calls, rec = [], []
+    r = _mw_publish(client, calls, rec, photo_mode="as_shot", assert_ai=False,
+                    assert_prints=True, print_photos=drawn)
+    assert r.status_code == 409, r.text
+    assert "ai_" in r.json()["detail"] and "Nothing was published" in r.json()["detail"]
+    assert calls == [] and rec == []
+
+
+def test_one_photograph_ticked_five_times_is_one_photograph(tmp_path, monkeypatch):
+    """The count the refusal is read against is MakerWorld's "3 photographs
+    covering 3 views", so repeats cannot fill it and one file cannot sit in both
+    slots. Measured against the old code: five ticks of one print and a cover of
+    the same print passed, and the form came back with one picture twice."""
+    import cv2
+    import numpy as np
+    import main
+    from fastapi.testclient import TestClient
+
+    root = tmp_path / "downloads"
+    root.mkdir()
+    mine = []
+    for i in range(24):
+        p = root / f"print_view_{i}.png"
+        cv2.imwrite(str(p), np.full((120, 120, 3), 60 + i, np.uint8))
+        mine.append(str(p))
+    monkeypatch.setattr(main, "DOWNLOADS_DIR", root)
+    assert main._makerworld_own_files([mine[0]] * 5) == [os.path.realpath(mine[0])]
+
+    client = TestClient(main.app)
+    calls, rec = [], []
+    r = _mw_publish(client, calls, rec, photo_mode="as_shot", assert_ai=False,
+                    assert_prints=True, print_photos=[mine[0]] * 5)
+    assert r.status_code == 409, r.text
+    assert "would reach the photo slot" in r.json()["detail"]
+    assert calls == [] and rec == []
+
+    # 24 distinct photographs: the form's measured ceiling is 16 all together,
+    # and the cover is a file the photo slot does not also carry.
+    calls, rec = [], []
+    r = _mw_publish(client, calls, rec, photo_mode="as_shot", assert_ai=False,
+                    assert_prints=True, print_photos=mine + mine[:2])
+    assert r.status_code == 200, r.text
+    sent = calls[0]
+    covers, photos = sent["image_paths"], sent["print_photos"]
+    assert len(covers) >= 1 and len(photos) >= mw.MIN_REAL_PHOTOS
+    assert len(covers) + len(photos) <= mw.MAX_PHOTOS
+    assert not set(covers) & set(photos)
+    assert len(set(photos)) == len(photos)
+
+
+def test_the_plan_route_answers_the_question_the_publish_will_ask(tmp_path, monkeypatch):
+    """Two ways the check lied. The page sends no cover paths in any mode (the
+    scraped gallery is never a cover), so the plan had to do the same cover split
+    the publish does or every own-photo check failed on "no cover image". And a
+    spliced gallery raised ValueError through the plan route with nothing to catch
+    it, which is a 500 where the user was owed the sentence about two listings."""
+    import cv2
+    import numpy as np
+    import main
+    from fastapi.testclient import TestClient
+
+    root, gallery = _source_photo_set(tmp_path, 5)
+    mine = []
+    for i in range(4):
+        p = root / f"my_print_{i}.png"
+        cv2.imwrite(str(p), np.full((160, 160, 3), 90, np.uint8))
+        mine.append(str(p))
+    monkeypatch.setattr(main, "DOWNLOADS_DIR", root)
+    client = TestClient(main.app)
+
+    body = dict(name="Cable Clip", stl_path=str(root / "cable.3mf"), kind="remix",
+                description="holds five cables in a row on the bench beside the monitor",
+                source_url="https://makerworld.com/en/models/2964241-gt-r",
+                remix_source_url="https://makerworld.com/en/models/2964241-gt-r",
+                license_raw="CC BY 4.0", image_paths=[], print_photos=mine,
+                tags=["cable"], category="Organization")
+    (root / "cable.3mf").write_bytes(b"solid")
+    for mode in ("as_shot", "restyle"):
+        r = client.post("/upload/makerworld/plan", json={**body, "photo_mode": mode,
+                                                         "assert_prints": True})
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert not [b for b in d["blockers"] if "no cover image" in b], (mode, d["blockers"])
+        assert d["ok"], d["blockers"]
+        assert d["photos"]["own_photos"] == 3, d["photos"]
+
+    # a gallery from two listings cannot be one remix — and the answer is 400 with
+    # the sentence, not a traceback.
+    other = [str(root / f"desk_organiser_img_{i}.png") for i in range(3)]
+    for p in other:
+        cv2.imwrite(p, np.full((160, 160, 3), 40, np.uint8))
+    r = client.post("/upload/makerworld/plan", json={
+        **body, "photo_mode": "same_model", "assert_source": True, "print_photos": [],
+        "source_photos": gallery + other})
+    assert r.status_code == 400, r.text
+    assert "different source galleries" in r.json()["detail"]
+
+
+def test_a_cancelled_auto_run_does_not_leave_the_pipeline_saying_running(tmp_path, monkeypatch):
+    """The publish route refuses to overlap a run, and the worker only cleared
+    "running" in an `except Exception`. A cancellation is a BaseException, so a
+    stopped or cancelled run left the state at "running" for good and every
+    publish by hand after it was refused with 409 — the run had to be cancelled
+    twice more to undo."""
+    import contextlib
+    import main
+
+    state = {"state": "discovering", "items": [], "published": 0, "stop": False,
+             "error": "", "requested": 1, "discovered": 0, "log_path": None}
+    monkeypatch.setattr(main, "MW_AUTO", state)
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+
+    async def never(kind, n):
+        import asyncio
+        await asyncio.sleep(30)
+        return []
+    monkeypatch.setattr(main, "discover_models", never)
+
+    async def drive():
+        task = asyncio.create_task(main._makerworld_auto_worker(1, "cancelled-job"))
+        await asyncio.sleep(0.05)
+        assert state["state"] == "discovering", state["state"]
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    asyncio.run(drive())
+    assert state["state"] in ("interrupted", "stopped"), state["state"]
+    assert state["finished"]
+
+
+def test_the_ai_save_route_answers_a_undecodable_body_with_a_sentence(tmp_path, monkeypatch):
+    """The regular expression only checks the SHAPE of a data url; whether the
+    base64 inside it decodes is answered by the decoder, and it answers with
+    binascii.Error. That is a fact about what the page sent, so it is a 400."""
+    import main
+    from fastapi.testclient import TestClient
+
+    root = tmp_path / "downloads"
+    root.mkdir()
+    monkeypatch.setattr(main, "DOWNLOADS_DIR", root)
+    client = TestClient(main.app)
+    # the alphabet filter throws away the junk, so this one decodes to nothing
+    r = client.post("/makerworld/ai/save", json={"name": "clip",
+                                                "data_url": "data:image/png;base64,%%%%"})
+    assert r.status_code == 400, r.text
+    assert "empty" in r.json()["detail"]
+    # and this one is the decoder's own complaint: a length it cannot read
+    r = client.post("/makerworld/ai/save", json={"name": "clip",
+                                                "data_url": "data:image/png;base64,ME"})
+    assert r.status_code == 400, r.text
+    assert "not decodable base64" in r.json()["detail"]
+    assert list(root.iterdir()) == []
+
+
+def test_the_auto_run_stops_a_thin_gallery_before_it_cuts_anything():
+    """The run used to spend minutes in the finisher and only then notice the
+    listing had too few pictures to fill the form. The count is settled first, in
+    the worker's own order, so a thin listing costs one read of the listing."""
+    src = (ROOT / "main.py").read_text(encoding="utf-8")
+    body = re.search(r"async def _makerworld_auto_worker.*?\n\n\n@app", src, re.S).group(0)
+    cut_at = body.index("_makerworld_cutout_photos")
+    assert body.index("_makerworld_source_files") < cut_at
+    assert body.index("if len(src_imgs) < need:") < cut_at, \
+        "the thin-gallery guard runs after the minutes-long cut"
+    assert "skipped before" in body[:cut_at]
+
+
+def test_every_makerworld_page_script_is_valid_javascript(tmp_path):
+    """A page is just a string to Python until a browser reads it, and one
+    syntax error there is a dashboard with dead buttons — which is how a real
+    edit this session broke `planHtml`. The inline script is handed to a JS
+    parser if this machine has one, and the gate says so when it does not."""
+    import shutil
+    import subprocess
+
+    bun = shutil.which("bun") or shutil.which("node")
+    if not bun:
+        pytest.skip("no JavaScript parser installed on this machine")
+    runner = ("const fs=require('fs');"
+              "try{new Function(fs.readFileSync(process.argv[1],'utf8'));}"
+              "catch(e){console.error('SYNTAX: '+e.message);process.exit(1);}")
+    for page in ("makerworld/index.html", "makerworld/ai_studio.html"):
+        html = (ROOT / page).read_text(encoding="utf-8")
+        blocks = re.findall(r"<script>([\s\S]*?)</script>", html)
+        assert blocks, page + " carries no inline script"
+        for n, js in enumerate(blocks):
+            f = tmp_path / ("%s_%d.js" % (page.split("/")[-1], n))
+            f.write_text(js, encoding="utf-8")
+            r = subprocess.run([bun, "-e", runner, str(f)],
+                               capture_output=True, text=True, timeout=180)
+            assert r.returncode == 0, "%s script %d: %s" % (page, n, r.stderr[:300])

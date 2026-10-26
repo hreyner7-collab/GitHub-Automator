@@ -1,7 +1,8 @@
 # Gates: publish to MakerWorld, learned from MakerWorld, without disturbing Creality
 
 OWNS: makerworld_flow.py, makerworld_ledger.py, makerworld_uploader.py,
-makerworld/index.html, scripts/check_mw_provenance.py, scripts/check_mw_filters.py,
+photo_critic.py, makerworld/index.html, scripts/check_mw_provenance.py,
+scripts/check_mw_filters.py,
 scripts/check_mw_licence_tokens.py, scripts/check_mw_licence_readback.py,
 scripts/check_mw_licence_api.py, MAKERWORLD-STUDY/,
 MAKERWORLD-FLOW-CONFIG.md, GATES-MAKERWORLD.md, main.py (its routes and the MakerWorld
@@ -229,6 +230,14 @@ Baseline: 527 tests passing before this work; the Creality publish path
   back to Verifying (1) for re-review.
 
 - [x] G12: every picture on a MakerWorld listing is drawn for it — no original image reaches the form
+  **SUPERSEDED 2026-10-26 by G14.** The user reversed the *content* of this rule the
+  next day — "The remixes are not getting the exact same image. All I want is for it
+  to be the exact same model. And just a changed background… actually get the model
+  and copy and paste it" — so the default picture mode is now `same_model`, not
+  `generate`. What still stands, and is what G14 builds on: the pictures are settled
+  **before the browser opens**, `photo_mode` fails closed, the acknowledgement ticks
+  are answered by the route, and a set that comes up short stops the publish instead
+  of being padded with someone else's photograph.
   CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py -k "draw or photo or duplicate or cc0 or Plan or tick"
   EXPECT: 25 passed
   EVIDENCE: 2026-10-26, exit 0 — `25 passed, 41 deselected in 6.13s`; the whole file is
@@ -296,6 +305,120 @@ Baseline: 527 tests passing before this work; the Creality publish path
   `forget()` would drop both together. A pending-review `published_url` is not an identity
   key and should not be merged on.
 
+- [x] G14: the listing shows the source's own model, with only the background changed — and a panel that looks at it
+  CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py -k "cut or critic or panel or same_model or gallery_files or without_the_tick or cuts_the_source_model or run_loop or auto_run or the_run or photo_mode"
+  EXPECT: 20 passed
+  EVIDENCE: 2026-10-26, exit 0 — `20 passed, 72 deselected in 10.55s`; the whole file is
+  `92 passed in 20.09s` and the full suite `620 passed in 118.61s`. Asked for by the user:
+  *"All I want is for it to be the exact same model. And just a changed background,
+  that's it. Like, actually get the model and copy and paste it"* and then
+  *"Run multiple sub-agents. Looks at the original image and the new image, and it says
+  'oh, that doesn't look right' and then it tells you what to do… I need to change the
+  background to a different color."*
+  **The model is copied, not drawn.** `photo_mode="same_model"` is the default on the page
+  (V12) and in the Auto loop. `main._makerworld_source_files()` takes the source listing's
+  gallery (`{slug}_img_N` under `downloads/`, on disk, an image the form accepts — nothing
+  else, and never an already-cut `_edited` file), and
+  `makerworld_flow.cut_out_photos()` → `photo_critic.improve()` → `editor.edit_image()`
+  copies the product's pixels and repaints only around them. The backdrop rotates
+  (white / gray / graphite / charcoal / wood) so a set is not one frame five times, and
+  `keep` is refused by name in this mode — keeping the source's background *is* sending the
+  source's photograph. `recolour` is never passed: the plastic keeps the colour it was
+  photographed in.
+  **The critics look, and name a remedy.** `photo_critic.py`: eight independent
+  measurements of the shipped file beside its source — the model in the new picture
+  is the one the photograph shows (IoU of a fresh segmentation of the **source** vs
+  the mask the composite used, ≥ 0.55, and reported as unjudgeable when the
+  photograph itself will not segment), shape (the same against the **output**, ≥
+  0.85 — the old 0.90 sat on the segmenter's own run-to-run noise and refused good
+  cuts), background moved (ΔE ≥ 18), backdrop flat (L-std ≤ **18**), colour kept
+  (ΔE ≤ 9), coverage (6–95%), no words (≤ 0.15%), no leftovers (≤ 0.10%, with the
+  contact-shadow band around the model excluded on purpose). A failure is not a log
+  line: `background` and `remask` → rebuild the cut on the sweep furthest from both
+  the plastic and the photo's own backdrop, from the ones not yet spent on this
+  picture (the finisher is deterministic — measured, two runs on one backdrop are
+  byte-identical, so a retry that keeps the backdrop can only repeat the verdict);
+  `drop` → stop at once, because another backdrop cannot argue with a fact about the
+  photograph. A picture that still fails is **dropped and named** — never sent as
+  the source's untouched file.
+  **The flatness limit is a measurement, not a guess.** It was 26 and a reviewer
+  showed no shipped picture came near it. Re-measured on the composition masks of 20
+  real pairs: shipped outputs 4.1–12.3 (4.5–15.1 across a whole panel run); the
+  failure it names, the photographed backdrop pasted back into the far field,
+  21.9–30.8. 18.0 sits in the gap, so every picture ever posted still passes and the
+  case the critic describes now refuses itself. A *small* leftover patch (5.3 on this
+  statistic) is the leftovers critic's job, and catches there.
+  Live on a real listing photo: attempt 1 measured shape **0.73** → *"does not look
+  right"* → rebuilt → shape **0.95**, passed. On the synthetic pair in the test: clean
+  measures 0.955 / move 55.7 / colour 0.0 / leftovers 0.00%, and the same file with a
+  150×100 block of the old backdrop painted back in measures **10.93%** and is refused
+  with `remask` — the control is what proves the detector is not decoration.
+  **The refusals are the route's.** `assert_source` is demanded before any cut runs (400,
+  and `assert_ai` is not a substitute); fewer than four trustworthy source pictures is a
+  409 that names the count; a panel that refused too much is a 502 that says a refused
+  picture is never sent as the source's own file; and in every case the watched driver and
+  the watched ledger are both still empty. The loop's row carries `pictures: "same model,
+  new background"` and the panel's per-picture verdicts in `looked_at`, so the dashboard
+  shows the argument rather than a claim. `/makerworld/files` marks a finisher output as
+  `from_source` too, so the picker can tell the user which files came off someone else's
+  listing.
+  NOT YET DONE: no listing has been *published* in this mode — the pipeline was run locally
+  over the real photos in `downloads/`, and a live publish needs the user to ask for it
+  (AGENTS.md). The page is V12 and the server has not been restarted, so what is served
+  right now is still the pre-reviewer page and routes.
+
+- [x] G15: the page and the route answer the same question about the same pictures
+  CHECK: .venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_makerworld.py -k "moved_copy or studio_drawing or ticked_five_times or plan_route_answers or cancelled_auto or undecodable or nan or never_read or another_spelling or never_loaded or spliced or javascript"
+  EXPECT: 12 passed
+  EVIDENCE: 2026-10-26, exit 0 — `12 passed, 80 deselected in 3.72s`. Three review agents
+  read the route, the panel and the page against the
+  measured rules; every finding below was reproduced here before it was fixed, and
+  each fix has a test that fails without it.
+  **The panel was re-measured end to end after the changes** — the same fourteen listing
+  photographs, the same backdrop rotation: **6 of 14 accepted**, the same six as passes 3
+  and 4, 5 pictures retried over 9 extra attempts, and **no picture dropped by the
+  tightened flatness limit** (the accepted set measured 4.5–12.9 against 18.0). That run
+  is the control that says a critic given a real threshold did not quietly cost the route
+  its yield.
+  **Leaks, all four ways a picture that is not the user's print could reach the
+  print slot.** The own-photo guard had checked the *name* and the *folder*, so a
+  copy of `downloads/slug_img_1.png` placed anywhere else on the disk walked in as
+  the user's own photograph of their print — the name is now the whole test
+  (`test_a_moved_copy_of_a_scraped_photograph_is_still_refused`). A studio drawing
+  (`ai_*`) was refused by the click handler and accepted by the route. Repeats filled
+  the slot — five ticks of one photograph were "5 views covering 3 angles" — and one
+  file could sit in the cover and the photo slot together, which is the shape the
+  form answers with *"Please set the model cover"*; lists are deduplicated, the slots
+  kept disjoint, the pair capped at the measured 16. And the finisher's recolour tag
+  (`…_img_1_edited_gray_red`) was one level deeper than the pattern allowed, so a
+  restyled cut was classified as somebody's own photograph.
+  **Check-plan disagreed with publish, twice.** The page ships no cover paths in any
+  mode, and the plan route did not do the cover split the publish route does, so
+  every own-photo check answered "no cover image" — a check that always fails is a
+  check nobody reads. And a gallery spliced from two listings raised its `ValueError`
+  through the plan route with nothing to catch it: HTTP 500 where the sentence about
+  two source galleries was owed.
+  **A cancelled MakerWorld run left the dashboard saying `running`** — the worker
+  cleared its state in `except Exception`, and `asyncio.CancelledError` is a
+  `BaseException` — so the overlap guard refused every later manual publish with 409
+  until the loop was started and stopped again. The `finally` now lands on
+  `stopped` / `interrupted`. `/makerworld/ai/save` answered an undecodable base64
+  body with a 500 for the same kind of reason.
+  **The page could publish the wrong design.** `_src` held whatever the last scrape
+  returned, so typing another listing's URL into the box and pressing publish sent
+  the FIRST design's model file, description and licence as a remix of the second.
+  Every read of the scrape goes through one function that compares it against the
+  box, and the box's keystroke re-runs the readiness check. Along the same line:
+  ticks whose files have since gone or been named a drawing are pruned when the
+  folder is read, the backdrop picker is hidden in the mode that discards its value,
+  the "4 of the source's own pictures" count is the files really on disk once the
+  folder has been read, the CC0 refusal is shown when the listing loads instead of at
+  publish, and the drawer's arithmetic on the page is the route's clamp rather than
+  an invented `photo_count + 2`.
+  FOUND AND NOT CHANGED: `/makerworld/files` reads only `downloads/`, so a file the
+  user keeps elsewhere is not in the picker at all — which is the reason the route
+  must remain the guard rather than the listing.
+
 <!--
 Notes for whoever works this ledger:
 - The one finding that changes what the pipeline can publish: MakerWorld requires
@@ -303,16 +426,18 @@ Notes for whoever works this ledger:
   views"), and this pipeline's edited images are studio composites of the creator's
   renders. `MIN_REAL_PHOTOS = 3` and a separate `print_photos` input exist so the
   account is never asked to present a render as a print photo. The manual dashboard
-  exposes that as an explicit tick. CHANGED 2026-10-26, at the user's instruction and
-  after they asked MakerWorld support: neither path attaches the source listing's
-  photographs any more. Both draw their own set from the listing's own words
-  (`photo_mode="generate"`, the default) — see G12 and MAKERWORLD-FLOW-CONFIG.md.
-  The rule that survived the change is the one that matters for the account: a file
-  is never presented as something it is not. A drawn picture cannot be ticked as "a
-  print I made", the machine-picture acknowledgement is on the publish button **and
-  demanded by the route** (as is the unattended run's own tick, before it starts),
-  and a set that comes back short stops the publish instead of being padded with
-  someone else's photograph.
+  exposes that as an explicit tick. CHANGED TWICE 2026-10-26, at the user's instruction
+  and after they asked MakerWorld support: first nothing but a drawn set (G12), then —
+  on the same day — the current rule (G14): the listing shows **the source's own model**
+  cut out of the source's own photograph with the background rebuilt here
+  (`photo_mode="same_model"`, the default), and every result is measured against its
+  source before it is used. See MAKERWORLD-FLOW-CONFIG.md.
+  The rule that survived both changes is the one that matters for the account: a file
+  is never presented as something it is not. The untouched photograph of another maker
+  is never attached, a drawn picture cannot be ticked as "a print I made", the
+  acknowledgement for the mode in use is on the publish button **and demanded by the
+  route** (as is the unattended run's own tick, before it starts), and a set that comes
+  up short stops the publish instead of being padded with someone else's photograph.
 - MakerWorld's `?type=remix` only accepts a source that is already a MakerWorld
   design (measured placeholder text), so a Thingiverse/Printables original can only
   go out as `?type=original` — the flow module refuses the mismatch instead of
