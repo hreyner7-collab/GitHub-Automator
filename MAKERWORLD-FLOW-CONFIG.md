@@ -289,3 +289,22 @@ the default wood run still writes `<stem>_edited.png`, so the photograph on disk
 never overwritten. Restyling happens in `POST /upload/makerworld` **before**
 `UPLOAD_LOCK` is taken: about 4 s per photo at 200×200, off the browser's clock, so
 a slow image cannot stall the wizard.
+
+### The AI studio (`/makerworld/studio`) — the one page that draws, not edits
+
+`makerworld/ai_studio.html`, served by `GET /makerworld/studio`. It calls
+`puter.ai.txt2img(prompt, {input_image: <base64 data url>})` from the browser: no
+API key is stored or needed (Puter asks for its own free account sign-in), and the
+source picture goes as a data URI, so nothing has to be hosted publicly. Results
+are saved by `POST /makerworld/ai/save`, which writes into `downloads/` under
+`ai_<stem>_<timestamp>.png` — the prefix is the point: a generated picture can
+never be mistaken in the photo picker for a photograph of a real print. The route
+takes a data URL only (`data:image/(png|jpeg|webp);base64,`), rejects anything else
+with a 400, caps the write at 20 MB, and flattens the name through `Path().name`
+plus a character filter, so `../../windows.png` cannot escape `downloads/`.
+
+What this page does **not** do: it is not wired into the publish flow, it is not
+run by the Auto loop, and it publishes nothing. `tests/test_makerworld.py` holds
+those three facts (own page, labelled as AI, `ai_` prefix, traversal blocked, bad
+data url → 400). The dashboard links to it from card 3 with the wording "draws a
+picture from a prompt instead of editing one you took".

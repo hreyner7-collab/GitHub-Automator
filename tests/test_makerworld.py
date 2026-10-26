@@ -649,7 +649,43 @@ def test_the_page_sends_both_options_and_defaults_to_neither(tmp_path):
     assert '<option value="">Leave it exactly as I shot it</option>' in html
     assert '<option value="">Leave it as printed</option>' in html
     assert '<span class="build" id="mw-version" title="MakerWorld dashboard ' \
-           'version: bumped on every update">V5</span>' in html
+           'version: bumped on every update">V6</span>' in html
+
+
+def test_the_ai_studio_is_its_own_page_and_says_what_it_draws():
+    """The one place in this app that produces pixels nobody photographed. It is
+    a separate address, it is labelled, and it publishes nothing."""
+    from fastapi.testclient import TestClient
+    import main
+    html = (ROOT / "makerworld" / "ai_studio.html").read_text(encoding="utf-8")
+    assert "js.puter.com/v2/" in html and "puter.ai.txt2img" in html
+    for must in ("AI-generated image", "not a photograph of a print", "ai_"):
+        assert must in html, must
+    assert "<form" not in html.lower()
+    c = TestClient(main.app)
+    r = c.get("/makerworld/studio")
+    assert r.status_code == 200 and "MakerWorld AI Studio" in r.text
+    # the dashboard links to it, and the link does not pretend it is a photo tool
+    page = _page()
+    assert 'href="/makerworld/studio"' in page
+
+
+def test_the_ai_save_route_writes_an_ai_prefixed_file_only(tmp_path, monkeypatch):
+    import base64
+    from fastapi.testclient import TestClient
+    import main
+    monkeypatch.setattr(main, "DOWNLOADS_DIR", tmp_path)
+    c = TestClient(main.app)
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\ndemo bytes").decode()
+    d = c.post("/makerworld/ai/save",
+               json={"name": "../../windows.png", "data_url": "data:image/png;base64," + png}).json()
+    assert d["name"].startswith("ai_") and d["generated"] is True
+    assert (tmp_path / d["name"]).is_file()
+    assert not (tmp_path.parent / "windows.png").exists()
+    assert c.post("/makerworld/ai/save", json={"name": "x.png",
+               "data_url": "data:text/html;base64,xx"}).status_code == 400
+    assert c.post("/makerworld/ai/save", json={"name": "x.png",
+               "data_url": "not an image"}).status_code == 400
 
 
 def test_the_publish_route_restyles_before_it_opens_the_browser():

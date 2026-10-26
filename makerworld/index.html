@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MakerWorld Pipeline V5</title>
+<title>MakerWorld Pipeline V6</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root { --bg:#101315; --card:#181d20; --line:#2a3135; --ink:#e8eaed; --dim:#9aa4aa;
@@ -68,7 +68,7 @@
 <body>
 <div class="topbar">
   <h1>MakerWorld <span>Pipeline</span></h1>
-  <span class="build" id="mw-version" title="MakerWorld dashboard version: bumped on every update">V5</span>
+  <span class="build" id="mw-version" title="MakerWorld dashboard version: bumped on every update">V6</span>
   <span class="build" id="build-stamp" title="Which code this server process is running"></span>
   <a href="/">Creality dashboard &rarr;</a>
 </div>
@@ -214,6 +214,9 @@
   originals as <span class="kv" style="font-family:ui-monospace,monospace">name_edited_gray_blue.png</span>
   — the photo you took is never overwritten. A photo the finisher refuses goes out exactly as it
   was shot, and the result names it.</div>
+  <div class="kv">Separate tool, separate page: <a href="/makerworld/studio"
+    style="color:#7fc4ff">the AI studio</a> draws a picture from a prompt instead of editing one you
+  took. Nothing here sends anything to MakerWorld for you.</div>
   <label class="tick">
     <input type="checkbox" id="assert-prints">
     <span>Every photo above is a photograph of a print I made myself, and I have the right to

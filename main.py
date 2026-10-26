@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import faulthandler
 import json
 import os
@@ -763,6 +764,48 @@ async def makerworld_dashboard():
     wording, its own memory. The Creality dashboard at / does not mention this
     one and neither publishes through the other's rules."""
     return HTMLResponse((BASE_DIR / "makerworld" / "index.html").read_text(encoding="utf-8"))
+
+
+@app.get("/makerworld/studio", response_class=HTMLResponse)
+async def makerworld_studio():
+    """The AI studio — a deliberately separate page, because it is the one place
+    in this app that draws pixels that were never photographed. Everything here
+    is Puter's service, called from the browser; nothing is published by it."""
+    return HTMLResponse((BASE_DIR / "makerworld" / "ai_studio.html").read_text(encoding="utf-8"))
+
+
+class AiSaveRequest(BaseModel):
+    name: str = "photo.png"
+    data_url: str = ""
+
+
+AI_MAX_BYTES = 20 * 1024 * 1024
+
+
+@app.post("/makerworld/ai/save")
+async def makerworld_ai_save(req: AiSaveRequest):
+    """Land a generated picture in downloads/ with an unmistakable ai_ prefix, so
+    it can never be mistaken in the picker for a photograph of a real print."""
+    m = re.match(r"^data:image/(png|jpeg|jpg|webp);base64,(.+)$", (req.data_url or "").strip(),
+                 re.S)
+    if not m:
+        raise HTTPException(status_code=400, detail=
+            "expected a base64 image data url (data:image/png;base64,…)")
+    raw = base64.b64decode(m.group(2), validate=False)
+    if not raw:
+        raise HTTPException(status_code=400, detail="the image came through empty")
+    if len(raw) > AI_MAX_BYTES:
+        raise HTTPException(status_code=413, detail=
+            "that image is %d MB — over the %d MB this route will write"
+            % (len(raw) // (1024 * 1024), AI_MAX_BYTES // (1024 * 1024)))
+    stem = re.sub(r"[^A-Za-z0-9._-]", "_", Path(req.name or "photo").name).split(".")[0]
+    stem = (stem or "photo")[:60]
+    ext = "." + ("jpg" if m.group(1) in ("jpeg", "jpg") else m.group(1))
+    name = "ai_%s_%s%s" % (stem, time.strftime("%Y%m%d-%H%M%S"), ext)
+    DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    (DOWNLOADS_DIR / name).write_bytes(raw)
+    return {"name": name, "path": str(DOWNLOADS_DIR / name), "bytes": len(raw),
+            "generated": True}
 
 
 @app.get("/makerworld/files")
