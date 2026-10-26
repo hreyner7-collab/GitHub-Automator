@@ -62,20 +62,32 @@ def _debug_port_up() -> bool:
 def ensure_browser() -> bool:
     """Start Chrome with the debug port if it is not already up, pointed at
     MakerWorld. Same profile as the Creality path uses, because that is the
-    window the user logged MakerWorld into."""
+    window the user logged MakerWorld into.
+
+    Detached on purpose: launched as a child of the server it died whenever
+    the server or the launching shell exited, and the next run then failed
+    with 'connect ECONNREFUSED 127.0.0.1:9222' (measured 2026-10-25)."""
     if _debug_port_up():
         return True
     exe = next((p for p in BROWSER_PATHS if os.path.exists(p)), None)
     if not exe:
         return False
+    flags = {}
+    if os.name == "nt":
+        flags["creationflags"] = (subprocess.DETACHED_PROCESS
+                                  | subprocess.CREATE_NEW_PROCESS_GROUP)
+    else:
+        flags["start_new_session"] = True
     subprocess.Popen(
         [exe, f"--remote-debugging-port={CDP_PORT}", f"--user-data-dir={PROFILE_DIR}",
-         "--no-first-run", "--no-default-browser-check", mw.ORIGIN + "/en/"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    for _ in range(40):
+         "--no-first-run", "--no-default-browser-check",
+         "--disable-session-crashed-bubble", mw.ORIGIN + "/en/"],
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL, close_fds=True, **flags)
+    for _ in range(80):
         if _debug_port_up():
             return True
-        time.sleep(0.5)
+        time.sleep(0.25)
     return _debug_port_up()
 
 
@@ -202,7 +214,8 @@ CATEGORY_OPTIONS_JS = r"""
 
 CATEGORY_STATE_JS = r"""
 () => {
-  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const norm = (s) => (s || '').replace(/[\u200b\u200c\u200d\ufeff]/g, '')
+                                 .replace(/\s+/g, ' ').trim();
   const nodes = [...document.querySelectorAll('body *')];
   const idx = (txt) => nodes.findIndex(e => !e.childElementCount &&
     norm(e.textContent).startsWith(txt));
@@ -212,6 +225,48 @@ CATEGORY_STATE_JS = r"""
   return nodes.slice(a, b > a ? b : a + 12)
     .map(e => norm(e.textContent)).filter(t => t && t.length < 120)
     .join(' | ').slice(0, 400);
+}
+"""
+
+# The Category control, found the way the live form actually is (2026-10-25):
+# a MUI autocomplete whose <input> carries NO placeholder — 'Quick search by
+# entering category keywords' is its floating label. Matching on
+# input[placeholder*=…] found nothing and stopped every run here, which is what
+# looked like a hang after Tags. Fall back to document order between the
+# 'Category' and 'Tags' headings, which is stable across renders.
+CATEGORY_BOX_JS = r"""
+() => {
+  const norm = (s) => (s || '').replace(/[\u200b\u200c\u200d\ufeff]/g, '')
+                                 .replace(/\s+/g, ' ').trim();
+  const vis = (e) => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
+    return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+  const usable = [...document.querySelectorAll('input')].filter(i =>
+    !i.disabled && !i.readOnly && vis(i) &&
+    (!i.type || i.type === 'text' || i.type === 'search'));
+  const byPh = usable.find(i => /category keywords|quick search/i.test(i.placeholder || ''));
+  if (byPh) return byPh;
+  const lab = [...document.querySelectorAll('label, .MuiFormLabel-root, legend')]
+    .find(l => /category keywords/i.test(norm(l.innerText || l.textContent)));
+  if (lab) {
+    const root = lab.closest('.MuiFormControl-root') || lab.parentElement;
+    const input = root ? root.querySelector('input') : null;
+    if (input && usable.includes(input)) return input;
+  }
+  const nodes = [...document.querySelectorAll('body *')];
+  let start = -1, stop = -1;
+  for (let i = 0; i < nodes.length; i++) {
+    if (nodes[i].childElementCount) continue;
+    const t = norm(nodes[i].textContent);
+    if (start < 0 && /^Category\b/.test(t)) { start = i; continue; }
+    if (start >= 0 && /^Tags\b/.test(t)) { stop = i; break; }
+  }
+  if (start >= 0) {
+    for (const i of usable) {
+      const p = nodes.indexOf(i);
+      if (p > start && (stop < 0 || p < stop)) return i;
+    }
+  }
+  return null;
 }
 """
 
@@ -511,49 +566,119 @@ async def _pick_category(page, name: str) -> dict:
     """Choose the source's category through MakerWorld's autocomplete.
 
     Measured 2026-10-25: the field is a MUI autocomplete with the floating
-    label "Quick search by entering category keywords"; typing filters options
-    and only a click on one of them sets the value, so a native value set
-    (which works on Model Name) leaves Category empty.
+    label "Quick search by entering category keywords" — the <input> itself
+    has no placeholder, and only a click on a rendered li option sets the
+    value. The box is waited for (the form mounts its sections late), located
+    by label or by its place between the Category and Tags headings, and the
+    search is retried with the last significant word when the full category
+    name yields no options.
     """
     want = re.sub(r"\s+", " ", (name or "").strip())
     if not want:
         return {"ok": True, "skipped": "the source names no category"}
-    box = page.locator("input[placeholder*='category keywords']").first
-    if await box.count() == 0:
-        box = page.locator("input[placeholder*='Quick search']").first
-    if await box.count() == 0:
-        return {"ok": False, "error": "no Category search box on the draft page"}
-    await box.scroll_into_view_if_needed()
-    await box.click()
-    await page.keyboard.press("Control+A")
-    await page.keyboard.press("Backspace")
-    await page.keyboard.type(want, delay=25)
-    options: list[dict] = []
-    for _ in range(30):
-        options = await page.evaluate(CATEGORY_OPTIONS_JS)
-        if options:
+    handle = await page.evaluate_handle(CATEGORY_BOX_JS)
+    for _ in range(40):
+        if handle.as_element() is not None:
             break
-        await page.wait_for_timeout(300)
-    exact = next((o for o in options if o["text"].lower() == want.lower()), None)
-    if exact is None:
+        await page.wait_for_timeout(250)
+        handle = await page.evaluate_handle(CATEGORY_BOX_JS)
+    el = handle.as_element()
+    if el is None:
+        state = await page.evaluate(FORM_STATE_JS)
+        fields = [f.get("ph") for f in (state.get("textFields") or [])]
+        unauthorized = "not authorized" in (state.get("body") or "").lower()
         return {"ok": False,
-                "error": f"MakerWorld offered no category named {want!r}",
-                "options": [o["text"] for o in options][:12]}
-    await page.mouse.move(exact["x"], exact["y"])
-    await page.wait_for_timeout(150)
-    await page.mouse.click(exact["x"], exact["y"])
+                "error": ("the draft page says this account is not authorized"
+                          if unauthorized else
+                          "no Category search box on the draft page")
+                         + f"; the form's visible text fields read {fields[:8]}",
+                "url": state.get("url")}
+
+    queries = [want]
+    words = [w for w in re.split(r"[^A-Za-z0-9]+", want) if len(w) >= 4]
+    if len(words) > 1:
+        queries.append(words[-1])
+
+    def norm(s: str) -> str:
+        return re.sub(r"\s+", " ", (s or "").replace("\u200b", "").strip()).lower()
+
+    def words_of(s: str) -> set:
+        return set(re.findall(r"[a-z0-9]+", (s or "").lower()))
+
+    options: list[dict] = []
+    picked = None
+    used = want
+    try:
+        await el.scroll_into_view_if_needed()
+        for q in queries:
+            await el.click()
+            await page.keyboard.press("Control+A")
+            await page.keyboard.press("Backspace")
+            await page.keyboard.type(q, delay=10)
+            options = []
+            for _ in range(25):
+                options = await page.evaluate(CATEGORY_OPTIONS_JS)
+                if options:
+                    break
+                await page.wait_for_timeout(200)
+            if not options:
+                continue
+            used = q
+            picked = (next((o for o in options if norm(o["text"]) == norm(want)), None)
+                      or next((o for o in options if norm(o["text"]) == norm(used)), None))
+            if picked is None:
+                wn = words_of(want)
+                close = [o for o in options if wn and wn <= words_of(o["text"])]
+                if len(close) == 1:
+                    picked = close[0]
+            if picked:
+                break
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"the Category box could not be typed into "
+                                      f"({type(exc).__name__}: {str(exc)[:120]})"}
+    if not options:
+        return {"ok": False,
+                "error": f"MakerWorld offered no category options for {want!r}",
+                "query": used}
+
+    how = "exact" if picked else ""
+    if picked is None and len(options) == 1:
+        picked, how = options[0], "only option"
+    if picked is None:
+        picked, how = options[0], "first option"
+    await page.mouse.move(picked["x"], picked["y"])
+    await page.wait_for_timeout(120)
+    await page.mouse.click(picked["x"], picked["y"])
     block = ""
-    for _ in range(15):
+    shown = ""
+    want_key = norm(picked["text"])
+    for _ in range(20):
+        shown, around = "", ""
+        try:
+            shown = await el.input_value()
+        except Exception:  # the re-render can replace the input
+            pass
+        try:
+            around = await el.evaluate(
+                "e => { const r = e.closest('.MuiFormControl-root') || e.parentElement;"
+                " return r ? (r.innerText || '') : ''; }")
+        except Exception:
+            pass
+        if want_key in norm(shown):
+            return {"ok": True, "chosen": picked["text"], "how": how,
+                    "query": used, "read_back": norm(shown)[:120]}
+        if want_key in norm(around):
+            return {"ok": True, "chosen": picked["text"], "how": how,
+                    "query": used, "read_back": norm(around)[:120]}
         block = await page.evaluate(CATEGORY_STATE_JS)
-        shown = await page.evaluate(
-            "(w) => [...document.querySelectorAll('input')].some(i => "
-            "(i.value || '').trim().toLowerCase() === w.toLowerCase())", want)
-        if shown or want.lower() in (block or "").lower():
-            return {"ok": True, "chosen": exact["text"], "read_back": (block or "")[:160]}
-        await page.wait_for_timeout(300)
+        if want_key in norm(block):
+            return {"ok": True, "chosen": picked["text"], "how": how,
+                    "query": used, "read_back": norm(block)[:120]}
+        await page.wait_for_timeout(200)
     return {"ok": False,
-            "error": f"{want!r} was clicked but the Category field does not show it",
-            "read_back": (block or "")[:200]}
+            "error": f"{picked['text']!r} was clicked but the Category field does not show it",
+            "read_back": (block or "")[:200],
+            "options": [o["text"] for o in options][:12]}
 
 
 async def _answer_publish_dialog(page) -> dict:
@@ -567,11 +692,11 @@ async def _answer_publish_dialog(page) -> dict:
     args = {"title": "Publish your model", "option": "Sync only CC license models",
             "confirm": "Confirm"}
     found = None
-    for _ in range(30):
+    for _ in range(40):
         found = await page.evaluate(PUBLISH_DIALOG_JS, args)
         if found:
             break
-        await page.wait_for_timeout(400)
+        await page.wait_for_timeout(250)
     if not found:
         return {"seen": False}
     out: dict = {"seen": True, "options": found.get("options"),
@@ -641,23 +766,34 @@ async def _fill_text(page, marker: str = "", want_ph: str = "", text: str = "") 
 async def _type_tags(page, marker: str, tags: list[str]) -> dict:
     """Tags are committed by the Enter key (measured helper text: 'Press "Enter"
     to separate tags'), so they are typed through the keyboard, not set as a
-    value, and the form's own counter is read back afterwards."""
+    value, and the form's own counter is read back afterwards.
+
+    Tags are optional on the form, so a timeout here is reported, never raised:
+    a dropdown covering the field must not cost the whole listing."""
     handle = await page.evaluate_handle(FIELD_LOCATOR_JS, {"marker": marker, "want_ph": ""})
     el = handle.as_element()
     if el is None:
         return {"ok": False, "error": f"no tag input under {marker!r}", "planned": tags}
-    await el.click()
-    for t in tags:
-        await page.keyboard.type(t[: mw.MAX_TAG_INPUT], delay=5)
-        await page.keyboard.press("Enter")
-        await page.wait_for_timeout(150)
+    try:
+        await el.click(timeout=8_000)
+        for t in tags:
+            await page.keyboard.type(t[: mw.MAX_TAG_INPUT], delay=5)
+            await page.keyboard.press("Enter")
+            await page.wait_for_timeout(150)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "planned": tags,
+                "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
     back = await page.evaluate("""
-      (m) => { const norm = s => (s||'').replace(/\\s+/g,' ').trim();
+      (m) => { const norm = s => (s||'').replace(/[\\u200b\\u200c\\u200d\\ufeff]/g,'')
+                                     .replace(/\\s+/g,' ').trim();
                const el = [...document.querySelectorAll('body *')]
                  .find(e => !e.childElementCount && norm(e.textContent).startsWith(m));
                return el ? norm(el.textContent).slice(0, 60) : ''; }
     """, marker)
-    return {"ok": bool(back), "planned": tags, "counter": back}
+    m = re.search(r"\((\d+)\s*/\s*\d+\)", back or "")
+    count = int(m.group(1)) if m else -1
+    return {"ok": True if count < 0 else count >= 1,
+            "planned": tags, "counter": back, "count": count}
 
 
 async def _click_button(page, text: str, force: bool = False) -> dict:
@@ -677,13 +813,17 @@ async def _type_origin_url(page, url: str) -> dict:
     box = page.locator("input[placeholder*='Paste the URL']").first
     if await box.count() == 0:
         return {"ok": False, "error": "no Model Origin URL box on the draft page"}
-    await box.scroll_into_view_if_needed()
-    await box.click()
-    await page.keyboard.press("Control+A")
-    await page.keyboard.press("Backspace")
-    await page.keyboard.type(url, delay=25)
-    await page.wait_for_timeout(300)
-    back = await box.input_value()
+    try:
+        await box.scroll_into_view_if_needed()
+        await box.click(timeout=8_000)
+        await page.keyboard.press("Control+A")
+        await page.keyboard.press("Backspace")
+        await page.keyboard.type(url, delay=12)
+        await page.wait_for_timeout(250)
+        back = await box.input_value()
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"the Model Origin box could not be typed into "
+                                      f"({type(exc).__name__}: {str(exc)[:140]})"}
     return {"ok": back == url, "read_back": back[:160], "how": "keyboard"}
 
 
@@ -697,11 +837,11 @@ async def _click_origin_card(page, want_name: str) -> dict:
         return {"ok": False, "error": "the source has no name to match a card by"}
     args = {"ph": "Paste the URL", "words": words}
     card = None
-    for _ in range(40):
+    for _ in range(60):
         card = await page.evaluate(ORIGIN_CARD_JS, args)
         if card:
             break
-        await page.wait_for_timeout(600)
+        await page.wait_for_timeout(400)
     if not card:
         return {"ok": False, "error": "no card with the source's picture appeared under "
                                       "the Model Origin box", "words": words}
@@ -956,12 +1096,21 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                             "verify": verify}
             _mark("origin")
 
-            # 3) Model Name / Tags / Category — measured limits applied first.
+            # 3) Model Name / Category / Tags — in the form's own measured
+            #    order (Name, Category, Tags), so no field is filled while the
+            #    form has scrolled it out of view. The name is required; tags
+            #    are optional but retried once. Every answer is read back.
             named = await _fill_text(page, marker="Model Name", text=plan["name"])
+            if not named.get("ok"):
+                await page.wait_for_timeout(300)
+                named = await _fill_text(page, marker="Model Name", text=plan["name"])
             verify["name"] = named
-            tag_list = mw.plan_tags(tags or [], remix_source_name or name)
-            if tag_list:
-                verify["tags"] = await _type_tags(page, "Tags", tag_list)
+            if not named.get("ok"):
+                return {"success": False, "url": page.url, "draft_id": draft_id,
+                        "error": "MakerWorld's Model Name field would not take the source's "
+                                 f"name ({named.get('error') or named.get('read_back')}). "
+                                 "Nothing was published.",
+                        "verify": verify}
             if category:
                 cat_res = await _pick_category(page, category)
                 verify["category"] = cat_res
@@ -971,6 +1120,13 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                                      f"{category!r}: {cat_res.get('error')}. Category is "
                                      "required, so nothing was published.",
                             "verify": verify}
+            tag_list = mw.plan_tags(tags or [], remix_source_name or name)
+            if tag_list:
+                tags_res = await _type_tags(page, "Tags", tag_list)
+                if not tags_res.get("ok"):
+                    await page.wait_for_timeout(300)
+                    tags_res = await _type_tags(page, "Tags", tag_list)
+                verify["tags"] = tags_res
 
             # 4) Licence — answer the questions, then read back the licence NAME
             #    MakerWorld itself renders. The mapping is MakerWorld's, not
@@ -1039,7 +1195,7 @@ async def upload(name: str, description: str, stl_path: str, image_paths: list[s
                     if i:
                         await page.keyboard.press("Enter")
                     if part:
-                        await page.keyboard.type(part, delay=4)
+                        await page.keyboard.type(part, delay=2)
                 state = await page.evaluate(FORM_STATE_JS)
                 wrote = (state.get("editor") or "").strip()
             except Exception as exc:  # noqa: BLE001

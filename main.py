@@ -720,10 +720,11 @@ async def upload_to_makerworld(req: MakerWorldUploadRequest):
                 tags=req.tags, category=req.category, kind=req.kind)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    # Only what really landed. A dry run and a MAKERWORLD_NO_SUBMIT fill publish
-    # nothing, so they must not lock the model.
-    published_now = (result.get("success") and not result.get("dry_run")
-                     and not result.get("no_submit"))
+    # Only what really landed. A dry run, a MAKERWORLD_NO_SUBMIT fill, and a
+    # form left waiting for a manual Publish press carry success=True but put
+    # nothing on MakerWorld, so they must not lock the model.
+    published_now = (result.get("success") and not result.get("error")
+                     and not result.get("dry_run") and not result.get("no_submit"))
     if published_now or result.get("duplicate"):
         makerworld_ledger.record(
             name=req.name, source_url=req.source_url, published_url=result.get("url") or "",
@@ -1690,7 +1691,13 @@ async def _makerworld_auto_worker(count: int, job_id: str) -> None:
             # The public design API named the source's own category and tags;
             # the form's pickers only accept its own vocabulary, so they are
             # passed through exactly as the source declares them.
-            cat = (res.get("categories") or [""])[0]
+            cat = next((c for c in (res.get("categories") or []) if c), "")
+            if not cat:
+                row["state"] = "skipped"
+                row["why"] = ("the source page named no category, and MakerWorld's form "
+                              "requires one")
+                _log()
+                continue
             tag_list = res.get("tags") or []
             row["state"] = "uploading"
             _log()
@@ -1704,7 +1711,7 @@ async def _makerworld_auto_worker(count: int, job_id: str) -> None:
                         tags=tag_list, category=cat, should_stop=_stopped)
             except Exception as exc:  # noqa: BLE001
                 up = {"success": False, "error": f"{type(exc).__name__}: {exc}"}
-            if up.get("success"):
+            if up.get("success") and not up.get("error") and not up.get("no_submit"):
                 row["state"] = "published"
                 row["published_url"] = up.get("url", "")
                 row["pending_review"] = bool(up.get("pending_review"))
@@ -1755,7 +1762,8 @@ async def makerworld_auto_start(req: AutoRequest):
     if not await asyncio.to_thread(makerworld_ensure_browser):
         raise HTTPException(status_code=503, detail=
             "Chrome's debug port 9222 would not open, so the run was not started. "
-            "Check that Chrome is installed, then try Find and publish again.")
+            "Check that Chrome is installed; if a Chrome window using the pipeline's "
+            "debug profile is already open, close it and try Find and publish again.")
     job_id = time.strftime("%Y%m%d-%H%M%S")
     MW_AUTO.update({"state": "discovering", "job_id": job_id, "requested": count,
                     "discovered": 0, "items": [], "note": "", "finished": None,

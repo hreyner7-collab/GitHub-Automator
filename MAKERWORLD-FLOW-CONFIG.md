@@ -131,12 +131,14 @@ offering NoDerivatives sources. And a design's licence is rendered as a
 `_fetch_makerworld` reads the anchors; a page that names no licence at all stops an
 auto item rather than defaulting to CC BY the way the manual path does.
 
-**Model Name** `0/50` · **Tags** `Tags (0 / 50)` with a `0/100` input and
-`Press "Enter" to separate tags` · **Category** "Quick search by entering
-category keywords" · **Description** and **Model Videos** ("Max 30s,
-mp4/mov"), **BOM**, **Community Post**, **Assembly Guide**, **Exclusive Model
-Program** ("Not Eligible" for this account), **Visibility** `Public` / `Private`
-(Public arrives checked).
+**Model Name** `0/50` · **Category** — a MUI autocomplete whose
+`<input>` has **no placeholder**; "Quick search by entering category
+keywords" is its floating label · **Tags** `Tags (0 / 50)` with a `0/100` input
+and `Press "Enter" to separate tags` · **Description** and **Model Videos**
+("Max 30s, mp4/mov"), **BOM**, **Community Post**, **Assembly Guide**,
+**Exclusive Model Program** ("Not Eligible" for this account), **Visibility**
+`Public` / `Private` (Public arrives checked). The fields are laid out in the
+order Name → Category → Tags, and are filled in that order.
 
 **Licence — four radio groups, measured verbatim:**
 
@@ -210,7 +212,7 @@ account-shaped artefact ever created was the probe draft, and it is deleted.
 | the source-suggestion **row markup** after typing a URL (`[class*=origin]` etc. is a guess from Creality's naming) | the driver waits for *any* suggestion rows and reports them in `verify.origin.rows`; it publishes nothing if none appear. The row is chosen by `pick_source_row` on its **text**, and `SOURCE_ROW_CLICK_JS` re-reads that text before clicking, so a list that re-rendered in between refuses instead of registering a look-alike. `ORIGIN_STATE_JS` then re-reads the Model Origin block and the publish is refused if the source is not named in it |
 | whether MakerWorld flags a duplicate model | `DUPLICATE_RE` watches for the wording; our own `makerworld_ledger` is the real guard |
 | the source-suggestion row **markup** | measured later (2026-10-25): typing a URL lists design cards; the pipeline clicks the card that carries the source's own title/design id with a real mouse (`ORIGIN_CARD_JS`), re-reads `ORIGIN_STATE_JS`, and refuses if the card's text or the Model Origin block does not name the source |
-| category picker semantics | measured: a MUI autocomplete; the driver types the category name, clicks the exact `li.MuiAutocomplete-option` by text (`CATEGORY_OPTIONS_JS`), and reads the chosen value back — no category, no publish |
+| category picker semantics | measured 2026-10-25 off the live draft (`r04_step2_dump.json`): the `<input>` has **no placeholder** — the searched-for text is its floating label, so placeholder-based lookup found nothing and every run stopped here. `CATEGORY_BOX_JS` finds the box by that label or by document order between the `Category` and `Tags` headings, waits up to 10 s for it to mount, types the source's category (retrying with its last word), clicks a rendered `li.MuiAutocomplete-option` with a real mouse (`CATEGORY_OPTIONS_JS`), and reads the value back — no category, no publish |
 | the `Publish` result | measured: Publish opens the **"Publish your model"** sync dialog; choosing the CC-only option and Confirm produces the toast **"Model published & synced!"** and lands on `/en/@<user>/verifying` — i.e. **manual review**, not a public page yet. Success is the toast **or** that URL; the driver reports `pending_review: True`, and the ledger records the submission as published with the note "MakerWorld is reviewing" |
 
 ## The published end state (measured 2026-10-25)
