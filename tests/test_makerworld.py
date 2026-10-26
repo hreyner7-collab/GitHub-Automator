@@ -572,6 +572,98 @@ def test_the_description_field_posts_the_source_text_unchanged():
     assert "added automatically" not in html
 
 
+# ── restyling the maker's own photographs ─────────────────────────────────────
+
+def _bench_photo(tmp_path, name):
+    """A photograph-like stand-in: a textured product on a light bench."""
+    import cv2
+    import numpy as np
+    img = np.full((200, 200, 3), 236, np.uint8)
+    cv2.circle(img, (100, 100), 55, (150, 120, 40), -1)
+    noise = np.random.default_rng(5).normal(0, 12, (200, 200)).astype(np.float32)
+    img = np.clip(img.astype(np.float32) + noise[..., None], 0, 255).astype(np.uint8)
+    p = tmp_path / name
+    cv2.imwrite(str(p), img)
+    return str(p), p.read_bytes()
+
+
+def test_print_photos_are_sent_exactly_as_shot_when_nothing_is_asked(tmp_path):
+    (tmp_path / "one.png").write_bytes(b"x")
+    (tmp_path / "notes.txt").write_text("not an image", encoding="utf-8")
+    out = mw.prepare_print_photos([str(tmp_path / "one.png"), "notes.txt",
+                                   str(tmp_path / "gone.png"), ""])
+    assert out["photos"] == [str(tmp_path / "one.png")]
+    assert out["styled"] is False and out["notes"] == []
+
+
+def test_a_restyle_writes_a_new_file_and_never_touches_the_photograph(tmp_path):
+    src, original_bytes = _bench_photo(tmp_path, "bench.png")
+    import cv2
+    out = mw.prepare_print_photos([src], "gray", "blue")
+    assert out["styled"] is True
+    assert (out["background"], out["recolour"]) == ("gray", "blue")
+    edited = pathlib.Path(out["photos"][0])
+    assert edited.name == "bench_edited_gray_blue.png" and edited.is_file()
+    assert str(edited) != src
+    got = cv2.imread(str(edited))
+    assert int(got[4, 4][0]) - int(got[4, 4][2]) <= 2, "background is not neutral"
+    core = got[100, 100]
+    assert core[0] > core[2] + 20 and core[0] > core[1] + 20, f"product not blue: {core}"
+    assert pathlib.Path(src).read_bytes() == original_bytes, "the photo was overwritten"
+    assert len(out["notes"]) == 1 and "->" in out["notes"][0]
+
+
+def test_a_refused_photo_ships_as_the_original_and_says_so(tmp_path, monkeypatch):
+    """The >=3 photo rule must never break because one restyle failed."""
+    (tmp_path / "one.png").write_bytes(b"x")
+    import editor
+
+    def boom(*a, **k):
+        raise RuntimeError("QA refused")
+    monkeypatch.setattr(editor, "edit_image", boom)
+    out = mw.prepare_print_photos([str(tmp_path / "one.png")], "gray")
+    assert out["photos"] == [str(tmp_path / "one.png")]
+    assert "left as shot" in out["notes"][0] and "QA refused" in out["notes"][0]
+
+
+def test_a_typo_in_the_style_is_named_before_a_single_photo_is_touched(tmp_path,
+                                                                       monkeypatch):
+    (tmp_path / "one.png").write_bytes(b"x")
+    import editor
+
+    def boom(*a, **k):
+        raise AssertionError("the finisher must not run on a bad option")
+    monkeypatch.setattr(editor, "edit_image", boom)
+    with pytest.raises(ValueError, match="unknown background"):
+        mw.prepare_print_photos([str(tmp_path / "one.png")], "graay")
+    with pytest.raises(ValueError, match="unknown colour"):
+        mw.prepare_print_photos([str(tmp_path / "one.png")], "", "chartreuse-ish")
+
+
+def test_the_page_sends_both_options_and_defaults_to_neither(tmp_path):
+    html = _page()
+    for want in ('id="photo-bg"', 'id="photo-colour"', 'id="photo-hex"'):
+        assert want in html, want
+    assert "photo_background: document.getElementById('photo-bg').value" in html
+    assert "photo_recolour: document.getElementById('photo-hex').value.trim()" in html
+    assert '<option value="">Leave it exactly as I shot it</option>' in html
+    assert '<option value="">Leave it as printed</option>' in html
+    assert '<span class="build" id="mw-version" title="MakerWorld dashboard ' \
+           'version: bumped on every update">V5</span>' in html
+
+
+def test_the_publish_route_restyles_before_it_opens_the_browser():
+    src = (ROOT / "main.py").read_text(encoding="utf-8")
+    body = re.search(r"@app.post\(\"/upload/makerworld\"\).*?\n\n\n@app.get",
+                     src, re.S).group(0)
+    assert 'makerworld_flow.prepare_print_photos(' in body
+    assert 'print_photos=prep["photos"]' in body
+    assert "print_photos=req.print_photos" not in body
+    # the restyle is outside the browser lock, and a bad option is a 400
+    assert body.index("prepare_print_photos") < body.index("async with UPLOAD_LOCK")
+    assert 'status_code=400' in body
+
+
 def test_the_creality_page_no_longer_publishes_to_makerworld():
     html = CXY_PAGE.read_text(encoding="utf-8")
     for banned in ("/upload/makerworld", "makerworld-section", "mw-real-photos",

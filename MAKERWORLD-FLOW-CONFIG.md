@@ -257,7 +257,7 @@ halves, so the separation cannot rot back into a merged page.
 | 2 · Listing | name/description prefilled by `loadSource()` from `/fetch`; tags and category typed by hand | the description is the source's own text (API `summary` → `boostcontent`) verbatim — never generated, never truncated; the page says so |
 | Auto · Find and publish | `POST /makerworld/auto/start` → `ensure_browser()` (opens the logged-in debug Chrome **before** the run is announced, and answers 503 if it cannot) → `discover()` (licence-filtered) → `downloader.fetch` → `makerworld_uploader.upload(dry_run=False)` | never the Creality loop's modules; never an item whose source page names no licence, or fewer than 3 of the original maker's photographs. It passes the fetched **description, first category and tags** straight into the upload, like the manual form. A download that fails reports the browser's own error (e.g. `ECONNREFUSED`), never "MakerWorld refused the file" |
 | covers grid | the scraped originals (`_raw_orig_images`) | on this manual page, never presented as print photos |
-| 3 · Photographs of your prints | `GET /makerworld/files` → images already in `downloads/` | never fills itself from the gallery (the Auto run is the one path that uses the source's own photographs, because they are the original maker's real prints) |
+| 3 · Photographs of your prints | `GET /makerworld/files` → images already in `downloads/`, plus the two opt-in restyles (`photo_background`, `photo_recolour`) | never fills itself from the gallery (the Auto run is the one path that uses the source's own photographs, because they are the original maker's real prints) |
 | 4 · Check | `POST /upload/makerworld/plan` | opens no browser, creates no draft |
 | 4 · Publish (starts disabled) | `POST /upload/makerworld` | unlocks only with a name, a model file, a cover, ≥3 print photos **and** the assertion tick |
 | 5 · Memory | `GET /makerworld/published`, `POST /makerworld/forget` | never reads or writes Creality's `published_models.json` |
@@ -266,3 +266,26 @@ The Publish button's lock is the measured rule, not a courtesy: MakerWorld's for
 says "Upload ≥3 photos of the printed model, covering 3 views", so a listing that
 cannot satisfy it is not offered. Forget needs a name, url or design id — an empty
 match is a 400, never "forget everything".
+
+### Tidying the photographs you ticked (`prepare_print_photos`)
+
+The listing needs photographs of a print this account actually made, and the only
+edits allowed on them are cosmetic: `makerworld_flow.prepare_print_photos(paths,
+background, recolour)` runs the local finisher (`editor.edit_image`) over the
+ticked files and nothing else. Measured behaviour, all of it asserted in
+`tests/test_makerworld.py`:
+
+| case | what happens |
+|---|---|
+| neither option set | the list is returned untouched in 0.0 s — no segmentation, no new files |
+| `background` only | that backdrop is composited behind the product (`gray` / `white` / `graphite` / `charcoal` / `wood`) |
+| `recolour` only | `background` defaults to `keep`: the workbench in the shot stays **byte-identical** and only the plastic shifts (Lab constant offset, measured sharpness ratio 0.98) |
+| a photo the QA refuses | the ORIGINAL file ships and the note says "left as shot (…)", so the restyle can never push the listing under the ≥3 rule |
+| a typo in either option | `ValueError` naming the valid values, before a single photo is opened (the plan route returns it as a 400) |
+
+Edited files are written beside the photograph as
+`<stem>_edited[_<background>][_<colour>].png` (plus `_mask`/`_repair` sidecars) and
+the default wood run still writes `<stem>_edited.png`, so the photograph on disk is
+never overwritten. Restyling happens in `POST /upload/makerworld` **before**
+`UPLOAD_LOCK` is taken: about 4 s per photo at 200×200, off the browser's clock, so
+a slow image cannot stall the wizard.

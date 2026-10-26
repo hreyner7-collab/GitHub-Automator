@@ -159,6 +159,33 @@ def test_editor_preserves_product_colors_and_sharpness(monkeypatch, tmp_path):
     assert s_e >= 0.9 * s_o, f"product lost sharpness: {s_e:.0f} vs {s_o:.0f}"
 
 
+def test_editor_keep_mode_changes_only_the_product_colour(monkeypatch, tmp_path):
+    """background="keep": the bench stays in the shot; only the plastic moves."""
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    import cv2
+    import numpy as np
+    import editor
+
+    img = np.full((200, 200, 3), 236, np.uint8)
+    cv2.circle(img, (100, 100), 55, (150, 120, 40), -1)
+    noise = np.random.default_rng(5).normal(0, 12, (200, 200)).astype(np.float32)
+    img = np.clip(img.astype(np.float32) + noise[..., None], 0, 255).astype(np.uint8)
+    src = tmp_path / "bench.png"
+    cv2.imwrite(str(src), img)
+
+    out = cv2.imread(editor.edit_image(str(src), background="keep", recolour="blue"))
+    assert out is not None
+    for p in ((4, 4), (4, 195), (195, 4), (195, 195)):
+        drift = int(np.abs(out[p].astype(np.int16) - img[p].astype(np.int16)).max())
+        assert drift <= 1, f"keep mode repainted the background at {p}: {drift}"
+    core = out[100, 100]
+    assert core[0] > core[2] + 20 and core[0] > core[1] + 20, f"product not recoloured: {core}"
+
+    assert editor.check_options("photo")[0] == "keep"      # the word people type
+    with pytest.raises(ValueError):
+        editor.edit_image(str(src), background="wall")
+
+
 def test_editor_removes_watermark_text(monkeypatch, tmp_path):
     """NO TEXT ANYWHERE: baked-in watermark text — even printed across the
     product — must be gone in the edited output (the BISTAKE regression)."""

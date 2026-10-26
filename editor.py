@@ -70,9 +70,12 @@ OPAQUE_KEEP_MIN = 0.60    # opaque-shipped area must keep >= this share of the
                           # Scale-free by construction — close-ups immune.
 
 # Backdrops the finisher can build. "wood" is the original default; the rest
-# are flat neutral studio sweeps at a given brightness (0-255).
+# are flat neutral studio sweeps at a given brightness (0-255), and "keep"
+# leaves the photograph's own background exactly as it was shot.
 BACKGROUNDS = {"wood": None, "gray": 150, "grey": 150, "white": 222,
-               "graphite": 62, "charcoal": 88}
+               "graphite": 62, "charcoal": 88, "keep": None}
+BACKDROP_ALIASES = {"photo": "keep", "own": "keep", "original": "keep",
+                    "raw": "keep"}
 # Filament colours for the opt-in recolour, as BGR hex.
 COLOURS = {
     "white": "#f2f2f2", "black": "#1a1a1a", "gray": "#808080", "grey": "#808080",
@@ -647,12 +650,12 @@ def _neutral_background(shape, seed: int, level: int) -> np.ndarray:
 
 def _studio_background(shape, seed: int, background: str) -> np.ndarray:
     """The requested backdrop. `wood` keeps the original procedural oak."""
-    key = (background or "wood").strip().lower()
+    key = check_options(background, "")[0]
+    if key == "keep":
+        raise ValueError("'keep' has no rendered backdrop — the photograph's "
+                         "own pixels stay where they are")
     if key in ("", "wood"):
         return _wood_background(shape, seed)
-    if key not in BACKGROUNDS:
-        raise ValueError(f"unknown background {background!r} — use one of "
-                         f"{', '.join(sorted(set(BACKGROUNDS)))}")
     return _neutral_background(shape, seed, BACKGROUNDS[key])
 
 
@@ -667,6 +670,19 @@ def _lab_of(colour: str) -> tuple[float, float, float]:
                    np.uint8)
     lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2Lab)[0, 0]
     return float(lab[0]), float(lab[1]), float(lab[2])
+
+
+def check_options(background: str = "wood", recolour: str = "") -> tuple[str, str]:
+    """Validate the two style choices without touching an image, so a typo is
+    named before a batch runs rather than after. Returns (style, colour)."""
+    style = BACKDROP_ALIASES.get((background or "wood").strip().lower(),
+                                 (background or "wood").strip().lower())
+    if style not in BACKGROUNDS:
+        raise ValueError(f"unknown background {background!r} — use one of "
+                         f"{', '.join(sorted(set(BACKGROUNDS)))}")
+    if recolour:
+        _lab_of(recolour)
+    return style, (recolour or "").strip()
 
 
 def _recolour_product(img: np.ndarray, mask: np.ndarray,
@@ -911,18 +927,14 @@ def edit_image(source_path: str, retries: int = 0, debug_dir: str | None = None,
                background: str = "wood", recolour: str = "") -> str:
     """Local edit: product geometry and texture kept exactly, background
     replaced with a sharp procedural studio backdrop (`background="wood"` by
-    default, or a flat `"gray"` / `"white"` / `"graphite"` sweep), and — only
-    when asked — the filament colour shifted onto `recolour` (a name or
-    "#rrggbb"). Full resolution end-to-end; nothing is downscaled or resampled.
+    default, a flat `"gray"` / `"white"` / `"graphite"` sweep, or `"keep"` to
+    leave the photograph's own background alone), and — only when asked — the
+    filament colour shifted onto `recolour` (a name or "#rrggbb"). Full
+    resolution end-to-end; nothing is downscaled or resampled.
 
     With `debug_dir`, every intermediate and QA number is dumped there
     (identical code path, instrumentation only — see _dbg_dump)."""
-    style = (background or "wood").strip().lower()
-    if style not in BACKGROUNDS:
-        raise ValueError(f"unknown background {background!r} — use one of "
-                         f"{', '.join(sorted(set(BACKGROUNDS)))}")
-    if recolour:
-        _lab_of(recolour)                 # bad colour name: fail before segmenting
+    style, recolour = check_options(background, recolour)
     img = cv2.imread(source_path, cv2.IMREAD_COLOR)
     if img is None:
         raise RuntimeError(f"Could not read image: {source_path}")
@@ -994,7 +1006,7 @@ def edit_image(source_path: str, retries: int = 0, debug_dir: str | None = None,
     # at 4K (measured row-jump 15.5 -> target <=6, same visual style).
     work_shape = (int(img.shape[0] * work_scale), int(img.shape[1] * work_scale)) \
         if work_scale < 1.0 else img.shape[:2]
-    wood_work = _studio_background(work_shape, seed, style)
+    wood_work = work_src if style == "keep" else _studio_background(work_shape, seed, style)
 
     # One human (hand/arm) detection for the whole image; per-candidate masks
     # get the foreign body stripped — but ONLY a skin-verified person (the
@@ -1083,11 +1095,16 @@ def edit_image(source_path: str, retries: int = 0, debug_dir: str | None = None,
         sigma = max(1.0, min(img.shape[:2]) / 1200)
         alpha = (cv2.GaussianBlur(hard, (0, 0), sigmaX=sigma).astype(np.float32) / 255.0)[..., None]
 
-        wood_full = cv2.resize(wood_work, (img.shape[1], img.shape[0]),
-                               interpolation=cv2.INTER_CUBIC) \
-            if wood_work.shape[:2] != img.shape[:2] else wood_work
-        wood_full = _add_contact_shadow(wood_full,
-                                        (mask > 127).astype(np.uint8) * 255)
+        if style == "keep":
+            # The photograph's own surface is the backdrop, so no synthetic
+            # contact shadow — a drawn shadow under a real bench shot is a lie.
+            wood_full = work_src
+        else:
+            wood_full = cv2.resize(wood_work, (img.shape[1], img.shape[0]),
+                                   interpolation=cv2.INTER_CUBIC) \
+                if wood_work.shape[:2] != img.shape[:2] else wood_work
+            wood_full = _add_contact_shadow(wood_full,
+                                            (mask > 127).astype(np.uint8) * 255)
         out = (work.astype(np.float32) * alpha + wood_full.astype(np.float32) * (1 - alpha))
         out = np.clip(out, 0, 255).astype(np.uint8)
 
@@ -1242,10 +1259,12 @@ if __name__ == "__main__":
                     "if you ask, a different filament colour.")
     ap.add_argument("images", nargs="+", help="photographs to edit (your own)")
     ap.add_argument("--background", default="wood",
-                    help="wood (default) | gray | grey | white | graphite | charcoal")
+                    help="wood (default) | gray | grey | white | graphite | "
+                         "charcoal | keep (leave the photo's own background)")
     ap.add_argument("--recolour", default="",
                     help="filament colour: %s, or #rrggbb" % ", ".join(sorted(COLOURS)))
     args = ap.parse_args()
+    check_options(args.background, args.recolour)
     for src in args.images:
         try:
             print(edit_image(src, background=args.background, recolour=args.recolour))

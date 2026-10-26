@@ -323,6 +323,43 @@ def usable_images(paths, must_exist: bool = True) -> list[str]:
     return out
 
 
+def prepare_print_photos(photo_paths, background: str = "",
+                         recolour: str = "") -> dict:
+    """Tidy the photographs of your own print before they go on the listing.
+
+    Both options are opt-in and act only on photos that already exist:
+    `background` is the backdrop the editor composites onto ("keep" leaves the
+    workbench in the shot exactly as it was), `recolour` shifts the printed
+    plastic to another filament colour. Neither one creates a picture — the
+    object, its geometry and every detail in it are the ones you photographed.
+
+    With no option set the list is returned untouched. An image the editor's QA
+    refuses keeps its ORIGINAL file and is named in `notes`, so a restyle can
+    never quietly drop the listing below MakerWorld's 3-photo minimum.
+    """
+    photos = usable_images(photo_paths)
+    if not (background or "").strip() and not (recolour or "").strip():
+        return {"photos": photos, "notes": [], "styled": False}
+
+    import editor                      # heavy (cv2/numpy) and only needed here
+
+    style, colour = editor.check_options((background or "keep").strip(), recolour)
+    notes = []
+    out = []
+    for path in photos:
+        try:
+            edited = editor.edit_image(path, background=style, recolour=colour)
+        except Exception as e:          # noqa: BLE001 — refuse one, keep the rest
+            notes.append(f"{os.path.basename(path)}: left as shot (the finisher "
+                         f"refused it: {e})")
+            out.append(path)
+            continue
+        notes.append(f"{os.path.basename(path)} -> {os.path.basename(edited)}")
+        out.append(edited)
+    return {"photos": out, "notes": notes, "styled": True,
+            "background": style, "recolour": colour}
+
+
 def validate_plan(name: str = "", description: str = "", source_url: str = "",
                   model_file: str = "", cover_images=(), print_photos=(),
                   remix_source_url: str = "", license_raw: str = "",

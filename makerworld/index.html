@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MakerWorld Pipeline V4</title>
+<title>MakerWorld Pipeline V5</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root { --bg:#101315; --card:#181d20; --line:#2a3135; --ink:#e8eaed; --dim:#9aa4aa;
@@ -68,7 +68,7 @@
 <body>
 <div class="topbar">
   <h1>MakerWorld <span>Pipeline</span></h1>
-  <span class="build" id="mw-version" title="MakerWorld dashboard version: bumped on every update">V4</span>
+  <span class="build" id="mw-version" title="MakerWorld dashboard version: bumped on every update">V5</span>
   <span class="build" id="build-stamp" title="Which code this server process is running"></span>
   <a href="/">Creality dashboard &rarr;</a>
 </div>
@@ -162,13 +162,58 @@
 <div class="card">
   <h2>3 · Photographs of your prints</h2>
   <p class="hint">MakerWorld requires <b>at least 3 photos of the model you actually printed</b>,
-  covering 3 views, and says so on the form. The scraped gallery pictures and this pipeline's
-  edited renders are covers, not print photos — so they are never sent here. Pick the files that
-  came off your camera.</p>
+  covering 3 views, and says so on the form. The scraped gallery pictures are the other maker's
+  photographs, not yours, and this pipeline's edited renders are covers — neither is sent here.
+  Pick the files that came off your camera.</p>
   <button class="ghost" onclick="loadFiles()">List images in downloads/</button>
   <div id="files-status" class="status"></div>
   <div id="print-picks"></div>
   <div class="count" id="print-count">0 of 3 selected</div>
+  <div class="row" style="margin-top:10px">
+    <div style="flex:1;min-width:210px">
+      <label>Background of the photo</label>
+      <select id="photo-bg" style="width:100%">
+        <option value="">Leave it exactly as I shot it</option>
+        <option value="gray">Flat gray studio sweep</option>
+        <option value="white">Flat white studio sweep</option>
+        <option value="graphite">Dark graphite sweep</option>
+        <option value="charcoal">Charcoal sweep</option>
+        <option value="wood">Wood bench (the render style)</option>
+        <option value="keep">Keep my background, only change the colour</option>
+      </select>
+    </div>
+    <div style="flex:1;min-width:210px">
+      <label>Colour of the printed item</label>
+      <div class="row">
+        <select id="photo-colour" style="flex:1;min-width:130px">
+          <option value="">Leave it as printed</option>
+          <option value="white">White</option>
+          <option value="silver">Silver</option>
+          <option value="gray">Gray</option>
+          <option value="black">Black</option>
+          <option value="red">Red</option>
+          <option value="orange">Orange</option>
+          <option value="yellow">Yellow</option>
+          <option value="green">Green</option>
+          <option value="teal">Teal</option>
+          <option value="blue">Blue</option>
+          <option value="navy">Navy</option>
+          <option value="purple">Purple</option>
+          <option value="pink">Pink</option>
+          <option value="brown">Brown</option>
+          <option value="copper">Copper</option>
+          <option value="gold">Gold</option>
+        </select>
+        <input type="text" id="photo-hex" placeholder="#rrggbb" style="width:104px">
+      </div>
+    </div>
+  </div>
+  <div class="kv">Both run on <b>the photographs you ticked</b> and change nothing about the
+  object: the same pixels of your print are kept, the workbench behind it can be replaced, and the
+  plastic can be shifted to another filament colour. Edited files are written next to the
+  originals as <span class="kv" style="font-family:ui-monospace,monospace">name_edited_gray_blue.png</span>
+  — the photo you took is never overwritten. A photo the finisher refuses goes out exactly as it
+  was shot, and the result names it.</div>
   <label class="tick">
     <input type="checkbox" id="assert-prints">
     <span>Every photo above is a photograph of a print I made myself, and I have the right to
@@ -503,6 +548,9 @@ function _payload() {
     stl_path: (_src && _src.stl_path) || '',
     image_paths: picked,
     print_photos: document.getElementById('assert-prints').checked ? [..._prints] : [],
+    photo_background: document.getElementById('photo-bg').value,
+    photo_recolour: document.getElementById('photo-hex').value.trim()
+                    || document.getElementById('photo-colour').value,
     source_url: url,
     remix_source_url: url,
     license_raw: (_src && _src.license && _src.license.raw) || '',
@@ -547,11 +595,15 @@ async function checkPlan() {
 
 async function publish() {
   const btn = document.getElementById('pub-btn');
+  const p = _payload();
   btn.disabled = true;
-  setStatus('pub-status', 'info', 'Opening the MakerWorld wizard in your Chrome and filling it… '
+  const restyle = (p.photo_background || p.photo_recolour)
+    ? 'First restyling ' + p.print_photos.length + ' photo(s) locally — about 4 seconds each. ' : '';
+  setStatus('pub-status', 'info', restyle
+    + 'Opening the MakerWorld wizard in your Chrome and filling it… '
     + 'this takes a minute. Do not touch that tab while it runs.');
   try {
-    const d = await post('/upload/makerworld', _payload());
+    const d = await post('/upload/makerworld', p);
     const v = d.verify || {};
     let h = (d.success ? '✓ ' : '✗ ') + esc(d.message || d.error || 'finished');
     if (v.draft_id) h += '\n Draft ' + esc(v.draft_id);
@@ -561,6 +613,9 @@ async function publish() {
     if (v.origin) h += '\n Source row picked: ' + esc((v.origin.rows || [])[v.origin.picked] || 'none')
       + (v.origin.registered ? ' — registered' : ' — NOT registered');
     if (v.real_photos) h += '\n Print photos on the form: ' + esc(JSON.stringify((v.real_photos || {}).counter || '—'));
+    if (d.photo_edits) h += '\n Restyled for the listing (' + esc(d.photo_edits.background)
+      + (d.photo_edits.recolour ? ' + ' + esc(d.photo_edits.recolour) : '') + '): '
+      + esc((d.photo_edits.notes || []).join(' · ') || 'nothing');
     setStatus('pub-status', d.success ? 'ok' : 'error', h);
     if (d.success) refreshMemory();
   } catch (err) {

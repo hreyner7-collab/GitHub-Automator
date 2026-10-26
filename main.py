@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from downloader import fetch as dl_fetch, classify_license
-from editor import edit_all
+from editor import edit_all, check_options as photo_style_check
 from uploader import (upload as uploader_upload, _debug_port_up,
                       license_answer_indexes, expected_badge_token,
                       usable_cover_images)
@@ -213,12 +213,16 @@ class UploadRequest(BaseModel):
 class MakerWorldUploadRequest(BaseModel):
     """The same listing, aimed at MakerWorld instead of Creality. print_photos
     is its own field because MakerWorld asks for something the edited set is
-    not: photographs of the object you actually printed."""
+    not: photographs of the object you actually printed. photo_background and
+    photo_recolour are the only edits those photographs may get, and both are
+    opt-in — with neither set the files go to the form exactly as shot."""
     name: str
     description: str = ""
     stl_path: str
     image_paths: list[str] = []
     print_photos: list[str] = []
+    photo_background: str = ""
+    photo_recolour: str = ""
     source_url: str = ""
     license_raw: str = ""
     remix_source_url: str = ""
@@ -689,6 +693,11 @@ async def makerworld_plan(req: MakerWorldUploadRequest):
     """What MakerWorld's own form would say about this listing, before anything
     opens: measured limits, required slots, the licence plan. Browser-free."""
     src = req.remix_source_url or req.source_url
+    if req.photo_background or req.photo_recolour:
+        try:
+            photo_style_check(req.photo_background or "keep", req.photo_recolour)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     return makerworld_flow.validate_plan(
         name=req.name, description=req.description, source_url=req.source_url,
         model_file=req.stl_path, cover_images=req.image_paths,
@@ -710,16 +719,27 @@ async def upload_to_makerworld(req: MakerWorldUploadRequest):
         if hit["found"]:
             raise HTTPException(status_code=409, detail=
                 "Refusing to publish twice on MakerWorld. " + makerworld_ledger.describe(hit))
+    # Restyled before the browser opens, and never in place: the finisher writes
+    # new files beside the photographs, so the originals stay on disk untouched.
+    try:
+        prep = makerworld_flow.prepare_print_photos(
+            req.print_photos, req.photo_background, req.photo_recolour)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     try:
         async with UPLOAD_LOCK:
             result = await makerworld_upload(
                 name=req.name, description=req.description, stl_path=req.stl_path,
                 image_paths=req.image_paths, source_url=req.source_url,
                 dry_run=req.dry_run, license_raw=req.license_raw,
-                print_photos=req.print_photos, remix_source_url=src,
+                print_photos=prep["photos"], remix_source_url=src,
                 tags=req.tags, category=req.category, kind=req.kind)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    if prep["styled"] and isinstance(result, dict):
+        result["photo_edits"] = {"background": prep["background"],
+                                 "recolour": prep["recolour"],
+                                 "notes": prep["notes"]}
     # Only what really landed. A dry run, a MAKERWORLD_NO_SUBMIT fill, and a
     # form left waiting for a manual Publish press carry success=True but put
     # nothing on MakerWorld, so they must not lock the model.
