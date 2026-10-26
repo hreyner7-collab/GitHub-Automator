@@ -688,6 +688,20 @@ def test_the_ai_save_route_writes_an_ai_prefixed_file_only(tmp_path, monkeypatch
                "data_url": "not an image"}).status_code == 400
 
 
+def test_the_studio_words_are_said_every_time_not_only_when_asked():
+    """The instruction is standing: strip the text, keep the object, then change
+    colour and backdrop. If any of those three became optional the prompt would
+    silently stop saying it, so they are checked inside the sentence builder."""
+    html = (ROOT / "makerworld" / "ai_studio.html").read_text(encoding="utf-8")
+    body = re.search(r"function buildPrompt\(\) \{.*?\n\}", html, re.S).group(0)
+    for always in ("remove every word", "keep the object itself identical",
+                   "replace the background with"):
+        assert always in body, always
+        # sitting in the unconditional parts list, not behind an if
+        assert body.index(always) < body.index("if (extra)"), always
+    assert re.search(r"buildPrompt\(\);", html), "no prompt on first load"
+
+
 def test_the_publish_route_restyles_before_it_opens_the_browser():
     src = (ROOT / "main.py").read_text(encoding="utf-8")
     body = re.search(r"@app.post\(\"/upload/makerworld\"\).*?\n\n\n@app.get",

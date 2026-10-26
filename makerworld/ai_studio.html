@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MakerWorld AI Studio V1</title>
+<title>MakerWorld AI Studio V2</title>
 <script src="https://js.puter.com/v2/"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -60,7 +60,7 @@
 
 <div class="topbar">
   <h1>MakerWorld <span>AI Studio</span></h1>
-  <span class="build" id="ai-version" title="AI Studio version: bumped on every update">V1</span>
+  <span class="build" id="ai-version" title="AI Studio version: bumped on every update">V2</span>
   <a href="/makerworld">&larr; MakerWorld dashboard</a>
 </div>
 
@@ -128,8 +128,9 @@
          oninput="buildPrompt()">
   <label>Prompt sent to Puter</label>
   <textarea id="prompt"></textarea>
-  <div class="kv">The model itself comes from your source picture — this box only describes the
-  scene around it.</div>
+  <div class="kv">Standing words, applied every time: strip all text, badges and watermarks, keep the
+  object identical, then change its colour and its background. The model itself comes from your
+  source picture — the boxes above only describe the scene around it.</div>
 </div>
 
 <div class="card">
@@ -178,12 +179,17 @@ function buildPrompt() {
   const bg = document.getElementById('bg').value;
   const col = document.getElementById('col').value;
   const extra = document.getElementById('extra').value.trim();
-  const parts = ['photograph of the same 3D printed object, exactly the same shape, proportions,'
-                 + ' wall count and layer lines as the input image, sitting on ' + bg];
-  if (col) parts.push('printed in ' + col + ' filament');
+  const printed = col ? 'change the printed object to ' + col + ' filament'
+                      : 'keep the printed object exactly the colour it is';
+  const parts = [
+    'remove every word, letter, number, logo, badge and watermark from the image',
+    'keep the object itself identical: same shape, same proportions, same walls, same layer lines',
+    printed,
+    'replace the background with ' + bg
+  ];
   if (extra) parts.push(extra);
-  parts.push('realistic lighting, sharp focus on the object');
-  document.getElementById('prompt').value = parts.join(', ');
+  parts.push('photorealistic product photograph, soft studio light, sharp focus on the object');
+  document.getElementById('prompt').value = parts.join('; ') + '.';
 }
 
 async function loadFiles() {

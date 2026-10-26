@@ -303,6 +303,16 @@ takes a data URL only (`data:image/(png|jpeg|webp);base64,`), rejects anything e
 with a 400, caps the write at 20 MB, and flattens the name through `Path().name`
 plus a character filter, so `../../windows.png` cannot escape `downloads/`.
 
+The prompt is **standing**, not written fresh each time: `buildPrompt()` always
+says "remove every word, letter, number, logo, badge and watermark from the
+image; keep the object itself identical: same shape, same proportions, same
+walls, same layer lines; 〈change the printed object to X filament〉; replace the
+background with 〈backdrop〉; photorealistic product photograph, soft studio
+light, sharp focus on the object". The colour and backdrop come from the two
+selects, the free-text box only appends, and the sentence builder runs on page
+load so the box is never empty. A test pins the three fixed clauses to the
+unconditional part of the list, so none of them can quietly become optional.
+
 What this page does **not** do: it is not wired into the publish flow, it is not
 run by the Auto loop, and it publishes nothing. `tests/test_makerworld.py` holds
 those three facts (own page, labelled as AI, `ai_` prefix, traversal blocked, bad
