@@ -1,7 +1,7 @@
 """
 Fully LOCAL listing-image finisher — no API keys, no accounts, no network, no cost.
 
-Pipeline per image (product pixels are NEVER recolored or resampled):
+Pipeline per image (product geometry and texture are NEVER resampled):
   1. Segment the product (what pixels are the object?) — ISNet/U2Net via
      `rembg` (free, open-source, models downloaded once) with GrabCut
      refinement; several candidate masks are tried and the best wins.
@@ -9,17 +9,26 @@ Pipeline per image (product pixels are NEVER recolored or resampled):
      (product material fills text printed on the product; background text
      simply dies with the wood swap). Product structure is never carved:
      texture edges fail the glyph-row test and stay untouched.
-  3. Build a procedural wooden studio backdrop (planks, grain, rings, vignette,
-     soft contact shadow) — deterministic per image, zero blur by construction.
-  4. Composite with a tight feathered mask (no halo, no soft edges), full
+  3. Build a studio backdrop — procedural wooden planks (default) or a flat
+     neutral sweep (`background="gray" | "white" | "graphite"`) — with grain,
+     soft key light, vignette and contact shadow; deterministic per image,
+     zero blur by construction.
+  4. Optional filament colour (`recolour="blue"` / `"#rrggbb"`): the product's
+     Lab mean is shifted by a CONSTANT offset, so every local difference —
+     layer lines, texture, shading — is preserved exactly. Off by default.
+  5. Composite with a tight feathered mask (no halo, no soft edges), full
      resolution end-to-end: nothing is downscaled or resampled.
 
 A built-in QA guard measures Laplacian sharpness of the product region in the
-output vs the source and refuses to emit a result that lost detail.
+output vs the source and refuses to emit a result that lost detail. With a
+recolour asked for, the colour guard measures the drift BEYOND the shift that
+was requested, so an accidental extra colour change still fails.
 """
 import hashlib
 import json
 import os
+import re
+import sys
 from typing import NamedTuple
 
 import cv2
@@ -59,6 +68,23 @@ OPAQUE_KEEP_MIN = 0.60    # opaque-shipped area must keep >= this share of the
                           # candidate's own mask (img_1 sliver ghosted to 0.46
                           # in erode+feather; every healthy ship >= 0.9).
                           # Scale-free by construction — close-ups immune.
+
+# Backdrops the finisher can build. "wood" is the original default; the rest
+# are flat neutral studio sweeps at a given brightness (0-255).
+BACKGROUNDS = {"wood": None, "gray": 150, "grey": 150, "white": 222,
+               "graphite": 62, "charcoal": 88}
+# Filament colours for the opt-in recolour, as BGR hex.
+COLOURS = {
+    "white": "#f2f2f2", "black": "#1a1a1a", "gray": "#808080", "grey": "#808080",
+    "silver": "#c0c3c7", "red": "#d0342c", "orange": "#e07a2f", "yellow": "#e8c33a",
+    "green": "#3f9d4a", "teal": "#2f8f9b", "blue": "#2f6fd0", "navy": "#243b6b",
+    "purple": "#7a4fbf", "pink": "#e06aa8", "brown": "#7a5230", "copper": "#b87333",
+    "gold": "#d4af37",
+}
+RECOLOUR_L_GAIN = 0.6     # how far the lightness moves toward the target:
+                          # 1.0 would flatten the print's own shading
+CORNER_TOL = 6            # neutral backdrops: shipped corner must equal the
+                          # rendered backdrop corner within this (per channel)
 
 _rembg_sessions: dict[str, object] = {}   # model name -> loaded session
 _rembg_sessions["isnet-general-use"] = None
@@ -595,6 +621,75 @@ def _wood_background(shape, seed: int) -> np.ndarray:
     return base.astype(np.uint8)
 
 
+def _neutral_background(shape, seed: int, level: int) -> np.ndarray:
+    """Flat neutral studio sweep (gray / white / graphite): soft key light from
+    above-left, a gentle floor falloff, fine grain and a light vignette. Same
+    grain field on all three channels, so the sweep has no colour cast and the
+    product stays the only warm or saturated thing in frame. Deterministic per
+    seed; grain and seams are real detail, never blur."""
+    h, w = shape[:2]
+    rng = np.random.default_rng(seed)
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    base = np.full((h, w, 3), float(level), np.float32)
+
+    d2 = ((xx / w - 0.38) * 0.9) ** 2 + ((yy / h - 0.18) * 1.1) ** 2
+    base += (np.exp(-d2 * 1.8) * (0.06 * level))[..., None]
+    base *= (1 - 0.10 * (yy / h))[..., None]
+
+    grain = rng.normal(0, 1, size=(max(h // 3, 8), max(w // 3, 8))).astype(np.float32)
+    grain = cv2.resize(grain, (w, h), interpolation=cv2.INTER_CUBIC)
+    base += (grain * max(1.2, level * 0.012))[..., None]
+
+    vig = 1 - 0.10 * np.clip(((xx / w - 0.5) ** 2 + (yy / h - 0.5) ** 2) * 2.2,
+                             0, 1)[..., None]
+    return np.clip(base * vig, 0, 255).astype(np.uint8)
+
+
+def _studio_background(shape, seed: int, background: str) -> np.ndarray:
+    """The requested backdrop. `wood` keeps the original procedural oak."""
+    key = (background or "wood").strip().lower()
+    if key in ("", "wood"):
+        return _wood_background(shape, seed)
+    if key not in BACKGROUNDS:
+        raise ValueError(f"unknown background {background!r} — use one of "
+                         f"{', '.join(sorted(set(BACKGROUNDS)))}")
+    return _neutral_background(shape, seed, BACKGROUNDS[key])
+
+
+def _lab_of(colour: str) -> tuple[float, float, float]:
+    """A colour name or #rrggbb, in the same 0-255 Lab scale OpenCV uses."""
+    key = (colour or "").strip().lower()
+    hexv = COLOURS.get(re.sub(r"[^a-z]", "", key) or key, key)
+    if not str(hexv).startswith("#") or len(str(hexv)) != 7:
+        raise ValueError(f"unknown colour {colour!r} — use #rrggbb or one of "
+                         f"{', '.join(sorted(COLOURS))}")
+    bgr = np.array([[[int(hexv[5:7], 16), int(hexv[3:5], 16), int(hexv[1:3], 16)]]],
+                   np.uint8)
+    lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2Lab)[0, 0]
+    return float(lab[0]), float(lab[1]), float(lab[2])
+
+
+def _recolour_product(img: np.ndarray, mask: np.ndarray,
+                      colour: str) -> tuple[np.ndarray, float]:
+    """Shift the product's Lab mean onto the requested filament colour.
+
+    The offset is CONSTANT across the mask, so layer lines, texture and shading
+    keep every local difference they had — only the colour moves. Lightness
+    travels part of the way (RECOLOUR_L_GAIN) so the print keeps its own
+    shading instead of going flat. Returns the image and the per-channel drift
+    the guards should now EXPECT (anything beyond it is real damage)."""
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2Lab).astype(np.float32)
+    hard = (mask > 127).astype(np.uint8) * 255
+    core = cv2.erode(hard, np.ones((9, 9), np.uint8))
+    if cv2.countNonZero(core) < 400:
+        core = hard
+    l0, a0, b0 = (float(v) for v in cv2.mean(lab, mask=core)[:3])
+    lt, at, bt = _lab_of(colour)
+    off = np.array([(lt - l0) * RECOLOUR_L_GAIN, at - a0, bt - b0], np.float32)
+    out = cv2.cvtColor(np.clip(lab + off, 0, 255).astype(np.uint8), cv2.COLOR_Lab2BGR)
+    return out, float(abs(off[1]) + abs(off[2])) / 2.0
+
+
 def _add_contact_shadow(wood: np.ndarray, mask: np.ndarray) -> np.ndarray:
     """Soft contact shadow slightly below the product, composited over the
     cached wood. Computed at quarter scale (the shadow is a smooth blob —
@@ -812,13 +907,22 @@ def _dbg_dump_json(debug_dir: str | None, name: str, obj) -> None:
 
 # ── Public API (same signatures the rest of the app already uses) ─────────────
 
-def edit_image(source_path: str, retries: int = 0, debug_dir: str | None = None) -> str:
-    """Local edit: product kept EXACTLY as-is (color, texture, detail),
-    background replaced with a sharp procedural wooden studio backdrop.
-    Full resolution end-to-end — nothing is downscaled or resampled.
+def edit_image(source_path: str, retries: int = 0, debug_dir: str | None = None,
+               background: str = "wood", recolour: str = "") -> str:
+    """Local edit: product geometry and texture kept exactly, background
+    replaced with a sharp procedural studio backdrop (`background="wood"` by
+    default, or a flat `"gray"` / `"white"` / `"graphite"` sweep), and — only
+    when asked — the filament colour shifted onto `recolour` (a name or
+    "#rrggbb"). Full resolution end-to-end; nothing is downscaled or resampled.
 
     With `debug_dir`, every intermediate and QA number is dumped there
     (identical code path, instrumentation only — see _dbg_dump)."""
+    style = (background or "wood").strip().lower()
+    if style not in BACKGROUNDS:
+        raise ValueError(f"unknown background {background!r} — use one of "
+                         f"{', '.join(sorted(set(BACKGROUNDS)))}")
+    if recolour:
+        _lab_of(recolour)                 # bad colour name: fail before segmenting
     img = cv2.imread(source_path, cv2.IMREAD_COLOR)
     if img is None:
         raise RuntimeError(f"Could not read image: {source_path}")
@@ -884,13 +988,13 @@ def edit_image(source_path: str, retries: int = 0, debug_dir: str | None = None)
             thick_text = cv2.bitwise_and(thick_text,
                                          cv2.dilate(prod_zone, np.ones((3, 3), np.uint8)))
 
-    # One wood backdrop per image (it depends only on shape+seed, not on the
+    # One backdrop per image (it depends only on shape+seed+style, not on the
     # mask — previously re-rendered for every candidate). Rendered at work
     # scale and upscaled once; plank tones are softened so seams stay gentle
     # at 4K (measured row-jump 15.5 -> target <=6, same visual style).
     work_shape = (int(img.shape[0] * work_scale), int(img.shape[1] * work_scale)) \
         if work_scale < 1.0 else img.shape[:2]
-    wood_work = _wood_background(work_shape, seed)
+    wood_work = _studio_background(work_shape, seed, style)
 
     # One human (hand/arm) detection for the whole image; per-candidate masks
     # get the foreign body stripped — but ONLY a skin-verified person (the
@@ -932,6 +1036,9 @@ def edit_image(source_path: str, retries: int = 0, debug_dir: str | None = None)
         mask, hand_found = _strip_foreign_body(mask, human, img_bgr=img)
         work = work_src
         work = _sharpen_product(work, mask)
+        want_drift = 0.0
+        if recolour:
+            work, want_drift = _recolour_product(work, mask, recolour)
 
         # Thin structures (wires, hooks) must not be eroded away by the
         # feather: on wire-dominated masks skip the erode and keep the blur
@@ -989,12 +1096,22 @@ def edit_image(source_path: str, retries: int = 0, debug_dir: str | None = None)
                        if thick_text.any() else None)
         kept, abs_sharp = _product_sharpness(img, out, opaque, repair_zone)
         cid = _color_identity_delta(img, out, opaque, repair_zone)
-        # corners of the composite MUST be the warm wood backdrop (R>=G>=B,
-        # tiny tolerance for feather noise); a cool corner means the mask
-        # swallowed the background — vacuous pass, try the next candidate.
-        corners_warm = all(
-            bool(c[2] >= c[1] - 2 and c[1] >= c[0] - 2)
-            for c in (out[4, 4], out[4, -5], out[-5, 4], out[-5, -5]))
+        # With an asked-for recolour the intended shift is not drift: measure
+        # only what moved BEYOND it, so an accidental extra colour change (a
+        # mask that swallowed a background object) still fails the guard.
+        cid_excess = max(0.0, cid - want_drift)
+        # The corners must be the backdrop this run rendered: warm wood for
+        # the default, a neutral sweep for gray/white/graphite. A cool corner
+        # on a wood run means the mask swallowed the background.
+        corners = ((4, 4), (4, -5), (-5, 4), (-5, -5))
+        if style in ("", "wood"):
+            corners_ok = all(bool(c[2] >= c[1] - 2 and c[1] >= c[0] - 2)
+                             for c in (out[p] for p in corners))
+        else:
+            corners_ok = all(
+                float(np.abs(out[p].astype(np.int16)
+                             - wood_full[p].astype(np.int16)).max()) <= CORNER_TOL
+                for p in corners)
         # repair seam: an inpainted band that stays VISIBLE (inside the kept
         # product core) must not be a smooth smear surrounded by product
         # texture — compare its variance to the product texture RING around
@@ -1031,13 +1148,14 @@ def edit_image(source_path: str, retries: int = 0, debug_dir: str | None = None)
         vacuous = (udec < UNION_RECALL_MIN
                    or opaque_frac < OPAQUE_KEEP_MIN * cand_frac)
         ok = (kept >= SHARPNESS_KEEP_MIN and abs_sharp >= SHARP_ABS_MIN
-              and cid <= COLOR_IDENTITY_MAX and corners_warm
+              and cid_excess <= COLOR_IDENTITY_MAX and corners_ok
               and seam_ok and text_left <= RESIDUAL_TEXT_MAX
               and hand_left <= 0.02
               and dropped <= DROP_PARTS_MAX
               and not vacuous)
         attempts.append({"ratio": round(kept, 2), "abs": round(abs_sharp),
-                         "cid": round(cid, 1), "text": round(text_left, 3),
+                         "cid": round(cid, 1), "drift": round(cid_excess, 1),
+                         "text": round(text_left, 3),
                          "hand": round(hand_left, 3), "hand_found": hand_found,
                          "drop": round(dropped, 3), "urec": round(udec, 3),
                          "opq": round(opaque_frac, 3),
@@ -1051,9 +1169,9 @@ def edit_image(source_path: str, retries: int = 0, debug_dir: str | None = None)
                              if (mask > 127).any() else 0.0)
         # sharpness first, then fewer dropped attached parts, minus color drift
         score = (kept + 40.0 * (DROP_PARTS_MAX - min(dropped, DROP_PARTS_MAX))
-                 - 2.0 * max(0.0, cid - 2.0))
+                 - 2.0 * max(0.0, cid_excess - 2.0))
         if ok and (best is None or score > best[0]):
-            best = (score, out, {"ratio": kept, "cid": cid, "dropped": dropped})
+            best = (score, out, {"ratio": kept, "cid": cid_excess, "dropped": dropped})
             best_mask = mask
             best_alpha = alpha
 
@@ -1065,24 +1183,38 @@ def edit_image(source_path: str, retries: int = 0, debug_dir: str | None = None)
             f"{os.path.basename(source_path)}: {attempts} — likely a product-on-"
             f"same-background photo; refusing to ship a damaged product")
 
-    out_path = os.path.splitext(source_path)[0] + "_edited.png"
+    # The default (wood, no recolour) keeps writing <stem>_edited.png exactly as
+    # every other script in this app expects; a variant names itself so it
+    # cannot overwrite the run beside it.
+    stem = os.path.splitext(source_path)[0]
+    tag = ""
+    if style not in ("", "wood"):
+        tag += "_" + re.sub(r"[^a-z0-9]", "", style)
+    if recolour:
+        tag += "_" + re.sub(r"[^a-z0-9]", "", recolour.lower())
+    out_path = f"{stem}_edited{tag}.png"
     _dbg_dump_json(debug_dir, "06_guard_scores.json",
                    {"verdict": "SHIPPED", "winner": os.path.basename(out_path),
+                    "background": style or "wood", "recolour": recolour or "",
                     "candidates": attempts})
     if not cv2.imwrite(out_path, best[1]):
         raise RuntimeError(f"Could not write {out_path}")
     # Persist the OPAQUE product region so external QA measures exactly what
     # this file vouched for (no transition zones), plus the repaired band so
     # QA can exclude it from kept-pixel contracts.
-    mask_path = os.path.splitext(source_path)[0] + "_mask.png"
+    mask_path = f"{stem}_mask{tag}.png"
     cv2.imwrite(mask_path, (best_alpha[..., 0] >= 0.995).astype(np.uint8) * 255)
     if thick_text.any():
-        cv2.imwrite(os.path.splitext(source_path)[0] + "_repair.png", thick_text)
+        cv2.imwrite(f"{stem}_repair{tag}.png", thick_text)
     return out_path
 
 
-def edit_all(image_paths: list[str]) -> list[str]:
+def edit_all(image_paths: list[str], background: str = "wood",
+             recolour: str = "") -> list[str]:
     """Edit each image and return list of edited paths.
+
+    `background` and `recolour` are passed straight to edit_image; both
+    default to the original behaviour (wood, product colour untouched).
 
     UNIFORM-EFFORT CONTRACT: every image runs the identical full pipeline —
     every candidate mask is segmented, composited and QA-scored with no fast
@@ -1093,9 +1225,30 @@ def edit_all(image_paths: list[str]) -> list[str]:
     edited = []
     for path in image_paths:
         try:
-            edited.append(edit_image(path))
+            edited.append(edit_image(path, background=background,
+                                     recolour=recolour))
         except Exception as e:
             # Full-effort refusal, not a rush job: the image received its
             # complete candidate sweep and failed QA on the merits.
             print(f"[editor] REFUSED after full QA — {path}: {e}")
     return edited
+
+
+if __name__ == "__main__":
+    import argparse
+
+    ap = argparse.ArgumentParser(
+        description="Finish listing photographs locally: studio backdrop and, "
+                    "if you ask, a different filament colour.")
+    ap.add_argument("images", nargs="+", help="photographs to edit (your own)")
+    ap.add_argument("--background", default="wood",
+                    help="wood (default) | gray | grey | white | graphite | charcoal")
+    ap.add_argument("--recolour", default="",
+                    help="filament colour: %s, or #rrggbb" % ", ".join(sorted(COLOURS)))
+    args = ap.parse_args()
+    for src in args.images:
+        try:
+            print(edit_image(src, background=args.background, recolour=args.recolour))
+        except Exception as exc:  # noqa: BLE001
+            print(f"REFUSED {src}: {exc}", file=sys.stderr)
+            sys.exit(1)
