@@ -62,7 +62,10 @@ Everything lives in this one folder, branch `main`. Python runs from the repo-lo
 Read in this order:
 0. `HANDOFF-MAKERWORLD.md` — if you are picking up the **MakerWorld** pipeline only: its own file
    list, routes, the eight critics with their thresholds, the checks, the measured yield and what
-   is still open. The Creality half is explicitly out of its scope.
+   is still open. The Creality half is explicitly out of its scope. Since 2026-10-27 there is also a
+   MakerWorld-only copy of that pipeline at `C:\Users\henry\Documents\free\app\MakerWorld` (12
+   routes, all MakerWorld; its own `README.md` says what could not travel with it). This repo stays
+   the one that runs at `/makerworld` and the one pushed here.
 1. `MAKERWORLD-FLOW-CONFIG.md` — what MakerWorld's form actually does, the eight critics with
    their measured thresholds and the control numbers behind each, and the pass-by-pass picture
    yield.

@@ -3,6 +3,11 @@
 Written 2026-10-26. This file is the whole map of **one** pipeline: the MakerWorld
 find-and-publish-as-a-remix flow served at **http://127.0.0.1:8000/makerworld**.
 
+> **A MakerWorld-only copy of this pipeline now lives at
+> `C:\Users\Users\henry\Documents\free\app\MakerWorld`** (cut 2026-10-27: 12 routes, all MakerWorld,
+> `90 passed`; see its `README.md`). This repo still runs the same code behind the same URL, and it
+> is the one pushed to GitHub.
+
 ## Where it lives on this computer
 
 ```
